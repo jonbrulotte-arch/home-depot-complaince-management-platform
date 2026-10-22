@@ -38,6 +38,8 @@ model User {
   auditLogs      AuditLog[]
   disputeEvents  DisputeEvent[]
   attachments    DisputeAttachment[]
+  scorecardsGenerated Scorecard[] @relation("ScorecardGeneratedBy")
+  scorecardsPublished Scorecard[] @relation("ScorecardPublishedBy")
 }
 
 model AuditLog {
@@ -176,6 +178,7 @@ model ComplianceReport {
   createdAt   DateTime         @default(now())
   updatedAt   DateTime         @updatedAt
   programs    ReportProgram[]
+  scorecard   Scorecard?
 
   @@index([periodId])
 }
@@ -464,4 +467,24 @@ model DisputeAttachment {
   uploadedAt   DateTime @default(now())
 
   @@index([disputeId])
+}
+
+// ─── Scorecards ────────────────────────────────────────────────
+
+/// Frozen snapshot of a report's results, so a published scorecard never changes under readers.
+model Scorecard {
+  id            String           @id @default(cuid())
+  reportId      String           @unique
+  report        ComplianceReport @relation(fields: [reportId], references: [id], onDelete: Cascade)
+  /// ScorecardData from src/lib/scorecard.ts
+  data          Json
+  version       Int              @default(1)
+  generatedAt   DateTime         @default(now())
+  generatedById String?
+  generatedBy   User?            @relation("ScorecardGeneratedBy", fields: [generatedById], references: [id], onDelete: SetNull)
+  publishedAt   DateTime?
+  publishedById String?
+  publishedBy   User?            @relation("ScorecardPublishedBy", fields: [publishedById], references: [id], onDelete: SetNull)
+
+  @@index([publishedAt])
 }

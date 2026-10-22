@@ -22,6 +22,15 @@ export async function POST(req: Request) {
   const programs = await prisma.program.findMany({ where: { id: { in: programIds }, active: true }, select: { id: true } });
   if (programs.length !== new Set(programIds).size) return badRequest("Unknown or inactive program selected");
 
+  // Programs whose data for this period is already loaded (e.g. by the backfill) start as imported
+  const withData = await prisma.complianceLine.groupBy({
+    by: ["metricId"],
+    where: { fiscalMonth, metric: { programId: { in: programs.map((p) => p.id) } } },
+  });
+  const loaded = new Set(
+    (await prisma.metric.findMany({ where: { id: { in: withData.map((g) => g.metricId) } }, select: { programId: true } })).map((m) => m.programId),
+  );
+
   const label = fiscalLabel(fiscalMonth);
   const period = await prisma.compliancePeriod.upsert({ where: { fiscalMonth }, update: {}, create: { fiscalMonth, label } });
   const report = await prisma.complianceReport.create({
@@ -30,7 +39,7 @@ export async function POST(req: Request) {
       title: `${label} Compliance Report`,
       notes: notes || null,
       createdById: guard.user.id,
-      programs: { create: programs.map((p) => ({ programId: p.id })) },
+      programs: { create: programs.map((p) => ({ programId: p.id, status: loaded.has(p.id) ? "IMPORTED" : "NOT_STARTED" })) },
     },
   });
   await audit(guard.user.id, "report.create", "ComplianceReport", report.id, { fiscalMonth, programIds });

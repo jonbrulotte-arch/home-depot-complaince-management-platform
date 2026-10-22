@@ -9,10 +9,14 @@ import { apiFetch } from "@/lib/client-api";
 const NEXT: Partial<Record<ReportStatus, { status: ReportStatus; label: string }>> = {
   DRAFT: { status: "IN_REVIEW", label: "Start review" },
   IN_REVIEW: { status: "DISPUTES", label: "Ready for disputes" },
+  DISPUTES: { status: "SCORECARD", label: "Generate scorecard" },
+  SCORECARD: { status: "PUBLISHED", label: "Publish scorecard" },
 };
 const BACK: Partial<Record<ReportStatus, { status: ReportStatus; label: string }>> = {
   IN_REVIEW: { status: "DRAFT", label: "Back to import" },
   DISPUTES: { status: "IN_REVIEW", label: "Reopen review" },
+  SCORECARD: { status: "DISPUTES", label: "Back to disputes" },
+  PUBLISHED: { status: "SCORECARD", label: "Unpublish" },
 };
 
 export function ReportActions({ reportId, status, pending }: { reportId: string; status: ReportStatus; pending: number }) {
@@ -25,7 +29,8 @@ export function ReportActions({ reportId, status, pending }: { reportId: string;
     setError(null);
     try {
       await apiFetch(`/api/reports/${reportId}`, { method: "PATCH", body: { status: to } });
-      router.refresh();
+      if (to === "SCORECARD" && status === "DISPUTES") router.push(`/reports/${reportId}/scorecard`);
+      else router.refresh();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not update the report");
     } finally {

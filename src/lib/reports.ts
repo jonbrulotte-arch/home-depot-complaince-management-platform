@@ -18,6 +18,7 @@ export interface MetricStat {
   /** Null when only non-compliant lines were imported, so no denominator is known */
   compliancePct: number | null;
   thresholdPct: number | null;
+  offsetType: "NONE" | "FLAT" | "PCT_VALUE" | null;
   meetsThreshold: boolean | null;
   /** Lines with an active (not withdrawn) dispute */
   disputed: number;
@@ -112,6 +113,7 @@ export async function getMetricStats(programIds: string[], fiscalMonth: number):
       offset: Math.round(offset * 100) / 100,
       compliancePct,
       thresholdPct,
+      offsetType: rule?.offsetType ?? null,
       meetsThreshold: compliancePct == null || thresholdPct == null ? null : compliancePct >= thresholdPct,
       disputed: disputes.length,
       approved: approvedLines.length,

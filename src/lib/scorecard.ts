@@ -1,0 +1,198 @@
+import type { DisputeStatus, TeamInfluence } from "@prisma/client";
+import { prisma } from "@/lib/prisma";
+import { fiscalLabel, shiftFiscalMonth } from "@/lib/fiscal";
+import { getMetricStats } from "@/lib/reports";
+import { meetsGoal } from "@/lib/scorecard-rules";
+import { TEAM_INFLUENCES } from "@/lib/line-fields";
+
+export interface ScorecardMetric {
+  code: string;
+  name: string;
+  goalPct: number | null;
+  lines: number;
+  violations: number;
+  prePct: number | null;
+  postPct: number | null;
+  meetsGoal: boolean | null;
+  preOffset: number;
+  postOffset: number;
+  disputed: number;
+  approved: number;
+}
+
+export interface ScorecardProgram {
+  code: string;
+  name: string;
+  lines: number;
+  violations: number;
+  preOffset: number;
+  postOffset: number;
+  metrics: ScorecardMetric[];
+}
+
+export interface ScorecardViolation {
+  program: string;
+  metric: string;
+  poNumber: string | null;
+  dcNumber: string | null;
+  offset: number;
+  disposition: string;
+  teamInfluence: string | null;
+  disputeStatus: DisputeStatus | null;
+  reasonCode: string | null;
+  recovered: number | null;
+  notes: string | null;
+}
+
+export interface ScorecardData {
+  title: string;
+  fiscalMonth: number;
+  periodLabel: string;
+  dataReceivedAt: string | null;
+  generatedAt: string;
+  programs: ScorecardProgram[];
+  totals: {
+    lines: number;
+    violations: number;
+    preOffset: number;
+    postOffset: number;
+    disputedAmount: number;
+    recovered: number;
+    deniedAmount: number;
+    pendingAmount: number;
+    pendingDisputes: number;
+  };
+  violations: ScorecardViolation[];
+  teamInfluence: { team: string; amount: number; lines: number }[];
+  trend: { fiscalMonth: number; label: string; byProgram: Record<string, number>; preOffset: number; recovered: number }[];
+}
+
+const round = (n: number) => Math.round(n * 100) / 100;
+
+const TREND_MONTHS = 12;
+
+/** Builds the scorecard for a report from the current lines, reviews and disputes. */
+export async function buildScorecard(reportId: string): Promise<ScorecardData> {
+  const report = await prisma.complianceReport.findUniqueOrThrow({
+    where: { id: reportId },
+    include: { period: true, programs: { include: { program: true }, orderBy: { program: { sortOrder: "asc" } } } },
+  });
+  const fiscalMonth = report.period.fiscalMonth;
+  const programIds = report.programs.map((p) => p.programId);
+  const inReport = { fiscalMonth, metric: { programId: { in: programIds } } };
+
+  const [stats, lines, received] = await Promise.all([
+    getMetricStats(programIds, fiscalMonth),
+    prisma.complianceLine.findMany({
+      where: { ...inReport, isCompliant: false },
+      include: { metric: { include: { program: true } }, review: true, dispute: { include: { reasonCode: { select: { code: true } } } } },
+      orderBy: [{ metric: { program: { sortOrder: "asc" } } }, { metric: { sortOrder: "asc" } }, { poNumber: "asc" }],
+    }),
+    prisma.importBatch.aggregate({ _max: { importedAt: true }, where: { lines: { some: inReport } } }),
+  ]);
+
+  const programs: ScorecardProgram[] = report.programs.map(({ program }) => {
+    const metrics = stats
+      .filter((m) => m.programId === program.id)
+      .map((m) => ({
+        code: m.code,
+        name: m.name,
+        goalPct: m.thresholdPct,
+        lines: m.total,
+        violations: m.nonCompliant,
+        prePct: m.compliancePct,
+        postPct: m.postDisputePct,
+        meetsGoal: meetsGoal(m),
+        preOffset: m.offset,
+        postOffset: m.postDisputeOffset,
+        disputed: m.disputed,
+        approved: m.approved,
+      }));
+    return {
+      code: program.code,
+      name: program.name,
+      lines: Math.max(0, ...metrics.map((m) => m.lines)),
+      violations: metrics.reduce((s, m) => s + m.violations, 0),
+      preOffset: round(metrics.reduce((s, m) => s + m.preOffset, 0)),
+      postOffset: round(metrics.reduce((s, m) => s + m.postOffset, 0)),
+      metrics,
+    };
+  });
+
+  const violations: ScorecardViolation[] = lines.map((l) => ({
+    program: l.metric.program.name,
+    metric: l.metric.name,
+    poNumber: l.poNumber,
+    dcNumber: l.dcNumber,
+    offset: Number(l.offsetAmount),
+    disposition: l.review?.disposition ?? "PENDING",
+    teamInfluence: l.review?.teamInfluence ? TEAM_INFLUENCES[l.review.teamInfluence] : null,
+    disputeStatus: l.dispute && l.dispute.status !== "WITHDRAWN" ? l.dispute.status : null,
+    reasonCode: l.dispute?.reasonCode?.code ?? null,
+    recovered: l.dispute?.amountRecovered == null ? null : Number(l.dispute.amountRecovered),
+    notes: l.review?.notes ?? null,
+  }));
+
+  const activeDisputes = lines.flatMap((l) => (l.dispute && l.dispute.status !== "WITHDRAWN" ? [l.dispute] : []));
+  const sumDisputes = (statuses: DisputeStatus[], field: "amountDisputed" | "amountRecovered") =>
+    round(activeDisputes.filter((d) => statuses.includes(d.status)).reduce((s, d) => s + Number(d[field] ?? 0), 0));
+
+  const byTeam = new Map<string, { amount: number; lines: number }>();
+  for (const l of lines) {
+    const team = l.review?.teamInfluence ? TEAM_INFLUENCES[l.review.teamInfluence as TeamInfluence] : "Not assigned";
+    const entry = byTeam.get(team) ?? { amount: 0, lines: 0 };
+    entry.amount += Number(l.offsetAmount);
+    entry.lines += 1;
+    byTeam.set(team, entry);
+  }
+
+  return {
+    title: report.title,
+    fiscalMonth,
+    periodLabel: fiscalLabel(fiscalMonth),
+    dataReceivedAt: received._max.importedAt?.toISOString() ?? null,
+    generatedAt: new Date().toISOString(),
+    programs,
+    totals: {
+      lines: programs.reduce((s, p) => s + p.lines, 0),
+      violations: lines.length,
+      preOffset: round(programs.reduce((s, p) => s + p.preOffset, 0)),
+      postOffset: round(programs.reduce((s, p) => s + p.postOffset, 0)),
+      disputedAmount: sumDisputes(["PREPARING", "READY", "SUBMITTED", "APPROVED", "PARTIAL", "DENIED"], "amountDisputed"),
+      recovered: sumDisputes(["APPROVED", "PARTIAL"], "amountRecovered"),
+      deniedAmount: sumDisputes(["DENIED"], "amountDisputed"),
+      pendingAmount: sumDisputes(["PREPARING", "READY", "SUBMITTED"], "amountDisputed"),
+      pendingDisputes: activeDisputes.filter((d) => ["PREPARING", "READY", "SUBMITTED"].includes(d.status)).length,
+    },
+    violations,
+    teamInfluence: [...byTeam.entries()].map(([team, v]) => ({ team, amount: round(v.amount), lines: v.lines })).sort((a, b) => b.amount - a.amount),
+    trend: await buildTrend(programIds, report.programs.map((p) => p.program), fiscalMonth),
+  };
+}
+
+async function buildTrend(programIds: string[], programs: { id: string; code: string }[], fiscalMonth: number): Promise<ScorecardData["trend"]> {
+  const first = shiftFiscalMonth(fiscalMonth, -(TREND_MONTHS - 1));
+  const range = { fiscalMonth: { gte: first, lte: fiscalMonth }, metric: { programId: { in: programIds } } };
+  const [metrics, offsets, recovered] = await Promise.all([
+    prisma.metric.findMany({ where: { programId: { in: programIds } }, select: { id: true, programId: true } }),
+    prisma.complianceLine.groupBy({ by: ["metricId", "fiscalMonth"], where: { ...range, isCompliant: false }, _sum: { offsetAmount: true } }),
+    prisma.dispute.findMany({ where: { status: { in: ["APPROVED", "PARTIAL"] }, line: range }, select: { amountRecovered: true, line: { select: { fiscalMonth: true } } } }),
+  ]);
+  const codeOf = new Map(metrics.map((m) => [m.id, programs.find((p) => p.id === m.programId)?.code ?? ""]));
+
+  return Array.from({ length: TREND_MONTHS }, (_, i) => {
+    const fm = shiftFiscalMonth(first, i);
+    const byProgram: Record<string, number> = Object.fromEntries(programs.map((p) => [p.code, 0]));
+    for (const g of offsets.filter((o) => o.fiscalMonth === fm)) {
+      const code = codeOf.get(g.metricId)!;
+      byProgram[code] = round((byProgram[code] ?? 0) + Number(g._sum.offsetAmount ?? 0));
+    }
+    return {
+      fiscalMonth: fm,
+      label: fiscalLabel(fm),
+      byProgram,
+      preOffset: round(Object.values(byProgram).reduce((s, v) => s + v, 0)),
+      recovered: round(recovered.filter((d) => d.line.fiscalMonth === fm).reduce((s, d) => s + Number(d.amountRecovered ?? 0), 0)),
+    };
+  });
+}

@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { Gavel, ListChecks } from "lucide-react";
+import { FileBarChart, Gavel, ListChecks } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { requirePagePermission } from "@/lib/auth-guard";
 import { getMetricStats } from "@/lib/reports";
@@ -76,6 +76,14 @@ export default async function ReportPage({ params }: { params: Promise<{ id: str
               <Link href={`/reports/${id}/disputes`}>
                 <Gavel className="h-4 w-4 mr-1.5" />
                 Disputes
+              </Link>
+            </Button>
+          )}
+          {(report.status === "SCORECARD" || report.status === "PUBLISHED" || report.status === "DISPUTES") && (
+            <Button asChild variant="outline">
+              <Link href={`/reports/${id}/scorecard`}>
+                <FileBarChart className="h-4 w-4 mr-1.5" />
+                {report.status === "DISPUTES" ? "Preview scorecard" : "Scorecard"}
               </Link>
             </Button>
           )}

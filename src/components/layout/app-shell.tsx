@@ -8,9 +8,11 @@ export async function AppShell({ children }: { children: React.ReactNode }) {
   if (!user) redirect("/login");
 
   return (
-    <div className="flex h-screen overflow-hidden bg-gray-50">
-      <Sidebar user={{ name: user.name, role: user.role }} permissions={[...user.permissions]} />
-      <main className="flex-1 overflow-y-auto">{children}</main>
+    <div className="flex h-screen overflow-hidden bg-gray-50 print:block print:h-auto print:overflow-visible print:bg-white">
+      <div className="contents print:hidden">
+        <Sidebar user={{ name: user.name, role: user.role }} permissions={[...user.permissions]} />
+      </div>
+      <main className="flex-1 overflow-y-auto print:overflow-visible">{children}</main>
     </div>
   );
 }

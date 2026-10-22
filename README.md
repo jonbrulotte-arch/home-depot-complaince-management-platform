@@ -18,6 +18,13 @@ Monthly compliance analysis for our Home Depot programs. Import the raw SPM expo
   3. Record THD's decision: approved, partially approved or denied, with the review code and $ recovered.
 
   Every dispute has a timeline of notes and status changes. The period's dispute window defaults to THD's rule (opens 2nd Wednesday, closes 2nd Tuesday of the following month) and is editable. Later SPM exports carrying an Approve/Deny value are flagged on the matching dispute. Reports show post-dispute performance and offsets; a %-of-value offset falls away when the recalculated metric meets its goal. The **Disputes** page lists every dispute across reports by deadline.
+- **Scorecards** (Phase 3): once every dispute is submitted or withdrawn, the report generates a scorecard, a frozen snapshot that holds:
+  - each program's metrics against goal, pre- and post-dispute, with offsets
+  - recovered, pending and denied totals
+  - the violation list with dispute outcomes
+  - offsets by team influence and a 12-month trend
+
+  You can regenerate it while in the Scorecard stage, for example after recording THD decisions. Then publish it, or unpublish to reopen it. Export to Excel (Scorecard, Violations, 12-Month Offsets and Team Influence sheets) or Print / PDF. Published scorecards are on the **Scorecards** page and the dashboard, and the Viewer role can see them.
 - **PO Lookup**: search by PO (prefix), SKU, tracking #, PRO #, BOL #, TMS shipment ID or ASN doc trace ID.
 - **Dashboard**: 12-month pre-dispute offsets by program, and open work.
 - **Admin**:
@@ -25,7 +32,7 @@ Monthly compliance analysis for our Home Depot programs. Import the raw SPM expo
   - Roles & Access (role × permission matrix; built-in Admin, Analyst and Viewer roles)
   - Programs & Rules: metrics, threshold/offset rules by effective fiscal month, dispute reason codes, and SPM column mappings
 
-Coming next: the scorecard (pre/post-dispute) with Excel/PDF export, published scorecards, and backup & restore.
+Coming next: backup & restore.
 
 ## Setup
 

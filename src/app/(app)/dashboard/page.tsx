@@ -7,6 +7,7 @@ import { formatCurrency } from "@/lib/utils";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { StatCard } from "@/components/shared/stat-card";
 import { ReportStatusBadge } from "@/components/shared/status-badges";
+import { scorecardData } from "@/lib/scorecard-store";
 
 export default async function DashboardPage() {
   const user = await requirePagePermission("view.dashboard");
@@ -15,7 +16,7 @@ export default async function DashboardPage() {
   const lastMonth = latest._max.fiscalMonth;
   const months = lastMonth ? Array.from({ length: 12 }, (_, i) => shiftFiscalMonth(lastMonth, i - 11)) : [];
 
-  const [programs, metrics, offsets, pendingReview, openReports, recentReports] = await Promise.all([
+  const [programs, metrics, offsets, pendingReview, openReports, recentReports, latestScorecard] = await Promise.all([
     prisma.program.findMany({ where: { active: true }, orderBy: { sortOrder: "asc" } }),
     prisma.metric.findMany({ select: { id: true, programId: true } }),
     months.length
@@ -31,7 +32,9 @@ export default async function DashboardPage() {
     user.permissions.has("reports.view")
       ? prisma.complianceReport.findMany({ orderBy: { createdAt: "desc" }, take: 5, include: { period: true } })
       : Promise.resolve([]),
+    prisma.scorecard.findFirst({ where: { publishedAt: { not: null } }, orderBy: { report: { period: { fiscalMonth: "desc" } } } }),
   ]);
+  const published = latestScorecard ? scorecardData(latestScorecard.data) : null;
 
   const programOf = new Map(metrics.map((m) => [m.id, m.programId]));
   const cell = new Map<string, number>();
@@ -59,6 +62,28 @@ export default async function DashboardPage() {
         <StatCard icon={AlertTriangle} label="Violations not yet reviewed (all periods)" value={pendingReview} tone="amber" />
         <StatCard icon={ClipboardCheck} label="Reports in progress" value={openReports} tone="green" />
       </div>
+
+      {published && latestScorecard && (
+        <Link href={`/scorecards/${latestScorecard.reportId}`} className="block">
+          <Card className="hover:border-blue-300">
+            <CardContent className="flex flex-wrap items-center justify-between gap-4 p-6">
+              <div>
+                <p className="text-sm text-gray-500">Latest published scorecard</p>
+                <p className="text-lg font-semibold text-gray-900">{published.periodLabel}</p>
+              </div>
+              <div className="flex gap-8 text-sm">
+                <div><p className="text-gray-500">Pre-dispute</p><p className="font-semibold text-gray-900">{formatCurrency(published.totals.preOffset)}</p></div>
+                <div><p className="text-gray-500">Recovered</p><p className="font-semibold text-green-700">{formatCurrency(published.totals.recovered)}</p></div>
+                <div><p className="text-gray-500">Post-dispute</p><p className="font-semibold text-gray-900">{formatCurrency(published.totals.postOffset)}</p></div>
+                <div>
+                  <p className="text-gray-500">Metrics below goal</p>
+                  <p className="font-semibold text-gray-900">{published.programs.flatMap((p) => p.metrics).filter((m) => m.meetsGoal === false).length}</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </Link>
+      )}
 
       <Card>
         <CardHeader>
