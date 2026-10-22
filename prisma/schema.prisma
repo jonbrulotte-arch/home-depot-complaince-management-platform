@@ -1,0 +1,380 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ─── Users & RBAC ──────────────────────────────────────────────
+
+model Role {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  description String?
+  /// Permission keys from src/lib/permissions.ts
+  permissions String[]
+  system      Boolean  @default(false) // seeded roles cannot be deleted
+  users       User[]
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model User {
+  id           String   @id @default(cuid())
+  name         String
+  email        String   @unique
+  passwordHash String
+  active       Boolean  @default(true)
+  roleId       String
+  role         Role     @relation(fields: [roleId], references: [id])
+  lastLoginAt  DateTime?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  reportsCreated ComplianceReport[]
+  imports        ImportBatch[]
+  reviews        LineReview[]
+  auditLogs      AuditLog[]
+}
+
+model AuditLog {
+  id       String   @id @default(cuid())
+  userId   String?
+  user     User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  action   String
+  entity   String
+  entityId String?
+  details  Json?
+  at       DateTime @default(now())
+
+  @@index([entity, entityId])
+  @@index([at])
+}
+
+// ─── Program configuration ─────────────────────────────────────
+
+model Program {
+  id          String   @id @default(cuid())
+  /// US_DS | US_RDC | US_DFC | US_TRANS | DQC | INVOICE_TIMELINESS
+  code        String   @unique
+  name        String
+  /// SPM export filename prefix, e.g. "US_DFC"
+  filePrefix  String?
+  sortOrder   Int      @default(0)
+  active      Boolean  @default(true)
+  metrics     Metric[]
+  aliases     ColumnAlias[]
+  reportPrograms ReportProgram[]
+}
+
+model Metric {
+  id         String   @id @default(cuid())
+  programId  String
+  program    Program  @relation(fields: [programId], references: [id], onDelete: Cascade)
+  /// e.g. FILL_RATE, ON_TIME, ASNT_MISSING_ASN
+  code       String
+  name       String
+  /// SPM sheet names that hold this metric (matched case-insensitively)
+  sheetNames String[]
+  sortOrder  Int      @default(0)
+  active     Boolean  @default(true)
+
+  rules       MetricRule[]
+  aliases     ColumnAlias[]
+  reasonCodes DisputeReasonCode[]
+  lines       ComplianceLine[]
+  summaryRows SpmSummaryRow[]
+
+  @@unique([programId, code])
+}
+
+enum OffsetType {
+  NONE
+  FLAT       // fixed $ per violation
+  PCT_VALUE  // % of COGS / gross value of the late or unshipped units
+}
+
+/// Threshold and fine schedule; the rule in force for a period is the latest effectiveFrom <= period.
+model MetricRule {
+  id            String     @id @default(cuid())
+  metricId      String
+  metric        Metric     @relation(fields: [metricId], references: [id], onDelete: Cascade)
+  /// Fiscal month (YYYYMM) the rule applies from
+  effectiveFrom Int
+  /// Goal as a percentage, e.g. 98.5
+  thresholdPct  Decimal    @db.Decimal(6, 3)
+  offsetType    OffsetType
+  /// $ for FLAT, % for PCT_VALUE
+  offsetAmount  Decimal    @db.Decimal(12, 2)
+  notes         String?
+
+  @@unique([metricId, effectiveFrom])
+}
+
+/// Maps a source header (normalized) to a canonical ComplianceLine field.
+/// Scope: metric-specific > program-specific > global.
+model ColumnAlias {
+  id             String   @id @default(cuid())
+  programId      String?
+  program        Program? @relation(fields: [programId], references: [id], onDelete: Cascade)
+  metricId       String?
+  metric         Metric?  @relation(fields: [metricId], references: [id], onDelete: Cascade)
+  /// Normalized header: lower-case, single-spaced
+  sourceHeader   String
+  canonicalField String
+
+  @@unique([programId, metricId, sourceHeader])
+}
+
+model DisputeReasonCode {
+  id           String  @id @default(cuid())
+  metricId     String
+  metric       Metric  @relation(fields: [metricId], references: [id], onDelete: Cascade)
+  code         String
+  whenToUse    String?
+  requiredDocs String?
+  docDetails   String?
+  active       Boolean @default(true)
+
+  @@unique([metricId, code])
+}
+
+// ─── Reporting workflow ────────────────────────────────────────
+
+model CompliancePeriod {
+  id           String   @id @default(cuid())
+  /// THD fiscal month YYYYMM (month 01 = February)
+  fiscalMonth  Int      @unique
+  label        String
+  disputeOpen  DateTime?
+  disputeClose DateTime?
+  reports      ComplianceReport[]
+}
+
+enum ReportStatus {
+  DRAFT      // created, importing data
+  IN_REVIEW  // analysts triaging non-compliant lines
+  DISPUTES   // disputes being prepared / submitted
+  SCORECARD  // scorecard generated, awaiting publish
+  PUBLISHED
+}
+
+model ComplianceReport {
+  id          String           @id @default(cuid())
+  periodId    String
+  period      CompliancePeriod @relation(fields: [periodId], references: [id])
+  status      ReportStatus     @default(DRAFT)
+  title       String
+  notes       String?
+  createdById String?
+  createdBy   User?            @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+  programs    ReportProgram[]
+
+  @@index([periodId])
+}
+
+enum ReportProgramStatus {
+  NOT_STARTED
+  IMPORTED
+  REVIEWED
+}
+
+model ReportProgram {
+  id        String              @id @default(cuid())
+  reportId  String
+  report    ComplianceReport    @relation(fields: [reportId], references: [id], onDelete: Cascade)
+  programId String
+  program   Program             @relation(fields: [programId], references: [id])
+  status    ReportProgramStatus @default(NOT_STARTED)
+  batches   ImportBatch[]
+
+  @@unique([reportId, programId])
+}
+
+// ─── Imported data ─────────────────────────────────────────────
+
+enum ExportKind {
+  ALL_RESULTS
+  NON_COMPLIANT
+  UNKNOWN
+}
+
+model ImportBatch {
+  id              String         @id @default(cuid())
+  reportProgramId String?
+  reportProgram   ReportProgram? @relation(fields: [reportProgramId], references: [id], onDelete: SetNull)
+  programId       String
+  fileName        String
+  sha256          String
+  exportKind      ExportKind
+  /// "upload" or "backfill"
+  source          String         @default("upload")
+  rowCount        Int
+  createdCount    Int            @default(0)
+  updatedCount    Int            @default(0)
+  warnings        Json?
+  importedById    String?
+  importedBy      User?          @relation(fields: [importedById], references: [id], onDelete: SetNull)
+  importedAt      DateTime       @default(now())
+  lines           ComplianceLine[]
+  summaryRows     SpmSummaryRow[]
+
+  @@index([sha256])
+  @@index([reportProgramId])
+}
+
+/// THD's own rollup from the SPM "Summary" sheet, kept to reconcile against our line totals.
+model SpmSummaryRow {
+  id                  String      @id @default(cuid())
+  batchId             String
+  batch               ImportBatch @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  metricId            String?
+  metric              Metric?     @relation(fields: [metricId], references: [id], onDelete: SetNull)
+  metricLabel         String
+  /// null for the P-Vendor totals block, else the M-Vendor block it came from
+  mVendor             String?
+  programStatus       String?
+  totalLines          Int?
+  compliantLines      Int?
+  nonCompliantLines   Int?
+  offsetsPreDispute   Decimal?    @db.Decimal(12, 2)
+  offsetsPostDispute  Decimal?    @db.Decimal(12, 2)
+  disputedLines       Int?
+  approvedLines       Int?
+  deniedLines         Int?
+  thresholdPct        Decimal?    @db.Decimal(6, 3)
+  preDisputePerfPct   Decimal?    @db.Decimal(6, 3)
+  postDisputePerfPct  Decimal?    @db.Decimal(6, 3)
+}
+
+model PoRecord {
+  id           String    @id @default(cuid())
+  poNumber     String    @unique
+  pVendor      String?
+  mVendor      String?
+  mVendorName  String?
+  dept         String?
+  dcNumber     String?
+  poCreateDate DateTime?
+  firstSeenAt  DateTime  @default(now())
+  lastSeenAt   DateTime  @default(now())
+  lines        ComplianceLine[]
+}
+
+model ComplianceLine {
+  id           String      @id @default(cuid())
+  /// Business key (metric|fiscalMonth|identifiers|occurrence) so re-imports update instead of duplicating
+  lineKey      String
+  metricId     String
+  metric       Metric      @relation(fields: [metricId], references: [id])
+  batchId      String
+  batch        ImportBatch @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  poRecordId   String?
+  poRecord     PoRecord?   @relation(fields: [poRecordId], references: [id])
+  fiscalMonth  Int
+  isCompliant  Boolean
+  offsetAmount Decimal     @default(0) @db.Decimal(12, 2)
+
+  // Canonical fields (null when the export does not carry them)
+  poNumber            String?
+  dcNumber            String?
+  sku                 String?
+  vendorSku           String?
+  skuDescription      String?
+  customerOrder       String?
+  omsId               String?
+  trackingNumber      String?
+  orderedQty          Decimal? @db.Decimal(12, 2)
+  receivedQty         Decimal? @db.Decimal(12, 2)
+  fillRatePct         Decimal? @db.Decimal(7, 3)
+  poCreateDate        DateTime?
+  expectedArrivalDate DateTime?
+  estShipDate         DateTime?
+  estDeliveryDate     DateTime?
+  actualShipDate      DateTime?
+  rtsSent             DateTime?
+  pickupRequestDate   DateTime?
+  trailerCheckIn      DateTime?
+  asnTimestamp        DateTime?
+  asnReceivedAt       DateTime?
+  closedDate          DateTime?
+  cancelDate          DateTime?
+  bolNumber           String?
+  tmsId               String?
+  shipmentNumber      String?
+  docTraceId          String?
+  carrierUsed         String?
+  carrierPro          String?
+  rgCarriers          String?
+  originState         String?
+  destinationState    String?
+  freightTerms        String?
+  invoiceNumber       String?
+  offsetType          String?
+  reason              String?
+  lateReason          String?
+  businessDaysLate    Decimal? @db.Decimal(8, 2)
+  rescheduled         Boolean?
+  spmStatus           String?
+  spmDisputeReason    String?
+  spmSupplierComment  String?
+  spmDecision         String?
+  spmDecisionDetail   String?
+  spmCoordinatorComment String?
+
+  /// Every source column, original header -> value
+  raw          Json
+  sourceSheet  String
+  sourceRow    Int
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+
+  review       LineReview?
+
+  @@unique([metricId, lineKey])
+  @@index([poNumber])
+  @@index([fiscalMonth, metricId])
+  @@index([docTraceId])
+  @@index([tmsId])
+  @@index([carrierPro])
+  @@index([sku])
+}
+
+enum Disposition {
+  PENDING
+  ACCEPTED        // valid violation, no dispute
+  DISPUTABLE
+  NOT_DISPUTABLE
+  NEEDS_RESEARCH
+}
+
+enum TeamInfluence {
+  WAREHOUSE
+  CUSTOMER_SERVICE
+  CS_WAREHOUSE
+  EDI
+  ECOMM
+  CARRIER
+  THD
+  OTHER
+}
+
+model LineReview {
+  id             String         @id @default(cuid())
+  lineId         String         @unique
+  line           ComplianceLine @relation(fields: [lineId], references: [id], onDelete: Cascade)
+  disposition    Disposition    @default(PENDING)
+  teamInfluence  TeamInfluence?
+  reasonCodeId   String?
+  rootCause      String?
+  notes          String?
+  /// Extra research inputs, e.g. WMS waved date, POD received, criteria checks
+  extraFields    Json?
+  reviewerId     String?
+  reviewer       User?          @relation(fields: [reviewerId], references: [id], onDelete: SetNull)
+  reviewedAt     DateTime?
+  updatedAt      DateTime       @updatedAt
+}
