@@ -14,12 +14,15 @@ import {
   ShieldCheck,
   SlidersHorizontal,
   DatabaseBackup,
+  Settings,
   LogOut,
   ChevronLeft,
   ChevronRight,
 } from "lucide-react";
 import { cn, getInitials } from "@/lib/utils";
 import type { Permission } from "@/lib/permissions";
+import type { Branding } from "@/lib/brand";
+import { BrandMark } from "./brand-mark";
 
 type NavItem = { href: string; label: string; icon: React.ElementType; permission: Permission };
 
@@ -36,12 +39,13 @@ const adminNavItems: NavItem[] = [
   { href: "/admin/rbac", label: "Roles & Access", icon: ShieldCheck, permission: "admin.rbac" },
   { href: "/admin/programs", label: "Programs & Rules", icon: SlidersHorizontal, permission: "admin.programs" },
   { href: "/admin/backup", label: "Backup & Restore", icon: DatabaseBackup, permission: "admin.backup" },
+  { href: "/admin/settings", label: "Settings", icon: Settings, permission: "admin.settings" },
 ];
 
 // Exact match or a child route, so "/psir" doesn't also light up "/psir-generator".
 const isActive = (pathname: string, href: string) => pathname === href || pathname.startsWith(`${href}/`);
 
-export function Sidebar({ user, permissions }: { user: { name: string; role: string }; permissions: Permission[] }) {
+export function Sidebar({ user, permissions, branding }: { user: { name: string; role: string }; permissions: Permission[]; branding: Branding }) {
   const pathname = usePathname();
   const [collapsed, setCollapsed] = useState(false);
   const granted = new Set(permissions);
@@ -66,11 +70,7 @@ export function Sidebar({ user, permissions }: { user: { name: string; role: str
   return (
     <aside className={cn("flex flex-col h-screen bg-gray-900 text-white transition-all duration-200 shrink-0", collapsed ? "w-16" : "w-56")}>
       <div className="flex items-center h-14 px-4 border-b border-gray-700">
-        {collapsed ? (
-          <span className="text-lg font-bold text-white mx-auto">S</span>
-        ) : (
-          <span className="text-lg font-bold text-white tracking-tight">Sympl <span className="text-blue-400">CM</span></span>
-        )}
+        <BrandMark branding={branding} collapsed={collapsed} />
       </div>
 
       <nav className="flex-1 overflow-y-auto py-4 space-y-1 px-2">

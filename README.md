@@ -27,6 +27,7 @@ Monthly compliance analysis for our Home Depot programs. Import the raw SPM expo
   You can regenerate it while in the Scorecard stage, for example after recording THD decisions. Then publish it, or unpublish to reopen it. Download it as a PDF or as Excel (Scorecard, Violations, 12-Month Offsets and Team Influence sheets). Published scorecards are on the **Scorecards** page and the dashboard, and the Viewer role can see them.
 - **Shipment counts** on each report: Small Parcel and LTL & TL shipments per program, for the scorecard's shipment table. Drop Ship is suggested from THD's Parcel flag. RDC/DFC are entered from TMS/WMS, because SPM exports don't carry the mode. Transportation's LTL total is RDC + DFC LTL.
 - **Backup & Restore** (Admin): one-click backups of all data, including attachments, saved on the server (`BACKUP_DIR`, default `./backups`). You can download them or restore from a stored or uploaded file. A restore replaces everything in one transaction, takes a safety backup first, and requires the same schema version. Scheduled backups: `npm run backup -- --keep 30` from cron. Disaster recovery: `npm run restore -- <file> --yes`.
+- **Custom Branding** (Admin › Settings): a site name and logo that replace "Sympl CM" in the sidebar, on the sign-in page, in the browser tab and on exported scorecards. When it is off, the default branding is used.
 - **PO Lookup**: search by PO (prefix), SKU, tracking #, PRO #, BOL #, TMS shipment ID or ASN doc trace ID.
 - **Dashboard**: 12-month pre-dispute offsets by program, and open work.
 - **Admin**:

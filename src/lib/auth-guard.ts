@@ -3,7 +3,7 @@ import { redirect } from "next/navigation";
 import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { isPermission, type Permission } from "@/lib/permissions";
+import { ALL_PERMISSIONS, isPermission, type Permission } from "@/lib/permissions";
 
 export interface CurrentUser {
   id: string;
@@ -24,7 +24,8 @@ export const getCurrentUser = cache(async (): Promise<CurrentUser | null> => {
     name: user.name,
     email: user.email,
     role: user.role.name,
-    permissions: new Set(user.role.permissions.filter(isPermission)),
+    // The built-in Admin role always has every permission, including ones added after it was seeded
+    permissions: new Set(user.role.system && user.role.name === "Admin" ? ALL_PERMISSIONS : user.role.permissions.filter(isPermission)),
   };
 });
 

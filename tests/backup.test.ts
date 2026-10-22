@@ -19,7 +19,7 @@ describe("backups", () => {
 
   it("rejects files that are not backups", () => {
     expect(() => readBackup(Buffer.from("not gzip"))).toThrow(BackupError);
-    expect(() => readBackup(gzipSync(Buffer.from(JSON.stringify({ format: "other" }))))).toThrow(/not a Sympl CM backup/);
+    expect(() => readBackup(gzipSync(Buffer.from(JSON.stringify({ format: "other" }))))).toThrow(/not a backup from this platform/);
     const unknown = { format: "sympl-cm-backup", formatVersion: 1, tables: { Secrets: [] } };
     expect(() => readBackup(gzipSync(Buffer.from(JSON.stringify(unknown))))).toThrow(/unknown tables/);
   });

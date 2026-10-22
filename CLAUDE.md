@@ -1,5 +1,7 @@
 # Sympl CM: THD Compliance Management Platform
 
+(The default brand. Admins can rename it and add a logo under Admin › Settings.)
+
 ## Design System: "Sympl UI"
 
 This platform MUST match the look, feel and UX patterns of the existing **SymplPM Product Development Platform**. The complete reference is `docs/design-system.md`. The components in `src/components/ui/` and `src/components/layout/` are the canonical implementations. Use them as they are, and extend rather than restyle them.
@@ -42,6 +44,8 @@ This platform MUST match the look, feel and UX patterns of the existing **SymplP
 - Imported timestamps are UTC wall-clock values; format them with `formatUtcDate`/`formatUtcDateTime`.
 - **Disputes** (`src/lib/disputes.ts`, `src/lib/dispute-sync.ts`): one `Dispute` per non-compliant line, created from a Disputable review when a report enters the Disputes stage. Status moves are limited to `canTransition`. Outcomes are recorded by people; SPM decisions found on import are only flagged (`spmDecisionSeen`).
 - **Scorecards** (`src/lib/scorecard.ts` builds, `scorecard-store.ts` saves, `scorecard-export.ts` writes Excel): a `Scorecard` row stores a JSON snapshot so published results never shift. Pages render the snapshot with `ScorecardView`, never live data, except the preview before generation.
+- **Branding**: never hard-code the site name. Use `getBranding()` (`src/lib/branding.ts`, server) and `BrandMark` for the logo and name; `src/lib/brand.ts` holds the database-free constants. Pages that show branding before sign-in call `connection()` so they render per request.
+- **Backups** (`src/lib/backup.ts`) cover the models in `TABLE_ORDER`; add every new model there (a test enforces it).
 - Permissions are keys in `src/lib/permissions.ts`, stored on `Role.permissions` and re-read per request (`src/lib/auth-guard.ts`).
 
 ## Important: Next.js 16

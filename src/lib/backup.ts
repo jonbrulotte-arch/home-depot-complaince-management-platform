@@ -37,6 +37,7 @@ export const TABLE_ORDER = [
   "DisputeAttachment",
   "Scorecard",
   "ShipmentCount",
+  "SiteSettings",
 ] as const;
 
 type Row = Record<string, unknown>;
@@ -106,10 +107,10 @@ export function readBackup(buffer: Buffer): BackupFile {
   try {
     parsed = JSON.parse(gunzipSync(buffer).toString("utf8"));
   } catch {
-    throw new BackupError("This is not a Sympl CM backup (expected a .json.gz file)");
+    throw new BackupError("This is not a backup from this platform (expected a .json.gz file)");
   }
   const b = parsed as Partial<BackupFile>;
-  if (b.format !== BACKUP_FORMAT || typeof b.tables !== "object" || !b.tables) throw new BackupError("This is not a Sympl CM backup");
+  if (b.format !== BACKUP_FORMAT || typeof b.tables !== "object" || !b.tables) throw new BackupError("This is not a backup from this platform");
   if (b.formatVersion !== BACKUP_FORMAT_VERSION) throw new BackupError(`Unsupported backup format version ${b.formatVersion}`);
   const unknown = Object.keys(b.tables).filter((t) => !(TABLE_ORDER as readonly string[]).includes(t));
   if (unknown.length) throw new BackupError(`Backup contains unknown tables: ${unknown.join(", ")}`);

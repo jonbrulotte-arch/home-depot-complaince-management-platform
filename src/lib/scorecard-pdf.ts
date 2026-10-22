@@ -1,6 +1,7 @@
 import PDFDocument from "pdfkit";
 import type { ScorecardData } from "@/lib/scorecard";
 import { DISPUTE_STATUS_LABELS } from "@/lib/disputes";
+import { DEFAULT_SITE_NAME } from "@/lib/brand";
 
 // Standard PDF fonts only cover WinAnsi, so text avoids symbols such as ≥ and →.
 // Colours from the Sympl design system (gray-900/700/500/200/50, blue-600, red-700, green-700, amber-700)
@@ -18,8 +19,8 @@ interface Column {
 type Cell = string | { text: string; color?: string; bold?: boolean };
 
 /** Scorecard as a landscape Letter PDF, mirroring the on-screen scorecard. */
-export function scorecardPdf(data: ScorecardData, status: { version: number; publishedAt: string | null }): Promise<Buffer> {
-  const doc = new PDFDocument({ size: "LETTER", layout: "landscape", margin: MARGIN, bufferPages: true, info: { Title: `THD Compliance Scorecard - ${data.periodLabel}`, Creator: "Sympl CM" } });
+export function scorecardPdf(data: ScorecardData, status: { version: number; publishedAt: string | null }, siteName = DEFAULT_SITE_NAME): Promise<Buffer> {
+  const doc = new PDFDocument({ size: "LETTER", layout: "landscape", margin: MARGIN, bufferPages: true, info: { Title: `THD Compliance Scorecard - ${data.periodLabel}`, Creator: siteName } });
   const chunks: Buffer[] = [];
   doc.on("data", (c: Buffer) => chunks.push(c));
   const done = new Promise<Buffer>((resolve) => doc.on("end", () => resolve(Buffer.concat(chunks))));
@@ -214,7 +215,7 @@ export function scorecardPdf(data: ScorecardData, status: { version: number; pub
     doc.page.margins.bottom = 0;
     const y = doc.page.height - MARGIN;
     doc.font("Helvetica").fontSize(7.5).fillColor(C.muted);
-    doc.text(`Sympl CM · THD Compliance Scorecard ${data.periodLabel}`, MARGIN, y, { width, align: "left", lineBreak: false });
+    doc.text(`${siteName} · THD Compliance Scorecard ${data.periodLabel}`, MARGIN, y, { width, align: "left", lineBreak: false });
     doc.text(`Page ${i - range.start + 1} of ${range.count}`, MARGIN, y, { width, align: "right", lineBreak: false });
   }
   doc.end();

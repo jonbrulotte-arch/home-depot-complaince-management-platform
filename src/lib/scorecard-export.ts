@@ -1,6 +1,7 @@
 import ExcelJS from "exceljs";
 import type { ScorecardData } from "@/lib/scorecard";
 import { DISPUTE_STATUS_LABELS } from "@/lib/disputes";
+import { DEFAULT_SITE_NAME } from "@/lib/brand";
 
 const HEADER_FILL: ExcelJS.Fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFF3F4F6" } };
 const TITLE_FONT: Partial<ExcelJS.Font> = { bold: true, size: 14 };
@@ -29,9 +30,9 @@ function widths(ws: ExcelJS.Worksheet, values: number[]) {
 }
 
 /** Scorecard workbook: Scorecard, Violations, 12-Month Offsets and Team Influence sheets. */
-export async function scorecardWorkbook(data: ScorecardData, status: { version: number; publishedAt: string | null }): Promise<Buffer> {
+export async function scorecardWorkbook(data: ScorecardData, status: { version: number; publishedAt: string | null }, siteName = DEFAULT_SITE_NAME): Promise<Buffer> {
   const wb = new ExcelJS.Workbook();
-  wb.creator = "Sympl CM";
+  wb.creator = siteName;
   wb.created = new Date(data.generatedAt);
 
   const sc = wb.addWorksheet("Scorecard", { views: [{ showGridLines: false }] });

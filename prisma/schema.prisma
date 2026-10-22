@@ -513,3 +513,17 @@ model ShipmentCount {
 
   @@unique([reportId, programId, mode])
 }
+
+// ─── Site settings ─────────────────────────────────────────────
+
+/// Single row (id "site") of platform-wide settings.
+model SiteSettings {
+  id                  String   @id @default("site")
+  /// When off, the default Sympl CM branding is shown
+  brandingEnabled     Boolean  @default(false)
+  siteName            String?
+  logo                Bytes?
+  logoContentType     String?
+  updatedAt           DateTime @updatedAt
+  updatedById         String?
+}
