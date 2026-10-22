@@ -175,6 +175,8 @@ model ComplianceReport {
   status      ReportStatus     @default(DRAFT)
   title       String
   notes       String?
+  /// Created from the historical SPM archive: lines auto-accepted, dispute results from THD's exports
+  historical  Boolean          @default(false)
   createdById String?
   createdBy   User?            @relation(fields: [createdById], references: [id], onDelete: SetNull)
   createdAt   DateTime         @default(now())

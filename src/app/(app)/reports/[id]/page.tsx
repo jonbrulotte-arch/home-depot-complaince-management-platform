@@ -58,6 +58,7 @@ export default async function ReportPage({ params }: { params: Promise<{ id: str
           <div className="flex items-center gap-3">
             <h1 className="text-2xl font-bold text-gray-900">{report.title}</h1>
             <ReportStatusBadge status={report.status} />
+            {report.historical && <Badge variant="outline">Historical</Badge>}
           </div>
           <p className="text-sm text-gray-500 mt-1">
             THD fiscal month {fiscalMonth} · {totalNc} non-compliant line(s) · {formatCurrency(totalOffset)} pre-dispute offsets

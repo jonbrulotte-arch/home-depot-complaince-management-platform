@@ -113,6 +113,9 @@ export function scorecardPdf(data: ScorecardData, status: { version: number; pub
   });
   doc.y = top + 52;
   doc.x = MARGIN;
+  if (data.historical) {
+    doc.font("Helvetica").fontSize(8.5).fillColor(C.muted).text("Historical: built from the archived SPM exports. Violations were accepted as THD reported them; post-dispute amounts marked * come from THD's own summary.");
+  }
   if (data.totals.pendingDisputes > 0) {
     doc.font("Helvetica").fontSize(8.5).fillColor(C.amber).text(`${data.totals.pendingDisputes} dispute(s) await THD's decision; post-dispute figures assume they are not approved.`);
   }
@@ -157,7 +160,7 @@ export function scorecardPdf(data: ScorecardData, status: { version: number; pub
           meets === null ? "—" : meets ? { text: "Meets goal", color: C.green } : { text: "Below goal", color: C.red },
           m.violations ? { text: `${m.violations}${m.disputed ? ` (${m.disputed} disputed, ${m.approved} approved)` : ""}`, color: C.red } : "0",
           m.preOffset ? money(m.preOffset) : "—",
-          m.postOffset ? { text: money(m.postOffset), bold: true, color: C.text } : "—",
+          m.postOffset ? { text: `${money(m.postOffset)}${m.thdPostDispute ? " *" : ""}`, bold: true, color: C.text } : m.thdPostDispute ? "— *" : "—",
         ];
       }),
     );

@@ -6,6 +6,8 @@ import { formatDate } from "@/lib/utils";
 import { Card } from "@/components/ui/card";
 import { ReportStatusBadge } from "@/components/shared/status-badges";
 import { NewReportDialog } from "./new-report-dialog";
+import { HistoricalDialog } from "./historical-dialog";
+import { Badge } from "@/components/ui/badge";
 
 export default async function ReportsPage() {
   const user = await requirePagePermission("reports.view");
@@ -29,9 +31,12 @@ export default async function ReportsPage() {
           <h1 className="text-2xl font-bold text-gray-900">Compliance Reports</h1>
           <p className="text-sm text-gray-500 mt-1">Monthly compliance analysis: import SPM data, review each violation, then prepare disputes.</p>
         </div>
-        {user.permissions.has("reports.create") && (
-          <NewReportDialog periods={periods} defaultFiscalMonth={shiftFiscalMonth(current, -1)} programs={programs} />
-        )}
+        <div className="flex gap-2">
+          {user.permissions.has("reports.advance") && <HistoricalDialog />}
+          {user.permissions.has("reports.create") && (
+            <NewReportDialog periods={periods} defaultFiscalMonth={shiftFiscalMonth(current, -1)} programs={programs} />
+          )}
+        </div>
       </div>
 
       <Card className="overflow-hidden">
@@ -56,7 +61,12 @@ export default async function ReportsPage() {
                 </td>
                 <td className="px-4 py-3 text-gray-700">FM {r.period.fiscalMonth}</td>
                 <td className="px-4 py-3 text-gray-700">{r.programs.map((p) => p.program.name).join(", ")}</td>
-                <td className="px-4 py-3"><ReportStatusBadge status={r.status} /></td>
+                <td className="px-4 py-3">
+                  <div className="flex gap-1">
+                    <ReportStatusBadge status={r.status} />
+                    {r.historical && <Badge variant="outline">Historical</Badge>}
+                  </div>
+                </td>
                 <td className="px-4 py-3 text-gray-500">{formatDate(r.createdAt)}{r.createdBy ? ` · ${r.createdBy.name}` : ""}</td>
               </tr>
             ))}

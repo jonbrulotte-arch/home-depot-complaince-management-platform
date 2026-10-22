@@ -54,7 +54,14 @@ npm run dev
 ```bash
 unzip "reference/Compliance Tool Exports.zip" -d reference/_extracted
 npm run backfill -- reference/_extracted            # add --dry-run to preview
+npm run historical-reports -- --dry-run             # then without --dry-run
 ```
+
+`historical-reports` turns each archived month that has no report into a published, auto-reviewed report with a scorecard. Admins can also do this from the **Historical reports** button on the Compliance Reports page.
+- **Violations** are accepted as THD reported them.
+- **Dispute results** come from THD's exports: per-line Approve/Deny values, and otherwise THD's Summary post-dispute totals, marked "per THD".
+- **Drop Ship shipment counts** come from THD's Parcel flag.
+- **Which months:** the newest two are left for the normal workflow; use `--from`/`--to` (fiscal months) to choose another range. Months that already have a report are skipped.
 
 The backfill imports every `US_*.xlsx` file, oldest first. Each line keeps the fiscal month from its data. Folder names such as `Sep-2024` supply the month for Drop Ship exports, which have none. Files already imported (same SHA-256) are skipped, and other files (PDFs, emails, research sheets) are listed and skipped. On the Aug-2023 → Jun-2026 archive it loads about 9,300 lines across 7,850 POs.
 

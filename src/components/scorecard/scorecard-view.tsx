@@ -46,6 +46,11 @@ export function ScorecardView({ data, showViolations = true }: { data: Scorecard
         <Total label={`Pending (${data.totals.pendingDisputes} disputes)`} value={formatCurrency(data.totals.pendingAmount)} tone={data.totals.pendingAmount > 0 ? "amber" : undefined} />
         <Total label="Violations" value={String(data.totals.violations)} />
       </div>
+      {data.historical && (
+        <p className="rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-xs text-gray-600">
+          Historical: built from the archived SPM exports. Violations were accepted as THD reported them; post-dispute amounts marked &quot;per THD&quot; come from THD&apos;s own summary.
+        </p>
+      )}
       {data.totals.pendingDisputes > 0 && (
         <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
           {data.totals.pendingDisputes} dispute(s) await THD&apos;s decision; post-dispute figures assume they are not approved.
@@ -85,7 +90,10 @@ export function ScorecardView({ data, showViolations = true }: { data: Scorecard
                         {m.disputed > 0 && <span className="ml-1 text-xs font-normal text-gray-500">({m.disputed} disputed, {m.approved} approved)</span>}
                       </td>
                       <td className={cn(td, "text-gray-700")}>{m.preOffset ? formatCurrency(m.preOffset) : "—"}</td>
-                      <td className={cn(td, "font-medium", m.postOffset ? "text-gray-900" : "text-gray-400")}>{m.postOffset ? formatCurrency(m.postOffset) : "—"}</td>
+                      <td className={cn(td, "font-medium", m.postOffset ? "text-gray-900" : "text-gray-400")}>
+                        {m.postOffset ? formatCurrency(m.postOffset) : "—"}
+                        {m.thdPostDispute && <div className="text-xs font-normal text-gray-500">per THD</div>}
+                      </td>
                     </tr>
                   ))}
                 </tbody>

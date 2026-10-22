@@ -4,8 +4,11 @@ import path from "node:path";
 import { prisma } from "../src/lib/prisma";
 import { parseMonthLabel } from "../src/lib/fiscal";
 import { buildPreview, persistImport, sha256 } from "../src/lib/import/persist";
+import { runHistoricalReports } from "./historical-reports";
 
-// Usage: npm run backfill -- <directory> [--dry-run]
+// Usage: npm run backfill -- <directory> [--dry-run] [--reports]
+// --reports then creates published historical reports for the imported months
+// (see scripts/historical-reports.ts).
 // Imports every SPM export (US_*.xlsx) under <directory>, oldest folder first. The fiscal
 // month comes from each line; folder names such as "Sep-2024" supply it for exports without
 // one (US Drop Ship). Files already imported (same SHA-256) are skipped.
@@ -79,6 +82,10 @@ async function main() {
   if (skipped.length) {
     console.log(`Skipped ${skipped.length} non-SPM file(s):`);
     for (const f of skipped) console.log(`  - ${path.relative(root, f)}`);
+  }
+  if (args.includes("--reports")) {
+    console.log("\nHistorical reports:");
+    await runHistoricalReports(dryRun ? ["--dry-run"] : []);
   }
 }
 

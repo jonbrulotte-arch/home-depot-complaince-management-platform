@@ -19,6 +19,8 @@ export interface ScorecardMetric {
   postOffset: number;
   disputed: number;
   approved: number;
+  /** Post-dispute offset taken from THD's own SPM summary (historical reports) */
+  thdPostDispute?: boolean;
 }
 
 export interface ScorecardProgram {
@@ -56,6 +58,8 @@ export interface ScorecardShipments {
 
 export interface ScorecardData {
   title: string;
+  /** Built from the historical SPM archive rather than a reviewed month */
+  historical?: boolean;
   fiscalMonth: number;
   periodLabel: string;
   dataReceivedAt: string | null;
@@ -104,24 +108,36 @@ export async function buildScorecard(reportId: string): Promise<ScorecardData> {
     getShipmentInputs(reportId),
   ]);
   const shipments = summarizeShipments(shipmentInputs);
+  const thdPost = report.historical ? await thdPostDisputeOffsets(stats.map((m) => m.metricId), fiscalMonth) : new Map<string, ThdSummary>();
+  let thdRecovered = 0;
 
   const programs: ScorecardProgram[] = report.programs.map(({ program }) => {
     const metrics = stats
       .filter((m) => m.programId === program.id)
-      .map((m) => ({
-        code: m.code,
-        name: m.name,
-        goalPct: m.thresholdPct,
-        lines: m.total,
-        violations: m.nonCompliant,
-        prePct: m.compliancePct,
-        postPct: m.postDisputePct,
-        meetsGoal: meetsGoal(m),
-        preOffset: m.offset,
-        postOffset: m.postDisputeOffset,
-        disputed: m.disputed,
-        approved: m.approved,
-      }));
+      .map((m) => {
+        // For past months, THD's summary already reflects disputes decided outside this platform.
+        // Use it only when THD's pre-dispute total matches the imported lines.
+        const thd = thdPost.get(m.metricId);
+        const useThd = thd !== undefined && Math.abs(thd.pre - m.offset) < 0.01 && thd.post < m.postDisputeOffset - 0.005;
+        if (useThd) thdRecovered += m.postDisputeOffset - thd.post;
+        const postOffset = useThd ? thd.post : m.postDisputeOffset;
+        return {
+          code: m.code,
+          name: m.name,
+          goalPct: m.thresholdPct,
+          lines: m.total,
+          violations: m.nonCompliant,
+          prePct: m.compliancePct,
+          postPct: m.postDisputePct,
+          // THD charges only while a metric misses its goal, so a $0 post-dispute offset means it met it
+          meetsGoal: useThd ? (m.thresholdPct == null ? null : postOffset === 0) : meetsGoal(m),
+          preOffset: m.offset,
+          postOffset,
+          disputed: m.disputed + (useThd ? thd.approved + thd.denied : 0),
+          approved: m.approved + (useThd ? thd.approved : 0),
+          ...(useThd ? { thdPostDispute: true } : {}),
+        };
+      });
     const shipped = shipments.programs.find((p) => p.code === program.code)?.total;
     return {
       code: program.code,
@@ -164,6 +180,7 @@ export async function buildScorecard(reportId: string): Promise<ScorecardData> {
 
   return {
     title: report.title,
+    ...(report.historical ? { historical: true } : {}),
     fiscalMonth,
     periodLabel: fiscalLabel(fiscalMonth),
     dataReceivedAt: received._max.importedAt?.toISOString() ?? null,
@@ -175,7 +192,7 @@ export async function buildScorecard(reportId: string): Promise<ScorecardData> {
       preOffset: round(programs.reduce((s, p) => s + p.preOffset, 0)),
       postOffset: round(programs.reduce((s, p) => s + p.postOffset, 0)),
       disputedAmount: sumDisputes(["PREPARING", "READY", "SUBMITTED", "APPROVED", "PARTIAL", "DENIED"], "amountDisputed"),
-      recovered: sumDisputes(["APPROVED", "PARTIAL"], "amountRecovered"),
+      recovered: round(sumDisputes(["APPROVED", "PARTIAL"], "amountRecovered") + thdRecovered),
       deniedAmount: sumDisputes(["DENIED"], "amountDisputed"),
       pendingAmount: sumDisputes(["PREPARING", "READY", "SUBMITTED"], "amountDisputed"),
       pendingDisputes: activeDisputes.filter((d) => ["PREPARING", "READY", "SUBMITTED"].includes(d.status)).length,
@@ -185,6 +202,38 @@ export async function buildScorecard(reportId: string): Promise<ScorecardData> {
     teamInfluence: [...byTeam.entries()].map(([team, v]) => ({ team, amount: round(v.amount), lines: v.lines })).sort((a, b) => b.amount - a.amount),
     trend: await buildTrend(programIds, report.programs.map((p) => p.program), fiscalMonth),
   };
+}
+
+interface ThdSummary {
+  pre: number;
+  post: number;
+  approved: number;
+  denied: number;
+}
+
+/** THD's P-Vendor summary totals per metric for a month, from the most recent export that has them. */
+async function thdPostDisputeOffsets(metricIds: string[], fiscalMonth: number): Promise<Map<string, ThdSummary>> {
+  const rows = await prisma.spmSummaryRow.findMany({
+    where: {
+      mVendor: null,
+      metricId: { in: metricIds },
+      offsetsPreDispute: { not: null },
+      offsetsPostDispute: { not: null },
+      batch: { lines: { some: { fiscalMonth } } },
+    },
+    orderBy: { batch: { importedAt: "desc" } },
+  });
+  const out = new Map<string, ThdSummary>();
+  for (const r of rows) {
+    if (!r.metricId || out.has(r.metricId)) continue;
+    out.set(r.metricId, {
+      pre: Number(r.offsetsPreDispute),
+      post: Number(r.offsetsPostDispute),
+      approved: r.approvedLines ?? 0,
+      denied: r.deniedLines ?? 0,
+    });
+  }
+  return out;
 }
 
 async function buildTrend(programIds: string[], programs: { id: string; code: string }[], fiscalMonth: number): Promise<ScorecardData["trend"]> {
