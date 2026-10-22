@@ -1,9 +1,10 @@
 import "dotenv/config";
 import { prisma } from "../src/lib/prisma";
 import { fiscalLabel } from "../src/lib/fiscal";
-import { createHistoricalReport, planHistoricalReports, RECENT_MONTHS_EXCLUDED } from "../src/lib/historical";
+import { createHistoricalReport, deleteHistoricalReports, planHistoricalReports, RECENT_MONTHS_EXCLUDED } from "../src/lib/historical";
 
-// Usage: npm run historical-reports [-- --dry-run] [--from 202307] [--to 202603]
+// Usage: npm run historical-reports [-- --dry-run] [--from 202307] [--to 202603] [--rebuild]
+// --rebuild replaces existing historical reports (e.g. after changing how reports are grouped).
 // Creates a published, auto-reviewed report and scorecard for each month of imported data that
 // has no report yet. By default the newest two months are left for the normal workflow.
 export async function runHistoricalReports(args: string[]) {
@@ -15,7 +16,8 @@ export async function runHistoricalReports(args: string[]) {
     return n;
   };
   const dryRun = args.includes("--dry-run");
-  const plan = await planHistoricalReports(prisma, { from: arg("--from"), to: arg("--to") });
+  const rebuild = args.includes("--rebuild");
+  const plan = await planHistoricalReports(prisma, { from: arg("--from"), to: arg("--to"), rebuild });
   if (!plan.latest) {
     console.log("No imported data yet. Run the backfill first.");
     return;
@@ -26,6 +28,7 @@ export async function runHistoricalReports(args: string[]) {
     console.log("Nothing to create.");
     return;
   }
+  if (rebuild && !dryRun) console.log(`Removed ${await deleteHistoricalReports(prisma)} existing historical report(s).`);
 
   for (const month of plan.months) {
     const programs = month.programs.map((p) => `${p.name} ${p.violations}/${p.lines}`).join(", ");

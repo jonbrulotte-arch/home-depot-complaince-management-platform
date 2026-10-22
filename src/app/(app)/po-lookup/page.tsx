@@ -102,7 +102,7 @@ export default async function PoLookupPage({ searchParams }: { searchParams: Pro
                 <table className="min-w-full text-sm">
                   <thead className="bg-gray-50">
                     <tr>
-                      {["Period", "Program · Metric", "Result", "Offset", "SKU", "Ship / check-in", "Shipment refs", "SPM status", "Review"].map((h) => (
+                      {["Fiscal month", "Program · Metric", "Result", "Offset", "SKU", "Ship / check-in", "Shipment refs", "SPM status", "Review"].map((h) => (
                         <th key={h} className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">{h}</th>
                       ))}
                     </tr>
@@ -110,7 +110,10 @@ export default async function PoLookupPage({ searchParams }: { searchParams: Pro
                   <tbody>
                     {poLines.map((l) => (
                       <tr key={l.id} className="border-t border-gray-200 hover:bg-gray-50 align-top">
-                        <td className="px-4 py-3 whitespace-nowrap text-gray-700">{fiscalLabel(l.fiscalMonth)}<div className="text-xs text-gray-400">FM {l.fiscalMonth}</div></td>
+                        <td className="px-4 py-3 whitespace-nowrap text-gray-700">
+                          {fiscalLabel(l.fiscalMonth)}
+                          <div className="text-xs text-gray-400">FM {l.fiscalMonth}{l.receivedMonth !== l.fiscalMonth ? ` · received ${fiscalLabel(l.receivedMonth)}` : ""}</div>
+                        </td>
                         <td className="px-4 py-3 text-gray-900">{l.metric.program.name}<div className="text-xs text-gray-500">{l.metric.name}</div></td>
                         <td className="px-4 py-3"><ComplianceBadge compliant={l.isCompliant} /></td>
                         <td className="px-4 py-3 text-gray-900">{Number(l.offsetAmount) ? formatCurrency(Number(l.offsetAmount)) : "—"}</td>

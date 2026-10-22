@@ -1,5 +1,6 @@
-import type { ShipmentMode } from "@prisma/client";
+import { Prisma, type ShipmentMode } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import { getPeriodField, linesInPeriod } from "@/lib/periods";
 
 /** Programs that ship to THD and so have shipment counts; Transportation's LTL total is derived. */
 export const SHIPMENT_PROGRAMS = ["US_DS", "US_RDC", "US_DFC"];
@@ -25,6 +26,7 @@ export async function getShipmentInputs(reportId: string): Promise<ShipmentInput
     include: { period: true, shipments: true, programs: { include: { program: true }, orderBy: { program: { sortOrder: "asc" } } } },
   });
   const fiscalMonth = report.period.fiscalMonth;
+  const field = await getPeriodField();
   const programs = report.programs.map((p) => p.program).filter((p) => SHIPMENT_PROGRAMS.includes(p.code));
 
   return Promise.all(
@@ -40,7 +42,7 @@ export async function getShipmentInputs(reportId: string): Promise<ShipmentInput
         const rows = await prisma.$queryRaw<{ parcel: string | null; n: bigint }[]>`
           SELECT l.raw->>'Parcel' AS parcel, COUNT(*) AS n
           FROM "ComplianceLine" l JOIN "Metric" m ON m.id = l."metricId"
-          WHERE l."fiscalMonth" = ${fiscalMonth} AND m."programId" = ${program.id} AND m.code = 'ON_TIME'
+          WHERE l.${Prisma.raw(`"${field}"`)} = ${fiscalMonth} AND m."programId" = ${program.id} AND m.code = 'ON_TIME'
           GROUP BY 1`;
         const n = (value: string) => Number(rows.find((r) => r.parcel === value)?.n ?? 0);
         if (rows.some((r) => r.parcel === "true" || r.parcel === "false")) {
@@ -49,7 +51,7 @@ export async function getShipmentInputs(reportId: string): Promise<ShipmentInput
         }
       } else {
         const distinct = await prisma.complianceLine.findMany({
-          where: { fiscalMonth, metric: { programId: program.id, code: "ON_TIME" }, tmsId: { not: null } },
+          where: { ...linesInPeriod(field, fiscalMonth), metric: { programId: program.id, code: "ON_TIME" }, tmsId: { not: null } },
           distinct: ["tmsId"],
           select: { tmsId: true },
         });

@@ -6,11 +6,13 @@ import { formatDate } from "@/lib/utils";
 import { Card } from "@/components/ui/card";
 import { ReportStatusBadge } from "@/components/shared/status-badges";
 import { NewReportDialog } from "./new-report-dialog";
+import { getPeriodBasis } from "@/lib/periods";
 import { HistoricalDialog } from "./historical-dialog";
 import { Badge } from "@/components/ui/badge";
 
 export default async function ReportsPage() {
   const user = await requirePagePermission("reports.view");
+  const basis = await getPeriodBasis();
   const [reports, programs] = await Promise.all([
     prisma.complianceReport.findMany({
       orderBy: [{ period: { fiscalMonth: "desc" } }, { createdAt: "desc" }],
@@ -22,7 +24,7 @@ export default async function ReportsPage() {
   // SPM data for a month is available the following month, so default to last month
   const now = new Date();
   const current = calendarToFiscal(now.getFullYear(), now.getMonth());
-  const periods = Array.from({ length: 24 }, (_, i) => shiftFiscalMonth(current, -i)).map((fm) => ({ fiscalMonth: fm, label: `${fiscalLabel(fm)} (FM ${fm})` }));
+  const periods = Array.from({ length: 24 }, (_, i) => shiftFiscalMonth(current, -i)).map((fm) => ({ fiscalMonth: fm, label: basis === "FISCAL_MONTH" ? `${fiscalLabel(fm)} (FM ${fm})` : fiscalLabel(fm) }));
 
   return (
     <div className="p-6 max-w-7xl mx-auto space-y-6">
@@ -34,7 +36,7 @@ export default async function ReportsPage() {
         <div className="flex gap-2">
           {user.permissions.has("reports.advance") && <HistoricalDialog />}
           {user.permissions.has("reports.create") && (
-            <NewReportDialog periods={periods} defaultFiscalMonth={shiftFiscalMonth(current, -1)} programs={programs} />
+            <NewReportDialog periods={periods} defaultFiscalMonth={shiftFiscalMonth(current, -1)} programs={programs} basis={basis} />
           )}
         </div>
       </div>
@@ -43,7 +45,7 @@ export default async function ReportsPage() {
         <table className="min-w-full text-sm">
           <thead className="bg-gray-50">
             <tr>
-              {["Report", "Fiscal month", "Programs", "Status", "Created"].map((h) => (
+              {["Report", "Period", "Programs", "Status", "Created"].map((h) => (
                 <th key={h} className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{h}</th>
               ))}
             </tr>
@@ -59,7 +61,7 @@ export default async function ReportsPage() {
                 <td className="px-4 py-3">
                   <Link href={`/reports/${r.id}`} className="font-medium text-blue-600 hover:underline">{r.title}</Link>
                 </td>
-                <td className="px-4 py-3 text-gray-700">FM {r.period.fiscalMonth}</td>
+                <td className="px-4 py-3 text-gray-700">{r.period.label}</td>
                 <td className="px-4 py-3 text-gray-700">{r.programs.map((p) => p.program.name).join(", ")}</td>
                 <td className="px-4 py-3">
                   <div className="flex gap-1">

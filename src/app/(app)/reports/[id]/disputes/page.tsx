@@ -4,6 +4,7 @@ import { ChevronLeft } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { requirePagePermission } from "@/lib/auth-guard";
 import { LINE_FIELD_LABELS } from "@/lib/line-fields";
+import { getPeriodField, linesInPeriod } from "@/lib/periods";
 import type { ChecklistItem } from "@/lib/disputes";
 import { DisputeWorkspace, type DisputeView } from "./dispute-workspace";
 
@@ -15,7 +16,7 @@ export default async function ReportDisputesPage({ params, searchParams }: { par
   if (!report) notFound();
 
   const disputes = await prisma.dispute.findMany({
-    where: { line: { fiscalMonth: report.period.fiscalMonth, metric: { programId: { in: report.programs.map((p) => p.programId) } } } },
+    where: { line: { ...linesInPeriod(await getPeriodField(), report.period.fiscalMonth), metric: { programId: { in: report.programs.map((p) => p.programId) } } } },
     include: {
       line: { include: { metric: { include: { program: true } }, review: true } },
       reasonCode: true,

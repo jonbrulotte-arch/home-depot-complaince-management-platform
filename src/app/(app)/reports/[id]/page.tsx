@@ -13,6 +13,7 @@ import { ImportPanel } from "./import-panel";
 import { ReportActions } from "./report-actions";
 import { ShipmentCounts } from "./shipment-counts";
 import { getShipmentInputs } from "@/lib/shipments";
+import { getPeriodBasis } from "@/lib/periods";
 
 const STEPS = [
   { status: "DRAFT", label: "Import data" },
@@ -41,6 +42,7 @@ export default async function ReportPage({ params }: { params: Promise<{ id: str
   if (!report) notFound();
 
   const fiscalMonth = report.period.fiscalMonth;
+  const basis = await getPeriodBasis();
   const [stats, shipmentInputs] = await Promise.all([getMetricStats(report.programs.map((p) => p.programId), fiscalMonth), getShipmentInputs(id)]);
   const totalNc = stats.reduce((s, m) => s + m.nonCompliant, 0);
   const totalReviewed = stats.reduce((s, m) => s + m.reviewed, 0);
@@ -61,7 +63,7 @@ export default async function ReportPage({ params }: { params: Promise<{ id: str
             {report.historical && <Badge variant="outline">Historical</Badge>}
           </div>
           <p className="text-sm text-gray-500 mt-1">
-            THD fiscal month {fiscalMonth} · {totalNc} non-compliant line(s) · {formatCurrency(totalOffset)} pre-dispute offsets
+            {basis === "FISCAL_MONTH" ? `THD fiscal month ${fiscalMonth}` : `Data received in ${report.period.label}`} · {totalNc} non-compliant line(s) · {formatCurrency(totalOffset)} pre-dispute offsets
             {disputeStage && <> · {formatCurrency(totalRecovered)} recovered · {formatCurrency(totalPostDispute)} post-dispute</>}
           </p>
         </div>
@@ -182,7 +184,7 @@ export default async function ReportPage({ params }: { params: Promise<{ id: str
               )}
               {rp.batches.length === 0 && programStats.every((m) => m.total === 0) && (
                 <p className="text-sm text-gray-400">
-                  No data yet. Download the {rp.program.name} export for FM {fiscalMonth} from the Supplier Performance Management tool and import it here.
+                  No data yet. Download the {rp.program.name} export for {report.period.label} from the Supplier Performance Management tool and import it here.
                 </p>
               )}
             </CardContent>

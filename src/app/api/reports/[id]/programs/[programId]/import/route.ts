@@ -5,6 +5,7 @@ import { badRequest, notFound } from "@/lib/api";
 import { audit } from "@/lib/audit";
 import { ImportError, MAX_FILE_BYTES } from "@/lib/import/parse";
 import { buildPreview, persistImport, sha256 } from "@/lib/import/persist";
+import { getPeriodBasis } from "@/lib/periods";
 
 type Params = { params: Promise<{ id: string; programId: string }> };
 
@@ -39,7 +40,8 @@ export async function POST(req: Request, { params }: Params) {
       fileName: file.name,
       programId,
       fallbackFiscalMonth: fiscalMonth,
-      expectedFiscalMonth: fiscalMonth,
+      // When reports group by month received, lines from other fiscal months (e.g. Fill Rate) are expected
+      expectedFiscalMonth: (await getPeriodBasis()) === "FISCAL_MONTH" ? fiscalMonth : undefined,
     });
     const hash = sha256(buffer);
     const previous = await prisma.importBatch.findFirst({ where: { sha256: hash }, orderBy: { importedAt: "desc" } });
@@ -68,6 +70,7 @@ export async function POST(req: Request, { params }: Params) {
       source: "upload",
       reportProgramId: reportProgram.id,
       importedById: guard.user.id,
+      receivedMonth: fiscalMonth,
     });
     await audit(guard.user.id, "import.confirm", "ImportBatch", result.batchId, { reportId: id, programId, fileName: file.name, ...result });
     return NextResponse.json({ result }, { status: 201 });

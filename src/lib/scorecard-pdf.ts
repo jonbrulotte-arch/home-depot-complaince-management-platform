@@ -84,7 +84,7 @@ export function scorecardPdf(data: ScorecardData, status: { version: number; pub
     .fillColor(C.muted)
     .text(
       [
-        `Fiscal month ${data.fiscalMonth}`,
+        data.periodBasis === "RECEIVED_MONTH" ? `Data received in ${data.periodLabel}` : `THD fiscal month ${data.fiscalMonth}`,
         data.dataReceivedAt ? `SPM data received ${data.dataReceivedAt.slice(0, 10)}` : null,
         `generated ${data.generatedAt.slice(0, 10)}`,
         status.publishedAt ? `published ${status.publishedAt.slice(0, 10)} (v${status.version})` : `draft v${status.version}`,

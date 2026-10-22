@@ -40,7 +40,7 @@ export default async function ScorecardsPage() {
                 <tr key={s.id} className="border-t border-gray-200 hover:bg-gray-50">
                   <td className="px-4 py-3">
                     <Link href={`/scorecards/${s.reportId}`} className="font-medium text-blue-600 hover:underline">{d.periodLabel}</Link>
-                    <div className="text-xs text-gray-500">FM {d.fiscalMonth}</div>
+                    {d.historical && <div className="text-xs text-gray-500">Historical</div>}
                   </td>
                   <td className="px-4 py-3 text-gray-700">{d.totals.violations}</td>
                   <td className="px-4 py-3 text-gray-700">{formatCurrency(d.totals.preOffset)}</td>

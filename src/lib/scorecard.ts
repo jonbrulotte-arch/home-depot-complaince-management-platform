@@ -1,5 +1,6 @@
-import type { DisputeStatus, TeamInfluence } from "@prisma/client";
+import type { DisputeStatus, PeriodBasis, Prisma, TeamInfluence } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import { getPeriodField, linesInPeriod, periodOf, type PeriodField } from "@/lib/periods";
 import { fiscalLabel, shiftFiscalMonth } from "@/lib/fiscal";
 import { getMetricStats } from "@/lib/reports";
 import { meetsGoal } from "@/lib/scorecard-rules";
@@ -60,6 +61,8 @@ export interface ScorecardData {
   title: string;
   /** Built from the historical SPM archive rather than a reviewed month */
   historical?: boolean;
+  /** How lines were grouped into the period; absent on older scorecards (THD fiscal month) */
+  periodBasis?: PeriodBasis;
   fiscalMonth: number;
   periodLabel: string;
   dataReceivedAt: string | null;
@@ -95,7 +98,8 @@ export async function buildScorecard(reportId: string): Promise<ScorecardData> {
   });
   const fiscalMonth = report.period.fiscalMonth;
   const programIds = report.programs.map((p) => p.programId);
-  const inReport = { fiscalMonth, metric: { programId: { in: programIds } } };
+  const field = await getPeriodField();
+  const inReport = { ...linesInPeriod(field, fiscalMonth), metric: { programId: { in: programIds } } };
 
   const [stats, lines, received, shipmentInputs] = await Promise.all([
     getMetricStats(programIds, fiscalMonth),
@@ -108,7 +112,7 @@ export async function buildScorecard(reportId: string): Promise<ScorecardData> {
     getShipmentInputs(reportId),
   ]);
   const shipments = summarizeShipments(shipmentInputs);
-  const thdPost = report.historical ? await thdPostDisputeOffsets(stats.map((m) => m.metricId), fiscalMonth) : new Map<string, ThdSummary>();
+  const thdPost = report.historical ? await thdPostDisputeOffsets(stats.map((m) => m.metricId), linesInPeriod(field, fiscalMonth)) : new Map<string, ThdSummary>();
   let thdRecovered = 0;
 
   const programs: ScorecardProgram[] = report.programs.map(({ program }) => {
@@ -181,6 +185,7 @@ export async function buildScorecard(reportId: string): Promise<ScorecardData> {
   return {
     title: report.title,
     ...(report.historical ? { historical: true } : {}),
+    periodBasis: field === "receivedMonth" ? "RECEIVED_MONTH" : "FISCAL_MONTH",
     fiscalMonth,
     periodLabel: fiscalLabel(fiscalMonth),
     dataReceivedAt: received._max.importedAt?.toISOString() ?? null,
@@ -200,7 +205,7 @@ export async function buildScorecard(reportId: string): Promise<ScorecardData> {
     shipments,
     violations,
     teamInfluence: [...byTeam.entries()].map(([team, v]) => ({ team, amount: round(v.amount), lines: v.lines })).sort((a, b) => b.amount - a.amount),
-    trend: await buildTrend(programIds, report.programs.map((p) => p.program), fiscalMonth),
+    trend: await buildTrend(programIds, report.programs.map((p) => p.program), fiscalMonth, field),
   };
 }
 
@@ -212,14 +217,14 @@ interface ThdSummary {
 }
 
 /** THD's P-Vendor summary totals per metric for a month, from the most recent export that has them. */
-async function thdPostDisputeOffsets(metricIds: string[], fiscalMonth: number): Promise<Map<string, ThdSummary>> {
+async function thdPostDisputeOffsets(metricIds: string[], inPeriod: Prisma.ComplianceLineWhereInput): Promise<Map<string, ThdSummary>> {
   const rows = await prisma.spmSummaryRow.findMany({
     where: {
       mVendor: null,
       metricId: { in: metricIds },
       offsetsPreDispute: { not: null },
       offsetsPostDispute: { not: null },
-      batch: { lines: { some: { fiscalMonth } } },
+      batch: { lines: { some: inPeriod } },
     },
     orderBy: { batch: { importedAt: "desc" } },
   });
@@ -236,20 +241,20 @@ async function thdPostDisputeOffsets(metricIds: string[], fiscalMonth: number): 
   return out;
 }
 
-async function buildTrend(programIds: string[], programs: { id: string; code: string }[], fiscalMonth: number): Promise<ScorecardData["trend"]> {
+async function buildTrend(programIds: string[], programs: { id: string; code: string }[], fiscalMonth: number, field: PeriodField): Promise<ScorecardData["trend"]> {
   const first = shiftFiscalMonth(fiscalMonth, -(TREND_MONTHS - 1));
-  const range = { fiscalMonth: { gte: first, lte: fiscalMonth }, metric: { programId: { in: programIds } } };
+  const range = { ...linesInPeriod(field, { gte: first, lte: fiscalMonth }), metric: { programId: { in: programIds } } };
   const [metrics, offsets, recovered] = await Promise.all([
     prisma.metric.findMany({ where: { programId: { in: programIds } }, select: { id: true, programId: true } }),
-    prisma.complianceLine.groupBy({ by: ["metricId", "fiscalMonth"], where: { ...range, isCompliant: false }, _sum: { offsetAmount: true } }),
-    prisma.dispute.findMany({ where: { status: { in: ["APPROVED", "PARTIAL"] }, line: range }, select: { amountRecovered: true, line: { select: { fiscalMonth: true } } } }),
+    prisma.complianceLine.groupBy({ by: ["metricId", field], where: { ...range, isCompliant: false }, _sum: { offsetAmount: true } }),
+    prisma.dispute.findMany({ where: { status: { in: ["APPROVED", "PARTIAL"] }, line: range }, select: { amountRecovered: true, line: { select: { fiscalMonth: true, receivedMonth: true } } } }),
   ]);
   const codeOf = new Map(metrics.map((m) => [m.id, programs.find((p) => p.id === m.programId)?.code ?? ""]));
 
   return Array.from({ length: TREND_MONTHS }, (_, i) => {
     const fm = shiftFiscalMonth(first, i);
     const byProgram: Record<string, number> = Object.fromEntries(programs.map((p) => [p.code, 0]));
-    for (const g of offsets.filter((o) => o.fiscalMonth === fm)) {
+    for (const g of offsets.filter((o) => (o as unknown as Record<PeriodField, number>)[field] === fm)) {
       const code = codeOf.get(g.metricId)!;
       byProgram[code] = round((byProgram[code] ?? 0) + Number(g._sum.offsetAmount ?? 0));
     }
@@ -258,7 +263,7 @@ async function buildTrend(programIds: string[], programs: { id: string; code: st
       label: fiscalLabel(fm),
       byProgram,
       preOffset: round(Object.values(byProgram).reduce((s, v) => s + v, 0)),
-      recovered: round(recovered.filter((d) => d.line.fiscalMonth === fm).reduce((s, d) => s + Number(d.amountRecovered ?? 0), 0)),
+      recovered: round(recovered.filter((d) => periodOf(field, d.line) === fm).reduce((s, d) => s + Number(d.amountRecovered ?? 0), 0)),
     };
   });
 }

@@ -8,24 +8,28 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { StatCard } from "@/components/shared/stat-card";
 import { ReportStatusBadge } from "@/components/shared/status-badges";
 import { scorecardData } from "@/lib/scorecard-store";
+import { getPeriodField, linesInPeriod, type PeriodField } from "@/lib/periods";
 
 export default async function DashboardPage() {
   const user = await requirePagePermission("view.dashboard");
 
-  const latest = await prisma.complianceLine.aggregate({ _max: { fiscalMonth: true } });
-  const lastMonth = latest._max.fiscalMonth;
+  const field = await getPeriodField();
+  const latest = await prisma.complianceLine.aggregate({ _max: { fiscalMonth: true, receivedMonth: true } });
+  const lastMonth = latest._max[field];
   const months = lastMonth ? Array.from({ length: 12 }, (_, i) => shiftFiscalMonth(lastMonth, i - 11)) : [];
 
   const [programs, metrics, offsets, pendingReview, openReports, recentReports, latestScorecard] = await Promise.all([
     prisma.program.findMany({ where: { active: true }, orderBy: { sortOrder: "asc" } }),
     prisma.metric.findMany({ select: { id: true, programId: true } }),
     months.length
-      ? prisma.complianceLine.groupBy({
-          by: ["metricId", "fiscalMonth"],
-          where: { fiscalMonth: { gte: months[0], lte: months[11] }, isCompliant: false },
-          _sum: { offsetAmount: true },
-          _count: { _all: true },
-        })
+      ? prisma.complianceLine
+          .groupBy({
+            by: ["metricId", field],
+            where: { ...linesInPeriod(field, { gte: months[0], lte: months[11] }), isCompliant: false },
+            _sum: { offsetAmount: true },
+            _count: { _all: true },
+          })
+          .then((rows) => rows.map((g) => ({ ...g, month: (g as unknown as Record<PeriodField, number>)[field] })))
       : Promise.resolve([]),
     prisma.complianceLine.count({ where: { isCompliant: false, OR: [{ review: null }, { review: { disposition: "PENDING" } }] } }),
     prisma.complianceReport.count({ where: { status: { not: "PUBLISHED" } } }),
@@ -39,20 +43,20 @@ export default async function DashboardPage() {
   const programOf = new Map(metrics.map((m) => [m.id, m.programId]));
   const cell = new Map<string, number>();
   for (const g of offsets) {
-    const key = `${programOf.get(g.metricId)}|${g.fiscalMonth}`;
+    const key = `${programOf.get(g.metricId)}|${g.month}`;
     cell.set(key, (cell.get(key) ?? 0) + Number(g._sum.offsetAmount ?? 0));
   }
   const monthTotal = (fm: number) => programs.reduce((s, p) => s + (cell.get(`${p.id}|${fm}`) ?? 0), 0);
   const rowTotal = (pid: string) => months.reduce((s, fm) => s + (cell.get(`${pid}|${fm}`) ?? 0), 0);
   const twelveMonthTotal = months.reduce((s, fm) => s + monthTotal(fm), 0);
-  const lastMonthViolations = lastMonth ? offsets.filter((g) => g.fiscalMonth === lastMonth).reduce((s, g) => s + g._count._all, 0) : 0;
+  const lastMonthViolations = lastMonth ? offsets.filter((g) => g.month === lastMonth).reduce((s, g) => s + g._count._all, 0) : 0;
 
   return (
     <div className="p-6 max-w-7xl mx-auto space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-gray-900">Dashboard</h1>
         <p className="text-sm text-gray-500 mt-1">
-          THD compliance offsets and open work{lastMonth ? `, latest data ${fiscalLabel(lastMonth)} (FM ${lastMonth})` : ""}.
+          THD compliance offsets and open work{lastMonth ? `, latest data ${fiscalLabel(lastMonth)}` : ""}.
         </p>
       </div>
 
@@ -88,7 +92,9 @@ export default async function DashboardPage() {
       <Card>
         <CardHeader>
           <CardTitle>Pre-dispute offsets by program</CardTitle>
-          <CardDescription>By THD fiscal month assessed (FM01 = February). Amounts are from the SPM exports before disputes.</CardDescription>
+          <CardDescription>
+            {field === "receivedMonth" ? "By the month the data was received" : "By THD fiscal month assessed (FM01 = February)"}. Amounts are from the SPM exports before disputes.
+          </CardDescription>
         </CardHeader>
         <CardContent>
           {months.length === 0 ? (

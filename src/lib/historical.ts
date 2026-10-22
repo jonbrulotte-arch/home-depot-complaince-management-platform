@@ -3,6 +3,7 @@ import { fiscalLabel, shiftFiscalMonth } from "@/lib/fiscal";
 import { isApprovedDecision, isDeniedDecision } from "@/lib/disputes";
 import { buildScorecard } from "@/lib/scorecard";
 import { getShipmentInputs } from "@/lib/shipments";
+import { getPeriodField, linesInPeriod, type PeriodField } from "@/lib/periods";
 
 // Historical reports turn months loaded from the SPM archive into reviewed, published reports
 // so their scorecards exist. Violations are accepted as THD reported them; dispute results come
@@ -27,18 +28,25 @@ export interface HistoricalPlan {
 }
 
 /** Months with imported data and no report yet, up to `to` (default: all but the newest two months). */
-export async function planHistoricalReports(db: PrismaClient, opts: { from?: number; to?: number } = {}): Promise<HistoricalPlan> {
-  const latest = (await db.complianceLine.aggregate({ _max: { fiscalMonth: true } }))._max.fiscalMonth;
+export async function planHistoricalReports(
+  db: PrismaClient,
+  opts: { from?: number; to?: number; rebuild?: boolean } = {},
+): Promise<HistoricalPlan> {
+  const field = await getPeriodField();
+  const max = await db.complianceLine.aggregate({ _max: { fiscalMonth: true, receivedMonth: true } });
+  const latest = max._max[field];
   if (!latest) return { months: [], existing: [], latest: null, to: null };
   const to = opts.to ?? shiftFiscalMonth(latest, -RECENT_MONTHS_EXCLUDED);
-  const where = { fiscalMonth: { gte: opts.from ?? 0, lte: to } };
+  const where = linesInPeriod(field, { gte: opts.from ?? 0, lte: to });
 
-  const [groups, metrics, programs, reported] = await Promise.all([
-    db.complianceLine.groupBy({ by: ["fiscalMonth", "metricId", "isCompliant"], where, _count: { _all: true } }),
+  const [rawGroups, metrics, programs, reported] = await Promise.all([
+    db.complianceLine.groupBy({ by: [field, "metricId", "isCompliant"], where, _count: { _all: true } }),
     db.metric.findMany({ select: { id: true, programId: true } }),
     db.program.findMany({ where: { active: true }, orderBy: { sortOrder: "asc" }, select: { id: true, name: true } }),
-    db.compliancePeriod.findMany({ where: { reports: { some: {} } }, select: { fiscalMonth: true } }),
+    // When rebuilding, existing historical reports will be replaced, so only other reports block a month
+    db.compliancePeriod.findMany({ where: { reports: { some: opts.rebuild ? { historical: false } : {} } }, select: { fiscalMonth: true } }),
   ]);
+  const groups = rawGroups.map((g) => ({ ...g, fiscalMonth: (g as unknown as Record<PeriodField, number>)[field] }));
   const programOf = new Map(metrics.map((m) => [m.id, m.programId]));
   const existing = new Set(reported.map((p) => p.fiscalMonth));
 
@@ -68,6 +76,15 @@ export async function planHistoricalReports(db: PrismaClient, opts: { from?: num
   };
 }
 
+/**
+ * Deletes historical reports with their scorecards and shipment counts, so they can be recreated
+ * (e.g. after changing how reports are grouped). Line reviews and disputes are kept and reused.
+ */
+export async function deleteHistoricalReports(db: PrismaClient): Promise<number> {
+  const res = await db.complianceReport.deleteMany({ where: { historical: true } });
+  return res.count;
+}
+
 export interface HistoricalResult {
   fiscalMonth: number;
   reportId: string;
@@ -81,6 +98,7 @@ export interface HistoricalResult {
 export async function createHistoricalReport(db: PrismaClient, month: HistoricalMonth, userId: string | null): Promise<HistoricalResult> {
   const { fiscalMonth } = month;
   const programIds = month.programs.map((p) => p.id);
+  const inPeriod = linesInPeriod(await getPeriodField(), fiscalMonth);
 
   const report = await db.$transaction(async (tx) => {
     const period = await tx.compliancePeriod.upsert({ where: { fiscalMonth }, update: {}, create: { fiscalMonth, label: month.label } });
@@ -96,7 +114,7 @@ export async function createHistoricalReport(db: PrismaClient, month: Historical
     });
 
     const lines = await tx.complianceLine.findMany({
-      where: { fiscalMonth, isCompliant: false, metric: { programId: { in: programIds } } },
+      where: { ...inPeriod, isCompliant: false, metric: { programId: { in: programIds } } },
       select: { id: true, offsetAmount: true, spmDecision: true, spmDecisionDetail: true, review: { select: { id: true } }, dispute: { select: { id: true } } },
     });
     const now = new Date();

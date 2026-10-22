@@ -9,13 +9,16 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { apiFetch } from "@/lib/client-api";
 
+import type { PeriodBasis } from "@prisma/client";
+
 interface Props {
+  basis: PeriodBasis;
   periods: { fiscalMonth: number; label: string }[];
   defaultFiscalMonth: number;
   programs: { id: string; name: string }[];
 }
 
-export function NewReportDialog({ periods, defaultFiscalMonth, programs }: Props) {
+export function NewReportDialog({ periods, defaultFiscalMonth, programs, basis }: Props) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [fiscalMonth, setFiscalMonth] = useState(String(defaultFiscalMonth));
@@ -56,7 +59,11 @@ export function NewReportDialog({ periods, defaultFiscalMonth, programs }: Props
       <DialogContent className="max-w-2xl">
         <DialogHeader>
           <DialogTitle>New compliance report</DialogTitle>
-          <DialogDescription>Choose the THD fiscal month being reported and the programs to include.</DialogDescription>
+          <DialogDescription>
+            {basis === "FISCAL_MONTH"
+              ? "Choose the THD fiscal month being reported and the programs to include."
+              : "Choose the month the SPM data was received and the programs to include."}
+          </DialogDescription>
         </DialogHeader>
         <div className="space-y-4">
           <div>

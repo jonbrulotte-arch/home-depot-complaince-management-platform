@@ -4,6 +4,8 @@ import type { DisputeStatus } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { requirePagePermission } from "@/lib/auth-guard";
 import { DISPUTE_STATUS_LABELS } from "@/lib/disputes";
+import { fiscalLabel } from "@/lib/fiscal";
+import { getPeriodField, periodOf } from "@/lib/periods";
 import { cn, formatCurrency, formatUtcDate } from "@/lib/utils";
 import { Card } from "@/components/ui/card";
 import { StatCard } from "@/components/shared/stat-card";
@@ -20,6 +22,7 @@ export default async function DisputesPage({ searchParams }: { searchParams: Pro
   await requirePagePermission("reports.view");
   const { show } = await searchParams;
   const filter = FILTERS.find((f) => f.key === show) ?? FILTERS[0];
+  const field = await getPeriodField();
 
   const [disputes, totals, reports] = await Promise.all([
     prisma.dispute.findMany({
@@ -77,7 +80,8 @@ export default async function DisputesPage({ searchParams }: { searchParams: Pro
               </tr>
             )}
             {disputes.map((d) => {
-              const report = reportFor(d.line.fiscalMonth, d.line.metric.programId);
+              const month = periodOf(field, d.line);
+              const report = reportFor(month, d.line.metric.programId);
               const overdue = d.dueDate && ["PREPARING", "READY"].includes(d.status) && d.dueDate < new Date();
               return (
                 <tr key={d.id} className="border-t border-gray-200 hover:bg-gray-50">
@@ -89,7 +93,7 @@ export default async function DisputesPage({ searchParams }: { searchParams: Pro
                     )}
                   </td>
                   <td className="px-4 py-3 text-gray-900">{d.line.metric.program.name}<div className="text-xs text-gray-500">{d.line.metric.name}</div></td>
-                  <td className="px-4 py-3 text-gray-700">FM {d.line.fiscalMonth}</td>
+                  <td className="px-4 py-3 text-gray-700">{fiscalLabel(month)}</td>
                   <td className="px-4 py-3 text-gray-700">{d.reasonCode?.code ?? <span className="text-gray-400">Not chosen</span>}</td>
                   <td className="px-4 py-3 text-gray-900">
                     {formatCurrency(Number(d.amountDisputed))}

@@ -3,7 +3,7 @@ import { readdirSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
 import { prisma } from "../src/lib/prisma";
 import { parseMonthLabel } from "../src/lib/fiscal";
-import { buildPreview, persistImport, sha256 } from "../src/lib/import/persist";
+import { buildPreview, persistImport, recordReceivedMonth, sha256 } from "../src/lib/import/persist";
 import { runHistoricalReports } from "./historical-reports";
 
 // Usage: npm run backfill -- <directory> [--dry-run] [--reports]
@@ -11,7 +11,9 @@ import { runHistoricalReports } from "./historical-reports";
 // (see scripts/historical-reports.ts).
 // Imports every SPM export (US_*.xlsx) under <directory>, oldest folder first. The fiscal
 // month comes from each line; folder names such as "Sep-2024" supply it for exports without
-// one (US Drop Ship). Files already imported (same SHA-256) are skipped.
+// one (US Drop Ship), and the folder month is recorded as the month each line was received.
+// Files already imported (same SHA-256) are skipped, except that lines imported before received
+// months were recorded get their folder month.
 
 function walk(dir: string): string[] {
   return readdirSync(dir).flatMap((name) => {
@@ -49,12 +51,23 @@ async function main() {
 
   let imported = 0;
   let lines = 0;
+  let receivedUpdated = 0;
+  const claimed = new Set<string>();
   for (const { file, fm } of files) {
     const rel = path.relative(root, file);
     const buffer = readFileSync(file);
     const hash = sha256(buffer);
-    if (!dryRun && (await prisma.importBatch.findFirst({ where: { sha256: hash }, select: { id: true } }))) {
-      console.log(`= ${rel} (already imported)`);
+    const existing = dryRun ? null : await prisma.importBatch.findFirst({ where: { sha256: hash }, select: { id: true } });
+    if (existing) {
+      const missing = fm ? await prisma.importBatch.findFirst({ where: { sha256: hash, receivedMonth: null }, select: { id: true } }) : null;
+      if (missing && fm) {
+        const preview = await buildPreview(prisma, { buffer, fileName: path.basename(file), fallbackFiscalMonth: fm });
+        const n = await recordReceivedMonth(prisma, { preview, sha256: hash, receivedMonth: fm, claimed });
+        receivedUpdated += n;
+        console.log(`= ${rel} (already imported; received month set on ${n} line(s))`);
+      } else {
+        console.log(`= ${rel} (already imported)`);
+      }
       continue;
     }
     if (!fm) console.warn(`! ${rel}: no month in folder name; lines without a fiscal month will be skipped`);
@@ -66,7 +79,8 @@ async function main() {
       if (dryRun) {
         console.log(`~ ${rel}: ${summary}`);
       } else {
-        const result = await persistImport(prisma, { preview, fileName: path.basename(file), sha256: hash, source: "backfill" });
+        const result = await persistImport(prisma, { preview, fileName: path.basename(file), sha256: hash, source: "backfill", receivedMonth: fm });
+        for (const l of preview.lines) claimed.add(`${l.metricId}|${l.lineKey}`);
         console.log(`+ ${rel}: ${summary} (${result.created} new, ${result.updated} updated)`);
         imported += 1;
       }
@@ -79,6 +93,7 @@ async function main() {
   }
 
   console.log(`\n${dryRun ? "Would import" : "Imported"} ${dryRun ? files.length : imported} file(s), ${lines} line(s).`);
+  if (receivedUpdated) console.log(`Set the received month on ${receivedUpdated} previously imported line(s).`);
   if (skipped.length) {
     console.log(`Skipped ${skipped.length} non-SPM file(s):`);
     for (const f of skipped) console.log(`  - ${path.relative(root, f)}`);

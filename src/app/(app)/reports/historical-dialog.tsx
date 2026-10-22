@@ -16,14 +16,18 @@ export function HistoricalDialog() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [created, setCreated] = useState<HistoricalResult[] | null>(null);
+  const [rebuild, setRebuild] = useState(false);
+  const [historicalCount, setHistoricalCount] = useState(0);
 
-  async function load() {
+  async function load(withRebuild = rebuild) {
     setOpen(true);
     setPlan(null);
     setCreated(null);
     setError(null);
     try {
-      setPlan(await apiFetch<HistoricalPlan>("/api/reports/historical"));
+      const p = await apiFetch<HistoricalPlan & { historicalCount: number }>(`/api/reports/historical${withRebuild ? "?rebuild=1" : ""}`);
+      setHistoricalCount(p.historicalCount);
+      setPlan(p);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not load the archive months");
     }
@@ -33,7 +37,7 @@ export function HistoricalDialog() {
     setBusy(true);
     setError(null);
     try {
-      const r = await apiFetch<{ created: HistoricalResult[] }>("/api/reports/historical", { method: "POST" });
+      const r = await apiFetch<{ created: HistoricalResult[] }>(`/api/reports/historical${rebuild ? "?rebuild=1" : ""}`, { method: "POST" });
       setCreated(r.created);
       router.refresh();
     } catch (e) {
@@ -45,7 +49,7 @@ export function HistoricalDialog() {
 
   return (
     <>
-      <Button variant="outline" onClick={load}>
+      <Button variant="outline" onClick={() => load()}>
         <History className="h-4 w-4 mr-1.5" />
         Historical reports
       </Button>
@@ -59,6 +63,23 @@ export function HistoricalDialog() {
             </DialogDescription>
           </DialogHeader>
 
+          {historicalCount > 0 && !created && (
+            <label className="flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+              <input
+                type="checkbox"
+                className="mt-0.5 h-4 w-4 rounded border-gray-300"
+                checked={rebuild}
+                onChange={(e) => {
+                  setRebuild(e.target.checked);
+                  load(e.target.checked);
+                }}
+              />
+              <span>
+                Rebuild the {historicalCount} existing historical report(s). Do this after changing how reports are grouped (Admin › Settings). Their reports,
+                scorecards and shipment counts are replaced; line reviews and disputes are kept.
+              </span>
+            </label>
+          )}
           {!plan && !error && <p className="text-sm text-gray-500">Checking the imported months…</p>}
           {plan && !created && (
             <div className="space-y-2 text-sm">
@@ -97,7 +118,7 @@ export function HistoricalDialog() {
           <DialogFooter>
             <Button variant="outline" onClick={() => setOpen(false)} disabled={busy}>{created ? "Close" : "Cancel"}</Button>
             {plan && !created && plan.months.length > 0 && (
-              <Button onClick={create} disabled={busy}>{busy ? `Creating ${plan.months.length} reports…` : `Create ${plan.months.length} reports`}</Button>
+              <Button onClick={create} disabled={busy}>{busy ? `Creating ${plan.months.length} reports…` : `${rebuild ? "Rebuild" : "Create"} ${plan.months.length} reports`}</Button>
             )}
           </DialogFooter>
         </DialogContent>

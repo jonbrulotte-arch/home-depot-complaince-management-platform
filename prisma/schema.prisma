@@ -224,6 +224,8 @@ model ImportBatch {
   exportKind      ExportKind
   /// "upload" or "backfill"
   source          String         @default("upload")
+  /// Month the file was received (report period or archive folder); null for imports before it was recorded
+  receivedMonth   Int?
   rowCount        Int
   createdCount    Int            @default(0)
   updatedCount    Int            @default(0)
@@ -287,6 +289,9 @@ model ComplianceLine {
   poRecordId   String?
   poRecord     PoRecord?   @relation(fields: [poRecordId], references: [id])
   fiscalMonth  Int
+  /// Month the line was first received: the report it was imported into, or the archive folder
+  /// it came from. Reports group by this or by fiscalMonth (SiteSettings.reportPeriodBasis).
+  receivedMonth Int
   isCompliant  Boolean
   offsetAmount Decimal     @default(0) @db.Decimal(12, 2)
 
@@ -350,6 +355,7 @@ model ComplianceLine {
   @@unique([metricId, lineKey])
   @@index([poNumber])
   @@index([fiscalMonth, metricId])
+  @@index([receivedMonth, metricId])
   @@index([docTraceId])
   @@index([tmsId])
   @@index([carrierPro])
@@ -526,6 +532,15 @@ model SiteSettings {
   siteName            String?
   logo                Bytes?
   logoContentType     String?
+  /// Which month groups lines into reports
+  reportPeriodBasis   PeriodBasis @default(RECEIVED_MONTH)
   updatedAt           DateTime @updatedAt
   updatedById         String?
+}
+
+enum PeriodBasis {
+  /// The month the data was received (the monthly report it arrived in)
+  RECEIVED_MONTH
+  /// THD's fiscal month on each line
+  FISCAL_MONTH
 }

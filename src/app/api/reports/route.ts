@@ -5,6 +5,7 @@ import { requireApiPermission } from "@/lib/auth-guard";
 import { badRequest, parseJson } from "@/lib/api";
 import { audit } from "@/lib/audit";
 import { fiscalLabel, isFiscalMonth } from "@/lib/fiscal";
+import { getPeriodField, linesInPeriod } from "@/lib/periods";
 
 const createSchema = z.object({
   fiscalMonth: z.number().int().refine(isFiscalMonth, "must be a fiscal month (YYYYMM)"),
@@ -25,7 +26,7 @@ export async function POST(req: Request) {
   // Programs whose data for this period is already loaded (e.g. by the backfill) start as imported
   const withData = await prisma.complianceLine.groupBy({
     by: ["metricId"],
-    where: { fiscalMonth, metric: { programId: { in: programs.map((p) => p.id) } } },
+    where: { ...linesInPeriod(await getPeriodField(), fiscalMonth), metric: { programId: { in: programs.map((p) => p.id) } } },
   });
   const loaded = new Set(
     (await prisma.metric.findMany({ where: { id: { in: withData.map((g) => g.metricId) } }, select: { programId: true } })).map((m) => m.programId),

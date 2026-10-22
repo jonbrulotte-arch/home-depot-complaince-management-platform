@@ -37,7 +37,7 @@ export async function scorecardWorkbook(data: ScorecardData, status: { version: 
 
   const sc = wb.addWorksheet("Scorecard", { views: [{ showGridLines: false }] });
   widths(sc, [34, 12, 14, 14, 12, 12, 16, 16, 12]);
-  sc.addRow([`THD Compliance Scorecard - ${data.periodLabel} (FM ${data.fiscalMonth})`]).font = TITLE_FONT;
+  sc.addRow([`THD Compliance Scorecard - ${data.periodLabel}${data.periodBasis === "RECEIVED_MONTH" ? "" : ` (FM ${data.fiscalMonth})`}`]).font = TITLE_FONT;
   sc.addRow([
     `${status.publishedAt ? `Published ${status.publishedAt.slice(0, 10)}` : "Draft"} · version ${status.version} · generated ${data.generatedAt.slice(0, 10)}` +
       (data.dataReceivedAt ? ` · data received ${data.dataReceivedAt.slice(0, 10)}` : ""),

@@ -1,9 +1,14 @@
 import { createHash } from "node:crypto";
-import type { Prisma, PrismaClient } from "@prisma/client";
+import { Prisma, type PrismaClient } from "@prisma/client";
 import { ImportError, parseWorkbook } from "./parse";
 import { detectProgram, transformWorkbook, type ConfigAlias, type ConfigProgram, type ImportPreview, type MappedLine } from "./transform";
 
 type Db = PrismaClient;
+
+/** Data cannot arrive before its own fiscal month, so a misfiled export never moves a line earlier. */
+export function receivedMonthFor(fiscalMonth: number, receivedMonth: number | null | undefined): number {
+  return receivedMonth ? Math.max(receivedMonth, fiscalMonth) : fiscalMonth;
+}
 
 export function sha256(buffer: Buffer | ArrayBuffer): string {
   return createHash("sha256").update(Buffer.from(buffer as ArrayBuffer)).digest("hex");
@@ -79,6 +84,8 @@ export interface PersistArgs {
   source: "upload" | "backfill";
   reportProgramId?: string | null;
   importedById?: string | null;
+  /** Month the file was received (report period or archive folder); defaults to each line's fiscal month */
+  receivedMonth?: number | null;
 }
 
 export interface PersistResult {
@@ -101,6 +108,7 @@ export async function persistImport(db: Db, args: PersistArgs): Promise<PersistR
           exportKind: preview.exportKind,
           source: args.source,
           rowCount: preview.lines.length,
+          receivedMonth: args.receivedMonth ?? null,
           warnings: preview.warnings,
           importedById: args.importedById ?? null,
         },
@@ -137,7 +145,8 @@ export async function persistImport(db: Db, args: PersistArgs): Promise<PersistR
           await tx.complianceLine.update({ where: { id }, data });
           updated += 1;
         } else {
-          toCreate.push({ ...data, metricId: line.metricId, lineKey: line.lineKey });
+          // A line keeps the month it was first received; later exports only update it
+          toCreate.push({ ...data, metricId: line.metricId, lineKey: line.lineKey, receivedMonth: receivedMonthFor(line.fiscalMonth, args.receivedMonth) });
         }
       }
       for (let i = 0; i < toCreate.length; i += 1000) {
@@ -185,4 +194,21 @@ function groupKeys(lines: MappedLine[]): [string, string[]][] {
     byMetric.set(l.metricId, keys);
   }
   return [...byMetric.entries()];
+}
+
+/**
+ * Sets the received month on lines from a file imported before received months were recorded.
+ * `claimed` holds lines already given a month in this run, so the earliest folder wins.
+ */
+export async function recordReceivedMonth(db: Db, args: { preview: ImportPreview; sha256: string; receivedMonth: number; claimed: Set<string> }): Promise<number> {
+  const keys = args.preview.lines.map((l) => `${l.metricId}|${l.lineKey}`).filter((k) => !args.claimed.has(k));
+  for (const k of keys) args.claimed.add(k);
+  let updated = 0;
+  for (const [metricId, lineKeys] of groupKeys(args.preview.lines.filter((l) => keys.includes(`${l.metricId}|${l.lineKey}`)))) {
+    updated += await db.$executeRaw`
+      UPDATE "ComplianceLine" SET "receivedMonth" = GREATEST(${args.receivedMonth}::int, "fiscalMonth")
+      WHERE "metricId" = ${metricId} AND "lineKey" IN (${Prisma.join(lineKeys)})`;
+  }
+  await db.importBatch.updateMany({ where: { sha256: args.sha256, receivedMonth: null }, data: { receivedMonth: args.receivedMonth } });
+  return updated;
 }

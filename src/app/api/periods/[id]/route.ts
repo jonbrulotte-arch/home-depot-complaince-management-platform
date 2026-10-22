@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { requireApiPermission } from "@/lib/auth-guard";
 import { badRequest, notFound, parseJson, type IdParams } from "@/lib/api";
 import { audit } from "@/lib/audit";
+import { getPeriodField, linesInPeriod } from "@/lib/periods";
 
 const isoDate = z.string().trim().regex(/^\d{4}-\d{2}-\d{2}$/, "must be YYYY-MM-DD");
 const schema = z.object({
@@ -29,7 +30,7 @@ export async function PATCH(req: Request, { params }: IdParams) {
   let moved = 0;
   if (body.data.updateDueDates) {
     const res = await prisma.dispute.updateMany({
-      where: { status: { in: ["PREPARING", "READY"] }, line: { fiscalMonth: period.fiscalMonth } },
+      where: { status: { in: ["PREPARING", "READY"] }, line: linesInPeriod(await getPeriodField(), period.fiscalMonth) },
       data: { dueDate: close },
     });
     moved = res.count;

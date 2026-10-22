@@ -4,6 +4,7 @@ import { ChevronLeft } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { requirePagePermission } from "@/lib/auth-guard";
 import { LINE_FIELD_LABELS } from "@/lib/line-fields";
+import { getPeriodField, linesInPeriod } from "@/lib/periods";
 import { TriageWorkspace, type TriageLine } from "./triage-workspace";
 
 export default async function AnalysisPage({ params }: { params: Promise<{ id: string }> }) {
@@ -17,7 +18,7 @@ export default async function AnalysisPage({ params }: { params: Promise<{ id: s
 
   const programIds = report.programs.map((p) => p.programId);
   const lines = await prisma.complianceLine.findMany({
-    where: { fiscalMonth: report.period.fiscalMonth, isCompliant: false, metric: { programId: { in: programIds } } },
+    where: { ...linesInPeriod(await getPeriodField(), report.period.fiscalMonth), isCompliant: false, metric: { programId: { in: programIds } } },
     include: { metric: { include: { program: true } }, review: true, dispute: { select: { id: true, status: true } } },
     orderBy: [{ metric: { program: { sortOrder: "asc" } } }, { metric: { sortOrder: "asc" } }, { poNumber: "asc" }, { sourceRow: "asc" }],
   });

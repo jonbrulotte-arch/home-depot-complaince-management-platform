@@ -57,6 +57,8 @@ npm run backfill -- reference/_extracted            # add --dry-run to preview
 npm run historical-reports -- --dry-run             # then without --dry-run
 ```
 
+Reports group lines by the **month the data was received** by default: the report it was imported into, or the archive folder it came from. This matches the monthly workbooks; Fill Rate is assessed about eight weeks after arrival, so it lands in a later report. Admin › Settings › Report periods can switch to THD's fiscal month instead. After changing it, rebuild the historical reports (`npm run historical-reports -- --rebuild`, or the Rebuild option in the Historical reports dialog).
+
 `historical-reports` turns each archived month that has no report into a published, auto-reviewed report with a scorecard. Admins can also do this from the **Historical reports** button on the Compliance Reports page.
 - **Violations** are accepted as THD reported them.
 - **Dispute results** come from THD's exports: per-line Approve/Deny values, and otherwise THD's Summary post-dispute totals, marked "per THD".

@@ -34,7 +34,7 @@ export function ScorecardView({ data, showViolations = true }: { data: Scorecard
       <div>
         <h2 className="text-xl font-bold text-gray-900">THD Compliance Scorecard: {data.periodLabel}</h2>
         <p className="text-sm text-gray-500">
-          Fiscal month {data.fiscalMonth}
+          {data.periodBasis === "RECEIVED_MONTH" ? `Data received in ${data.periodLabel}` : `THD fiscal month ${data.fiscalMonth}`}
           {data.dataReceivedAt && <> · SPM data received {formatUtcDate(data.dataReceivedAt)}</>} · generated {formatUtcDate(data.generatedAt)}
         </p>
       </div>

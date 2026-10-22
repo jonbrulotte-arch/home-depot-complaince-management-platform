@@ -1,5 +1,6 @@
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import { getPeriodField, linesInPeriod } from "@/lib/periods";
 import { buildChecklist, defaultDisputeWindow, draftSupplierComment } from "@/lib/disputes";
 
 /** Fills in the period's dispute window from THD's calendar rule when it has not been set. */
@@ -24,7 +25,7 @@ export async function syncDisputes(reportId: string, userId: string | null): Pro
 
   const lines = await prisma.complianceLine.findMany({
     where: {
-      fiscalMonth: period.fiscalMonth,
+      ...linesInPeriod(await getPeriodField(), period.fiscalMonth),
       isCompliant: false,
       metric: { programId: { in: report.programs.map((p) => p.programId) } },
       OR: [{ review: { disposition: "DISPUTABLE" } }, { dispute: { isNot: null } }],

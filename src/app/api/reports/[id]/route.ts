@@ -7,6 +7,7 @@ import { badRequest, notFound, parseJson, type IdParams } from "@/lib/api";
 import { audit } from "@/lib/audit";
 import { syncDisputes } from "@/lib/dispute-sync";
 import { generateScorecard } from "@/lib/scorecard-store";
+import { getPeriodField, linesInPeriod } from "@/lib/periods";
 
 const FLOW: ReportStatus[] = ["DRAFT", "IN_REVIEW", "DISPUTES", "SCORECARD", "PUBLISHED"];
 
@@ -26,13 +27,14 @@ export async function PATCH(req: Request, { params }: IdParams) {
   if (!report) return notFound("Report not found");
 
   const { status, notes } = body.data;
+  const inPeriod = linesInPeriod(await getPeriodField(), report.period.fiscalMonth);
   if (status && status !== report.status) {
     const from = FLOW.indexOf(report.status);
     const to = FLOW.indexOf(status);
     if (from < 0 || Math.abs(to - from) !== 1) return badRequest(`Cannot move a report from ${report.status} to ${status}`);
     const hasLines = () =>
       prisma.complianceLine.count({
-        where: { fiscalMonth: report.period.fiscalMonth, metric: { programId: { in: report.programs.map((p) => p.programId) } } },
+        where: { ...inPeriod, metric: { programId: { in: report.programs.map((p) => p.programId) } } },
       });
     if (status === "IN_REVIEW" && report.status === "DRAFT" && (await hasLines()) === 0) {
       return badRequest("Import data for at least one program before starting the review");
@@ -40,7 +42,7 @@ export async function PATCH(req: Request, { params }: IdParams) {
     if (status === "DISPUTES") {
       const pending = await prisma.complianceLine.count({
         where: {
-          fiscalMonth: report.period.fiscalMonth,
+          ...inPeriod,
           isCompliant: false,
           metric: { programId: { in: report.programs.map((p) => p.programId) } },
           OR: [{ review: null }, { review: { disposition: { in: ["PENDING", "NEEDS_RESEARCH"] } } }],
@@ -52,7 +54,7 @@ export async function PATCH(req: Request, { params }: IdParams) {
       const unsubmitted = await prisma.dispute.count({
         where: {
           status: { in: ["PREPARING", "READY"] },
-          line: { fiscalMonth: report.period.fiscalMonth, metric: { programId: { in: report.programs.map((p) => p.programId) } } },
+          line: { ...inPeriod, metric: { programId: { in: report.programs.map((p) => p.programId) } } },
         },
       });
       if (unsubmitted) return badRequest(`${unsubmitted} dispute(s) are not submitted yet; submit or withdraw them first`);

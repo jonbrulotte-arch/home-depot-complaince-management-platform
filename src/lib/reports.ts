@@ -1,5 +1,6 @@
 import type { MetricRule, Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import { getPeriodField, linesInPeriod } from "@/lib/periods";
 
 /** The rule in force for a fiscal month: the latest one effective on or before it. */
 export function ruleFor<T extends Pick<MetricRule, "effectiveFrom">>(rules: T[], fiscalMonth: number): T | null {
@@ -36,14 +37,15 @@ export function isDecided(disposition: string | null | undefined): boolean {
 
 const decimal = (v: Prisma.Decimal | null | undefined) => (v == null ? 0 : Number(v));
 
-/** Per-metric totals for the given programs in one fiscal month. */
+/** Per-metric totals for the given programs in one report period (see src/lib/periods.ts). */
 export async function getMetricStats(programIds: string[], fiscalMonth: number): Promise<MetricStat[]> {
+  const field = await getPeriodField();
   const metrics = await prisma.metric.findMany({
     where: { programId: { in: programIds }, active: true },
     include: { rules: true },
     orderBy: [{ program: { sortOrder: "asc" } }, { sortOrder: "asc" }],
   });
-  const where = { fiscalMonth, metricId: { in: metrics.map((m) => m.id) } };
+  const where = { ...linesInPeriod(field, fiscalMonth), metricId: { in: metrics.map((m) => m.id) } };
   const [groups, nonCompliant] = await Promise.all([
     prisma.complianceLine.groupBy({
       by: ["metricId", "isCompliant"],
