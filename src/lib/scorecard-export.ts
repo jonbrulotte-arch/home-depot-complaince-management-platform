@@ -56,9 +56,21 @@ export async function scorecardWorkbook(data: ScorecardData, status: { version: 
     if (fmt) row.getCell(2).numFmt = fmt;
   }
 
+  if (data.shipments?.programs.length) {
+    const sh = data.shipments;
+    sc.addRow([]);
+    sc.addRow(["Shipments"]).font = { bold: true, size: 12 };
+    header(sc.addRow(["Mode", ...sh.programs.map((p) => p.name), "Total"]));
+    sc.addRow(["Small Parcel", ...sh.programs.map((p) => p.smallParcel), sh.totals.smallParcel]);
+    sc.addRow(["LTL & TL", ...sh.programs.map((p) => p.ltl), sh.totals.ltl]);
+    sc.addRow(["Total", ...sh.programs.map((p) => p.total), sh.totals.total]).font = { bold: true };
+    if (sh.transportationLtl !== null) sc.addRow(["Transportation (RDC + DFC LTL)", sh.transportationLtl]);
+    if (!sh.complete) sc.addRow(["Some shipment counts were not entered."]).font = { italic: true, color: { argb: "FFB45309" } };
+  }
+
   for (const program of data.programs) {
     sc.addRow([]);
-    sc.addRow([`${program.name}`, `${program.lines} lines`]).font = { bold: true, size: 12 };
+    sc.addRow([`${program.name}`, `${program.lines} ${data.shipments?.programs.some((p) => p.code === program.code && p.total !== null) ? "shipments" : "lines"}`]).font = { bold: true, size: 12 };
     header(sc.addRow(["Metric", "Goal", "Pre-dispute", "Post-dispute", "Result", "Violations", "Pre-dispute $", "Post-dispute $", "Disputed"]));
     for (const m of program.metrics) {
       const row = sc.addRow([

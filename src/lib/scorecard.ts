@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { fiscalLabel, shiftFiscalMonth } from "@/lib/fiscal";
 import { getMetricStats } from "@/lib/reports";
 import { meetsGoal } from "@/lib/scorecard-rules";
+import { getShipmentInputs, type ShipmentInput } from "@/lib/shipments";
 import { TEAM_INFLUENCES } from "@/lib/line-fields";
 
 export interface ScorecardMetric {
@@ -44,6 +45,15 @@ export interface ScorecardViolation {
   notes: string | null;
 }
 
+export interface ScorecardShipments {
+  /** Per shipping program; null where the user has not entered a count */
+  programs: { code: string; name: string; smallParcel: number | null; ltl: number | null; total: number | null }[];
+  totals: { smallParcel: number; ltl: number; total: number };
+  /** Transportation measures the RDC and DFC LTL shipments */
+  transportationLtl: number | null;
+  complete: boolean;
+}
+
 export interface ScorecardData {
   title: string;
   fiscalMonth: number;
@@ -62,6 +72,8 @@ export interface ScorecardData {
     pendingAmount: number;
     pendingDisputes: number;
   };
+  /** Absent on scorecards generated before shipment counts existed */
+  shipments?: ScorecardShipments;
   violations: ScorecardViolation[];
   teamInfluence: { team: string; amount: number; lines: number }[];
   trend: { fiscalMonth: number; label: string; byProgram: Record<string, number>; preOffset: number; recovered: number }[];
@@ -81,7 +93,7 @@ export async function buildScorecard(reportId: string): Promise<ScorecardData> {
   const programIds = report.programs.map((p) => p.programId);
   const inReport = { fiscalMonth, metric: { programId: { in: programIds } } };
 
-  const [stats, lines, received] = await Promise.all([
+  const [stats, lines, received, shipmentInputs] = await Promise.all([
     getMetricStats(programIds, fiscalMonth),
     prisma.complianceLine.findMany({
       where: { ...inReport, isCompliant: false },
@@ -89,7 +101,9 @@ export async function buildScorecard(reportId: string): Promise<ScorecardData> {
       orderBy: [{ metric: { program: { sortOrder: "asc" } } }, { metric: { sortOrder: "asc" } }, { poNumber: "asc" }],
     }),
     prisma.importBatch.aggregate({ _max: { importedAt: true }, where: { lines: { some: inReport } } }),
+    getShipmentInputs(reportId),
   ]);
+  const shipments = summarizeShipments(shipmentInputs);
 
   const programs: ScorecardProgram[] = report.programs.map(({ program }) => {
     const metrics = stats
@@ -108,10 +122,12 @@ export async function buildScorecard(reportId: string): Promise<ScorecardData> {
         disputed: m.disputed,
         approved: m.approved,
       }));
+    const shipped = shipments.programs.find((p) => p.code === program.code)?.total;
     return {
       code: program.code,
       name: program.name,
-      lines: Math.max(0, ...metrics.map((m) => m.lines)),
+      // Entered shipment totals beat line counts, which count PO lines rather than shipments
+      lines: (program.code === "US_TRANS" ? shipments.transportationLtl : shipped) ?? Math.max(0, ...metrics.map((m) => m.lines)),
       violations: metrics.reduce((s, m) => s + m.violations, 0),
       preOffset: round(metrics.reduce((s, m) => s + m.preOffset, 0)),
       postOffset: round(metrics.reduce((s, m) => s + m.postOffset, 0)),
@@ -164,6 +180,7 @@ export async function buildScorecard(reportId: string): Promise<ScorecardData> {
       pendingAmount: sumDisputes(["PREPARING", "READY", "SUBMITTED"], "amountDisputed"),
       pendingDisputes: activeDisputes.filter((d) => ["PREPARING", "READY", "SUBMITTED"].includes(d.status)).length,
     },
+    shipments,
     violations,
     teamInfluence: [...byTeam.entries()].map(([team, v]) => ({ team, amount: round(v.amount), lines: v.lines })).sort((a, b) => b.amount - a.amount),
     trend: await buildTrend(programIds, report.programs.map((p) => p.program), fiscalMonth),
@@ -195,4 +212,20 @@ async function buildTrend(programIds: string[], programs: { id: string; code: st
       recovered: round(recovered.filter((d) => d.line.fiscalMonth === fm).reduce((s, d) => s + Number(d.amountRecovered ?? 0), 0)),
     };
   });
+}
+
+export function summarizeShipments(inputs: ShipmentInput[]): ScorecardShipments {
+  const programs = inputs.map((i) => {
+    const smallParcel = i.counts.SMALL_PARCEL;
+    const ltl = i.counts.LTL_TL;
+    return { code: i.code, name: i.name, smallParcel, ltl, total: smallParcel === null && ltl === null ? null : (smallParcel ?? 0) + (ltl ?? 0) };
+  });
+  const sum = (pick: (p: (typeof programs)[number]) => number | null) => programs.reduce((s, p) => s + (pick(p) ?? 0), 0);
+  const dcs = programs.filter((p) => p.code === "US_RDC" || p.code === "US_DFC");
+  return {
+    programs,
+    totals: { smallParcel: sum((p) => p.smallParcel), ltl: sum((p) => p.ltl), total: sum((p) => p.total) },
+    transportationLtl: dcs.length && dcs.some((p) => p.ltl !== null) ? dcs.reduce((s, p) => s + (p.ltl ?? 0), 0) : null,
+    complete: programs.every((p) => p.smallParcel !== null && p.ltl !== null),
+  };
 }

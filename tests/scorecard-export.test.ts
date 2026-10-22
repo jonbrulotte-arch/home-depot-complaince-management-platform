@@ -2,6 +2,7 @@ import ExcelJS from "exceljs";
 import { describe, expect, it } from "vitest";
 import { scorecardWorkbook } from "@/lib/scorecard-export";
 import { meetsGoal } from "@/lib/scorecard-rules";
+import { scorecardPdf } from "@/lib/scorecard-pdf";
 import type { ScorecardData } from "@/lib/scorecard";
 
 const data: ScorecardData = {
@@ -28,6 +29,12 @@ const data: ScorecardData = {
   violations: [
     { program: "US Rapid Deployment Center", metric: "Fill Rate", poNumber: "2015449080", dcNumber: "5851", offset: 144.64, disposition: "DISPUTABLE", teamInfluence: "Warehouse", disputeStatus: "APPROVED", reasonCode: "Order Shipped Complete", recovered: 144.64, notes: "POD attached" },
   ],
+  shipments: {
+    programs: [{ code: "US_RDC", name: "US Rapid Deployment Center", smallParcel: 0, ltl: 5, total: 5 }],
+    totals: { smallParcel: 0, ltl: 5, total: 5 },
+    transportationLtl: 5,
+    complete: true,
+  },
   teamInfluence: [{ team: "Warehouse", amount: 144.64, lines: 1 }],
   trend: [{ fiscalMonth: 202405, label: "Jun 2024", byProgram: { US_RDC: 1359.62 }, preOffset: 1359.62, recovered: 144.64 }],
 };
@@ -66,5 +73,20 @@ describe("meeting the goal", () => {
     const flat = { ...base, thresholdPct: 100, offsetType: "FLAT" as const };
     expect(meetsGoal({ ...flat, nonCompliant: 1, approved: 0 })).toBe(false);
     expect(meetsGoal({ ...flat, nonCompliant: 1, approved: 1 })).toBe(true);
+  });
+});
+
+describe("scorecard PDF", () => {
+  it("renders a PDF with every section", async () => {
+    const pdf = await scorecardPdf(data, { version: 2, publishedAt: null });
+    expect(pdf.subarray(0, 5).toString()).toBe("%PDF-");
+    expect(pdf.length).toBeGreaterThan(2000);
+  });
+
+  it("paginates long violation lists", async () => {
+    const many = { ...data, violations: Array.from({ length: 120 }, () => data.violations[0]) };
+    const pdf = await scorecardPdf(many, { version: 1, publishedAt: null });
+    const pages = pdf.toString("latin1").match(/\/Type \/Page\b/g) ?? [];
+    expect(pages.length).toBeGreaterThan(2);
   });
 });

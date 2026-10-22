@@ -1,5 +1,5 @@
 import { CheckCircle2, XCircle } from "lucide-react";
-import type { ScorecardData } from "@/lib/scorecard";
+import type { ScorecardData, ScorecardShipments } from "@/lib/scorecard";
 import { DISPUTE_STATUS_LABELS } from "@/lib/disputes";
 import { cn, formatCurrency, formatPct, formatUtcDate } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
@@ -52,12 +52,14 @@ export function ScorecardView({ data, showViolations = true }: { data: Scorecard
         </p>
       )}
 
+      {data.shipments && data.shipments.programs.length > 0 && <Shipments shipments={data.shipments} />}
+
       {data.programs.map((p) => (
         <Card key={p.code} className="print:break-inside-avoid print:shadow-none">
           <CardHeader className="flex flex-row items-baseline justify-between space-y-0 pb-3">
             <CardTitle>{p.name}</CardTitle>
             <p className="text-sm text-gray-500">
-              {p.lines} line(s) · {p.violations} violation(s) · {formatCurrency(p.preOffset)} → <span className="font-medium text-gray-900">{formatCurrency(p.postOffset)}</span>
+              {p.lines} {data.shipments?.programs.some((s) => s.code === p.code && s.total !== null) || (p.code === "US_TRANS" && data.shipments?.transportationLtl != null) ? "shipment(s)" : "line(s)"} · {p.violations} violation(s) · {formatCurrency(p.preOffset)} → <span className="font-medium text-gray-900">{formatCurrency(p.postOffset)}</span>
             </p>
           </CardHeader>
           <CardContent>
@@ -181,5 +183,53 @@ export function ScorecardView({ data, showViolations = true }: { data: Scorecard
         </Card>
       )}
     </div>
+  );
+}
+
+function Shipments({ shipments }: { shipments: ScorecardShipments }) {
+  const n = (v: number | null) => (v === null ? <span className="text-gray-400">Not entered</span> : v.toLocaleString("en-US"));
+  return (
+    <Card className="print:break-inside-avoid print:shadow-none">
+      <CardHeader className="flex flex-row items-baseline justify-between space-y-0 pb-3">
+        <CardTitle>Shipments</CardTitle>
+        <p className="text-sm text-gray-500">
+          {shipments.totals.total.toLocaleString("en-US")} total
+          {shipments.transportationLtl !== null && <> · {shipments.transportationLtl} RDC + DFC LTL (Transportation)</>}
+        </p>
+      </CardHeader>
+      <CardContent>
+        {!shipments.complete && <p className="mb-3 text-xs text-amber-700">Some shipment counts were not entered for this period.</p>}
+        <div className="overflow-x-auto border border-gray-200 rounded-lg">
+          <table className="min-w-full">
+            <thead className="bg-gray-50">
+              <tr>
+                <th className={th}>Mode</th>
+                {shipments.programs.map((p) => (
+                  <th key={p.code} className={cn(th, "text-right")}>{p.name}</th>
+                ))}
+                <th className={cn(th, "text-right")}>Total</th>
+              </tr>
+            </thead>
+            <tbody>
+              {(
+                [
+                  ["Small Parcel", (p: ScorecardShipments["programs"][number]) => p.smallParcel, shipments.totals.smallParcel],
+                  ["LTL & TL", (p: ScorecardShipments["programs"][number]) => p.ltl, shipments.totals.ltl],
+                  ["Total", (p: ScorecardShipments["programs"][number]) => p.total, shipments.totals.total],
+                ] as const
+              ).map(([label, pick, total]) => (
+                <tr key={label} className={cn("border-t border-gray-200", label === "Total" && "bg-gray-50 font-semibold")}>
+                  <td className={cn(td, "text-gray-900")}>{label}</td>
+                  {shipments.programs.map((p) => (
+                    <td key={p.code} className={cn(td, "text-right text-gray-900")}>{n(pick(p))}</td>
+                  ))}
+                  <td className={cn(td, "text-right text-gray-900")}>{total.toLocaleString("en-US")}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </CardContent>
+    </Card>
   );
 }

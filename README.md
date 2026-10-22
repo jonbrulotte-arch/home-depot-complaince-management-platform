@@ -24,7 +24,9 @@ Monthly compliance analysis for our Home Depot programs. Import the raw SPM expo
   - the violation list with dispute outcomes
   - offsets by team influence and a 12-month trend
 
-  You can regenerate it while in the Scorecard stage, for example after recording THD decisions. Then publish it, or unpublish to reopen it. Export to Excel (Scorecard, Violations, 12-Month Offsets and Team Influence sheets) or Print / PDF. Published scorecards are on the **Scorecards** page and the dashboard, and the Viewer role can see them.
+  You can regenerate it while in the Scorecard stage, for example after recording THD decisions. Then publish it, or unpublish to reopen it. Download it as a PDF or as Excel (Scorecard, Violations, 12-Month Offsets and Team Influence sheets). Published scorecards are on the **Scorecards** page and the dashboard, and the Viewer role can see them.
+- **Shipment counts** on each report: Small Parcel and LTL & TL shipments per program, for the scorecard's shipment table. Drop Ship is suggested from THD's Parcel flag. RDC/DFC are entered from TMS/WMS, because SPM exports don't carry the mode. Transportation's LTL total is RDC + DFC LTL.
+- **Backup & Restore** (Admin): one-click backups of all data, including attachments, saved on the server (`BACKUP_DIR`, default `./backups`). You can download them or restore from a stored or uploaded file. A restore replaces everything in one transaction, takes a safety backup first, and requires the same schema version. Scheduled backups: `npm run backup -- --keep 30` from cron. Disaster recovery: `npm run restore -- <file> --yes`.
 - **PO Lookup**: search by PO (prefix), SKU, tracking #, PRO #, BOL #, TMS shipment ID or ASN doc trace ID.
 - **Dashboard**: 12-month pre-dispute offsets by program, and open work.
 - **Admin**:
@@ -32,7 +34,7 @@ Monthly compliance analysis for our Home Depot programs. Import the raw SPM expo
   - Roles & Access (role × permission matrix; built-in Admin, Analyst and Viewer roles)
   - Programs & Rules: metrics, threshold/offset rules by effective fiscal month, dispute reason codes, and SPM column mappings
 
-Coming next: backup & restore.
+
 
 ## Setup
 

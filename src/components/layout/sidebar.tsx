@@ -13,6 +13,7 @@ import {
   Users,
   ShieldCheck,
   SlidersHorizontal,
+  DatabaseBackup,
   LogOut,
   ChevronLeft,
   ChevronRight,
@@ -34,6 +35,7 @@ const adminNavItems: NavItem[] = [
   { href: "/admin/users", label: "Users", icon: Users, permission: "admin.users" },
   { href: "/admin/rbac", label: "Roles & Access", icon: ShieldCheck, permission: "admin.rbac" },
   { href: "/admin/programs", label: "Programs & Rules", icon: SlidersHorizontal, permission: "admin.programs" },
+  { href: "/admin/backup", label: "Backup & Restore", icon: DatabaseBackup, permission: "admin.backup" },
 ];
 
 // Exact match or a child route, so "/psir" doesn't also light up "/psir-generator".

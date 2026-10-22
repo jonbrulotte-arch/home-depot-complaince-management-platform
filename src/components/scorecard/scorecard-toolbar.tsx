@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Download, Printer, RefreshCw } from "lucide-react";
+import { Download, FileText, Printer, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { apiFetch } from "@/lib/client-api";
 
@@ -34,16 +34,23 @@ export function ScorecardToolbar({ reportId, canRegenerate, canExport }: { repor
         </Button>
       )}
       {canExport && (
-        <Button asChild variant="outline">
-          <a href={`/api/reports/${reportId}/scorecard/export`}>
-            <Download className="h-4 w-4 mr-1.5" />
-            Excel
-          </a>
-        </Button>
+        <>
+          <Button asChild variant="outline">
+            <a href={`/api/reports/${reportId}/scorecard/pdf`}>
+              <FileText className="h-4 w-4 mr-1.5" />
+              PDF
+            </a>
+          </Button>
+          <Button asChild variant="outline">
+            <a href={`/api/reports/${reportId}/scorecard/export`}>
+              <Download className="h-4 w-4 mr-1.5" />
+              Excel
+            </a>
+          </Button>
+        </>
       )}
-      <Button variant="outline" onClick={() => window.print()}>
-        <Printer className="h-4 w-4 mr-1.5" />
-        Print / PDF
+      <Button variant="ghost" onClick={() => window.print()} title="Print this page">
+        <Printer className="h-4 w-4" />
       </Button>
     </div>
   );

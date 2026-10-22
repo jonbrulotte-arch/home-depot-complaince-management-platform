@@ -38,6 +38,7 @@ model User {
   auditLogs      AuditLog[]
   disputeEvents  DisputeEvent[]
   attachments    DisputeAttachment[]
+  shipmentCounts      ShipmentCount[]
   scorecardsGenerated Scorecard[] @relation("ScorecardGeneratedBy")
   scorecardsPublished Scorecard[] @relation("ScorecardPublishedBy")
 }
@@ -70,6 +71,7 @@ model Program {
   metrics     Metric[]
   aliases     ColumnAlias[]
   reportPrograms ReportProgram[]
+  shipmentCounts ShipmentCount[]
 }
 
 model Metric {
@@ -179,6 +181,7 @@ model ComplianceReport {
   updatedAt   DateTime         @updatedAt
   programs    ReportProgram[]
   scorecard   Scorecard?
+  shipments   ShipmentCount[]
 
   @@index([periodId])
 }
@@ -487,4 +490,26 @@ model Scorecard {
   publishedBy   User?            @relation("ScorecardPublishedBy", fields: [publishedById], references: [id], onDelete: SetNull)
 
   @@index([publishedAt])
+}
+
+enum ShipmentMode {
+  SMALL_PARCEL
+  LTL_TL
+}
+
+/// Shipments in the period by program and mode, entered by the user (SPM exports do not carry
+/// the mode for RDC/DFC). Feeds the scorecard's shipment breakdown.
+model ShipmentCount {
+  id          String           @id @default(cuid())
+  reportId    String
+  report      ComplianceReport @relation(fields: [reportId], references: [id], onDelete: Cascade)
+  programId   String
+  program     Program          @relation(fields: [programId], references: [id], onDelete: Cascade)
+  mode        ShipmentMode
+  count       Int
+  updatedById String?
+  updatedBy   User?            @relation(fields: [updatedById], references: [id], onDelete: SetNull)
+  updatedAt   DateTime         @updatedAt
+
+  @@unique([reportId, programId, mode])
 }
