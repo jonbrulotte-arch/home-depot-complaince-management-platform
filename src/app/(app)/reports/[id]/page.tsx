@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ListChecks } from "lucide-react";
+import { Gavel, ListChecks } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { requirePagePermission } from "@/lib/auth-guard";
 import { getMetricStats } from "@/lib/reports";
@@ -43,6 +43,9 @@ export default async function ReportPage({ params }: { params: Promise<{ id: str
   const totalNc = stats.reduce((s, m) => s + m.nonCompliant, 0);
   const totalReviewed = stats.reduce((s, m) => s + m.reviewed, 0);
   const totalOffset = stats.reduce((s, m) => s + m.offset, 0);
+  const totalPostDispute = stats.reduce((s, m) => s + m.postDisputeOffset, 0);
+  const totalRecovered = stats.reduce((s, m) => s + m.recovered, 0);
+  const disputeStage = report.status !== "DRAFT" && report.status !== "IN_REVIEW";
   const stepIndex = STEPS.findIndex((s) => s.status === report.status);
   const canImport = user.permissions.has("reports.import") && (report.status === "DRAFT" || report.status === "IN_REVIEW");
 
@@ -56,6 +59,7 @@ export default async function ReportPage({ params }: { params: Promise<{ id: str
           </div>
           <p className="text-sm text-gray-500 mt-1">
             THD fiscal month {fiscalMonth} · {totalNc} non-compliant line(s) · {formatCurrency(totalOffset)} pre-dispute offsets
+            {disputeStage && <> · {formatCurrency(totalRecovered)} recovered · {formatCurrency(totalPostDispute)} post-dispute</>}
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -64,6 +68,14 @@ export default async function ReportPage({ params }: { params: Promise<{ id: str
               <Link href={`/reports/${id}/analysis`}>
                 <ListChecks className="h-4 w-4 mr-1.5" />
                 Review lines ({totalReviewed}/{totalNc})
+              </Link>
+            </Button>
+          )}
+          {disputeStage && (
+            <Button asChild variant="outline">
+              <Link href={`/reports/${id}/disputes`}>
+                <Gavel className="h-4 w-4 mr-1.5" />
+                Disputes
               </Link>
             </Button>
           )}
@@ -105,7 +117,7 @@ export default async function ReportPage({ params }: { params: Promise<{ id: str
                 <table className="min-w-full text-sm">
                   <thead className="bg-gray-50">
                     <tr>
-                      {["Metric", "Lines", "Non-compliant", "Reviewed", "Compliance", "Goal", "Pre-dispute offset"].map((h) => (
+                      {["Metric", "Lines", "Non-compliant", "Reviewed", "Compliance", "Goal", "Pre-dispute offset", ...(disputeStage ? ["Disputed", "Post-dispute"] : [])].map((h) => (
                         <th key={h} className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{h}</th>
                       ))}
                     </tr>
@@ -126,6 +138,15 @@ export default async function ReportPage({ params }: { params: Promise<{ id: str
                         </td>
                         <td className="px-4 py-3 text-gray-500">{m.thresholdPct == null ? "—" : `≥ ${m.thresholdPct}%`}</td>
                         <td className="px-4 py-3 text-gray-900">{m.offset ? formatCurrency(m.offset) : "—"}</td>
+                        {disputeStage && (
+                          <>
+                            <td className="px-4 py-3 text-gray-700">{m.disputed ? `${m.disputed} (${m.approved} approved)` : "—"}</td>
+                            <td className="px-4 py-3">
+                              {m.offset ? <span className={m.postDisputeOffset < m.offset ? "font-medium text-green-700" : "text-gray-900"}>{formatCurrency(m.postDisputeOffset)}</span> : "—"}
+                              {m.postDisputePct != null && m.postDisputePct !== m.compliancePct && <div className="text-xs text-gray-500">{formatPct(m.postDisputePct, 2)}</div>}
+                            </td>
+                          </>
+                        )}
                       </tr>
                     ))}
                   </tbody>

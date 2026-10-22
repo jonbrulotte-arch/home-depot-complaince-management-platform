@@ -40,6 +40,7 @@ This platform MUST match the look, feel and UX patterns of the existing **SymplP
 - **Import pipeline** (`src/lib/import/`): `parse.ts` (ExcelJS → rows) → `transform.ts` (header aliases → canonical fields, classification, line keys; pure and unit-tested) → `persist.ts` (one transaction per file, idempotent by `lineKey`). Map columns by header name through `ColumnAlias`, never by position: THD's headers drift between months. Every source column is kept in `ComplianceLine.raw`.
 - Program, metric, threshold/offset rule and dispute reason code defaults live in `src/lib/import/catalog.ts` and are seeded; admins edit them in the database afterwards.
 - Imported timestamps are UTC wall-clock values; format them with `formatUtcDate`/`formatUtcDateTime`.
+- **Disputes** (`src/lib/disputes.ts`, `src/lib/dispute-sync.ts`): one `Dispute` per non-compliant line, created from a Disputable review when a report enters the Disputes stage. Status moves are limited to `canTransition`. Outcomes are recorded by people; SPM decisions found on import are only flagged (`spmDecisionSeen`).
 - Permissions are keys in `src/lib/permissions.ts`, stored on `Role.permissions` and re-read per request (`src/lib/auth-guard.ts`).
 
 ## Important: Next.js 16

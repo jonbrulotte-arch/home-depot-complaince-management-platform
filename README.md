@@ -2,7 +2,7 @@
 
 Monthly compliance analysis for our Home Depot programs. Import the raw SPM exports, review each violation PO line by PO line, decide what can be disputed, and look up any PO's compliance history.
 
-## What's in Phase 1
+## What's built
 
 - **Compliance reports**: create a report for a THD fiscal month, pick the programs, and import each program's SPM export. You see a preview first (lines, violations, offsets, warnings) and nothing is written until you confirm.
 - **PO records database**: every line, compliant and non-compliant, from every import. Each line keeps the canonical fields plus every original column.
@@ -12,6 +12,12 @@ Monthly compliance analysis for our Home Depot programs. Import the raw SPM expo
   - notes and extra research inputs
 
   The workspace also shows the PO's other violations. A report can move to *Disputes* once every line has a decision.
+- **Disputes** (Phase 2): moving a report to *Disputes* creates a dispute for every line marked Disputable. Each dispute is a guided checklist:
+  1. Confirm the reason code and gather documents. The checklist is built from THD's required documents, with file attachments up to 10 MB each.
+  2. Submit in SPM, using a copy-ready comment and the dispute-window deadline.
+  3. Record THD's decision: approved, partially approved or denied, with the review code and $ recovered.
+
+  Every dispute has a timeline of notes and status changes. The period's dispute window defaults to THD's rule (opens 2nd Wednesday, closes 2nd Tuesday of the following month) and is editable. Later SPM exports carrying an Approve/Deny value are flagged on the matching dispute. Reports show post-dispute performance and offsets; a %-of-value offset falls away when the recalculated metric meets its goal. The **Disputes** page lists every dispute across reports by deadline.
 - **PO Lookup**: search by PO (prefix), SKU, tracking #, PRO #, BOL #, TMS shipment ID or ASN doc trace ID.
 - **Dashboard**: 12-month pre-dispute offsets by program, and open work.
 - **Admin**:
@@ -19,7 +25,7 @@ Monthly compliance analysis for our Home Depot programs. Import the raw SPM expo
   - Roles & Access (role × permission matrix; built-in Admin, Analyst and Viewer roles)
   - Programs & Rules: metrics, threshold/offset rules by effective fiscal month, dispute reason codes, and SPM column mappings
 
-Coming next: the dispute workflow with outcomes, the scorecard (pre/post-dispute) with Excel/PDF export, published scorecards, and backup & restore.
+Coming next: the scorecard (pre/post-dispute) with Excel/PDF export, published scorecards, and backup & restore.
 
 ## Setup
 

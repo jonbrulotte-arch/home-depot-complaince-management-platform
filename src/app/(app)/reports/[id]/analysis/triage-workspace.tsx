@@ -2,13 +2,14 @@
 
 import { useMemo, useState } from "react";
 import { ChevronDown, ChevronRight, Plus, X } from "lucide-react";
-import type { Disposition, TeamInfluence } from "@prisma/client";
+import Link from "next/link";
+import type { DisputeStatus, Disposition, TeamInfluence } from "@prisma/client";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { DISPOSITIONS, DispositionBadge } from "@/components/shared/status-badges";
+import { DISPOSITIONS, DispositionBadge, DisputeStatusBadge } from "@/components/shared/status-badges";
 import { apiFetch } from "@/lib/client-api";
 import { TEAM_INFLUENCES } from "@/lib/line-fields";
 import { cn, formatCurrency, formatUtcDateTime } from "@/lib/utils";
@@ -34,6 +35,7 @@ export interface TriageLine {
   fields: { key: string; label: string; kind: "text" | "date" | "number" | "bool"; value: string | number | boolean }[];
   raw: Record<string, string | number | boolean | null>;
   review: TriageReview | null;
+  dispute: { id: string; status: DisputeStatus } | null;
 }
 
 interface ReasonCode {
@@ -66,7 +68,19 @@ function formatValue(kind: TriageLine["fields"][number]["kind"], value: string |
   return String(value);
 }
 
-export function TriageWorkspace({ lines: initial, reasonCodes, history, canEdit }: { lines: TriageLine[]; reasonCodes: ReasonCode[]; history: HistoryItem[]; canEdit: boolean }) {
+export function TriageWorkspace({
+  lines: initial,
+  reasonCodes,
+  history,
+  reportId,
+  canEdit,
+}: {
+  lines: TriageLine[];
+  reasonCodes: ReasonCode[];
+  history: HistoryItem[];
+  reportId: string;
+  canEdit: boolean;
+}) {
   const [lines, setLines] = useState(initial);
   const groups = useMemo(() => {
     const map = new Map<string, { key: string; program: string; metric: string; ids: string[] }>();
@@ -171,6 +185,7 @@ export function TriageWorkspace({ lines: initial, reasonCodes, history, canEdit 
             line={selected}
             reasonCodes={reasonCodes.filter((r) => r.metricId === selected.metricId)}
             history={history.filter((h) => h.poNumber === selected.poNumber)}
+            reportId={reportId}
             canEdit={canEdit}
             onSaved={onSaved}
           />
@@ -186,12 +201,14 @@ function LineDetail({
   line,
   reasonCodes,
   history,
+  reportId,
   canEdit,
   onSaved,
 }: {
   line: TriageLine;
   reasonCodes: ReasonCode[];
   history: HistoryItem[];
+  reportId: string;
   canEdit: boolean;
   onSaved: (id: string, review: TriageReview, advance: boolean) => void;
 }) {
@@ -235,6 +252,11 @@ function LineDetail({
           <p className="text-xs text-gray-500">{line.programName} · {line.metricName}</p>
           <h2 className="text-lg font-semibold text-gray-900">PO {line.poNumber ?? "—"}</h2>
           <p className="text-xs text-gray-500">Sheet &quot;{line.sourceSheet}&quot;, row {line.sourceRow}</p>
+          {line.dispute && (
+            <Link href={`/reports/${reportId}/disputes?d=${line.dispute.id}`} className="mt-1 inline-flex items-center gap-2 text-xs text-blue-600 hover:underline">
+              Dispute <DisputeStatusBadge status={line.dispute.status} />
+            </Link>
+          )}
         </div>
         <div className="text-right">
           <p className="text-xs text-gray-500">Pre-dispute offset</p>

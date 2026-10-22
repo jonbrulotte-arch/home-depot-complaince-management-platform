@@ -203,24 +203,48 @@ function MetricEditor({ metric, run }: { metric: MetricRow; run: (a: () => Promi
             <Plus className="h-4 w-4 mr-1.5" />
             New rule from a fiscal month
           </Button>
-          {metric.reasonCodes.length > 0 && (
-            <Button variant="ghost" size="sm" onClick={() => setShowCodes(!showCodes)}>
-              {showCodes ? "Hide" : "Show"} {metric.reasonCodes.length} dispute reason codes
-            </Button>
-          )}
+          <Button variant="ghost" size="sm" onClick={() => setShowCodes(!showCodes)}>
+            {showCodes ? "Hide" : "Show"} {metric.reasonCodes.length} dispute reason codes
+          </Button>
         </div>
       )}
-      {showCodes && (
-        <ul className="space-y-1 text-xs">
-          {metric.reasonCodes.map((c) => (
-            <li key={c.id} className="rounded-md border border-gray-200 px-3 py-2">
+      {showCodes && <ReasonCodes metricId={metric.id} codes={metric.reasonCodes} run={run} />}
+    </div>
+  );
+}
+
+function ReasonCodes({ metricId, codes, run }: { metricId: string; codes: MetricRow["reasonCodes"]; run: (a: () => Promise<unknown>) => Promise<boolean> }) {
+  const [form, setForm] = useState({ code: "", whenToUse: "", requiredDocs: "" });
+
+  async function add() {
+    const ok = await run(() => apiFetch(`/api/admin/metrics/${metricId}/reason-codes`, { body: form }));
+    if (ok) setForm({ code: "", whenToUse: "", requiredDocs: "" });
+  }
+
+  return (
+    <div className="space-y-2">
+      <ul className="space-y-1 text-xs">
+        {codes.map((c) => (
+          <li key={c.id} className="flex items-start gap-2 rounded-md border border-gray-200 px-3 py-2">
+            <div className="flex-1">
               <p className="font-medium text-gray-900">{c.code}</p>
               {c.whenToUse && <p className="text-gray-600">When: {c.whenToUse}</p>}
               {c.requiredDocs && <p className="text-gray-600">Docs: {c.requiredDocs}</p>}
-            </li>
-          ))}
-        </ul>
-      )}
+            </div>
+            <button onClick={() => run(() => apiFetch(`/api/admin/reason-codes/${c.id}`, { method: "PATCH", body: { active: false } }))} className="p-1 rounded-md text-gray-400 hover:bg-gray-100 hover:text-red-600" title="Retire reason code">
+              <Trash2 className="h-3.5 w-3.5" />
+            </button>
+          </li>
+        ))}
+      </ul>
+      <div className="grid grid-cols-1 gap-2 rounded-md border border-gray-200 bg-gray-50 p-3 sm:grid-cols-3">
+        <Input placeholder="Reason code" value={form.code} onChange={(e) => setForm({ ...form, code: e.target.value })} />
+        <Input placeholder="When to use" value={form.whenToUse} onChange={(e) => setForm({ ...form, whenToUse: e.target.value })} />
+        <Input placeholder="Required documents" value={form.requiredDocs} onChange={(e) => setForm({ ...form, requiredDocs: e.target.value })} />
+        <div className="col-span-full flex justify-end">
+          <Button size="sm" onClick={add} disabled={!form.code.trim()}>Add reason code</Button>
+        </div>
+      </div>
     </div>
   );
 }

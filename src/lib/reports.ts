@@ -19,6 +19,13 @@ export interface MetricStat {
   compliancePct: number | null;
   thresholdPct: number | null;
   meetsThreshold: boolean | null;
+  /** Lines with an active (not withdrawn) dispute */
+  disputed: number;
+  approved: number;
+  recovered: number;
+  /** Performance and offset once approved disputes are applied, per THD's recalculation */
+  postDisputePct: number | null;
+  postDisputeOffset: number;
 }
 
 /** A line counts as reviewed once it has a final decision; "needs research" is still open. */
@@ -45,7 +52,13 @@ export async function getMetricStats(programIds: string[], fiscalMonth: number):
     }),
     prisma.complianceLine.findMany({
       where: { ...where, isCompliant: false },
-      select: { metricId: true, review: { select: { disposition: true } } },
+      select: {
+        metricId: true,
+        orderedQty: true,
+        receivedQty: true,
+        review: { select: { disposition: true } },
+        dispute: { select: { status: true, amountRecovered: true } },
+      },
     }),
   ]);
 
@@ -65,6 +78,29 @@ export async function getMetricStats(programIds: string[], fiscalMonth: number):
     }
     const rule = ruleFor(m.rules, fiscalMonth);
     const thresholdPct = rule ? Number(rule.thresholdPct) : null;
+
+    const lines = nonCompliant.filter((l) => l.metricId === m.id);
+    const disputes = lines.flatMap((l) => (l.dispute && l.dispute.status !== "WITHDRAWN" ? [{ ...l.dispute, line: l }] : []));
+    const approvedLines = disputes.filter((d) => d.status === "APPROVED");
+    const recovered = disputes
+      .filter((d) => d.status === "APPROVED" || d.status === "PARTIAL")
+      .reduce((sum, d) => sum + decimal(d.amountRecovered), 0);
+    // An approved dispute turns the line compliant, which recalculates the metric
+    let postDisputePct: number | null = null;
+    if (compliancePct !== null) {
+      if (m.code === "FILL_RATE" && ordered > 0) {
+        const restored = approvedLines.reduce((sum, d) => sum + Math.max(0, decimal(d.line.orderedQty) - decimal(d.line.receivedQty)), 0);
+        postDisputePct = Math.min(100, ((received + restored) / ordered) * 100);
+      } else {
+        postDisputePct = ((compliant + approvedLines.length) / (compliant + nc)) * 100;
+      }
+    }
+    // Percentage-based offsets are only assessed below the threshold, so they fall away entirely
+    // when the recalculated performance meets it
+    let postDisputeOffset = Math.max(0, offset - recovered);
+    if (rule?.offsetType === "PCT_VALUE" && postDisputePct !== null && thresholdPct !== null && postDisputePct >= thresholdPct) {
+      postDisputeOffset = 0;
+    }
     return {
       metricId: m.id,
       programId: m.programId,
@@ -77,6 +113,11 @@ export async function getMetricStats(programIds: string[], fiscalMonth: number):
       compliancePct,
       thresholdPct,
       meetsThreshold: compliancePct == null || thresholdPct == null ? null : compliancePct >= thresholdPct,
+      disputed: disputes.length,
+      approved: approvedLines.length,
+      recovered: Math.round(recovered * 100) / 100,
+      postDisputePct,
+      postDisputeOffset: Math.round(postDisputeOffset * 100) / 100,
     };
   });
 }

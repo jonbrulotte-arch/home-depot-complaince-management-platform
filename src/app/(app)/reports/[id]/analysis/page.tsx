@@ -18,7 +18,7 @@ export default async function AnalysisPage({ params }: { params: Promise<{ id: s
   const programIds = report.programs.map((p) => p.programId);
   const lines = await prisma.complianceLine.findMany({
     where: { fiscalMonth: report.period.fiscalMonth, isCompliant: false, metric: { programId: { in: programIds } } },
-    include: { metric: { include: { program: true } }, review: true },
+    include: { metric: { include: { program: true } }, review: true, dispute: { select: { id: true, status: true } } },
     orderBy: [{ metric: { program: { sortOrder: "asc" } } }, { metric: { sortOrder: "asc" } }, { poNumber: "asc" }, { sourceRow: "asc" }],
   });
 
@@ -52,6 +52,7 @@ export default async function AnalysisPage({ params }: { params: Promise<{ id: s
         return [{ key, label, kind, value: v instanceof Date ? v.toISOString() : typeof v === "object" ? Number(v) : (v as string | number | boolean) }];
       }),
       raw: l.raw as Record<string, string | number | boolean | null>,
+      dispute: l.dispute,
       review: l.review
         ? {
             disposition: l.review.disposition,
@@ -86,6 +87,7 @@ export default async function AnalysisPage({ params }: { params: Promise<{ id: s
           offset: Number(h.offsetAmount),
           disposition: h.review?.disposition ?? null,
         }))}
+        reportId={id}
         canEdit={user.permissions.has("lines.triage") && report.status !== "PUBLISHED"}
       />
     </div>

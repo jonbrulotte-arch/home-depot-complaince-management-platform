@@ -1,5 +1,6 @@
 import { Badge } from "@/components/ui/badge";
-import type { Disposition, ReportProgramStatus, ReportStatus } from "@prisma/client";
+import type { DisputeStatus, Disposition, ReportProgramStatus, ReportStatus } from "@prisma/client";
+import { DISPUTE_STATUS_LABELS } from "@/lib/disputes";
 
 const REPORT: Record<ReportStatus, { label: string; variant: "secondary" | "default" | "warning" | "purple" | "success" }> = {
   DRAFT: { label: "Draft", variant: "secondary" },
@@ -38,4 +39,18 @@ export function DispositionBadge({ disposition }: { disposition: Disposition | n
 
 export function ComplianceBadge({ compliant }: { compliant: boolean }) {
   return compliant ? <Badge variant="success">Compliant</Badge> : <Badge variant="destructive">Non-compliant</Badge>;
+}
+
+const DISPUTE: Record<DisputeStatus, "secondary" | "default" | "warning" | "destructive" | "success" | "purple" | "outline"> = {
+  PREPARING: "secondary",
+  READY: "purple",
+  SUBMITTED: "default",
+  APPROVED: "success",
+  PARTIAL: "warning",
+  DENIED: "destructive",
+  WITHDRAWN: "outline",
+};
+
+export function DisputeStatusBadge({ status }: { status: DisputeStatus }) {
+  return <Badge variant={DISPUTE[status]}>{DISPUTE_STATUS_LABELS[status]}</Badge>;
 }

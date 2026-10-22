@@ -144,6 +144,29 @@ export async function persistImport(db: Db, args: PersistArgs): Promise<PersistR
         await tx.complianceLine.createMany({ data: toCreate.slice(i, i + 1000) });
       }
 
+      // A later SPM export can carry THD's Approve/Deny decision for a submitted dispute.
+      // Flag it on the dispute; the outcome itself is recorded by a person.
+      const decided = await tx.complianceLine.findMany({
+        where: { batchId: batch.id, spmDecision: { not: null }, dispute: { status: "SUBMITTED" } },
+        select: { spmDecision: true, spmDecisionDetail: true, dispute: { select: { id: true, spmDecisionSeen: true } } },
+      });
+      for (const line of decided) {
+        if (!line.dispute || line.dispute.spmDecisionSeen === line.spmDecision) continue;
+        await tx.dispute.update({
+          where: { id: line.dispute.id },
+          data: {
+            spmDecisionSeen: line.spmDecision,
+            events: {
+              create: {
+                type: "SPM_UPDATE",
+                body: `SPM export "${args.fileName}" shows THD decision: ${line.spmDecision}${line.spmDecisionDetail ? ` (${line.spmDecisionDetail})` : ""}`,
+                userId: args.importedById ?? null,
+              },
+            },
+          },
+        });
+      }
+
       await tx.importBatch.update({ where: { id: batch.id }, data: { createdCount: toCreate.length, updatedCount: updated } });
       if (args.reportProgramId) {
         await tx.reportProgram.update({ where: { id: args.reportProgramId }, data: { status: "IMPORTED" } });

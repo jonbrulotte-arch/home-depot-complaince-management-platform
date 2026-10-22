@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { requireApiPermission } from "@/lib/auth-guard";
 import { badRequest, notFound, parseJson, type IdParams } from "@/lib/api";
 import { audit } from "@/lib/audit";
+import { syncDisputes } from "@/lib/dispute-sync";
 
 // Phase 1 covers import and triage; the scorecard stages arrive with the reporting module.
 const FLOW: ReportStatus[] = ["DRAFT", "IN_REVIEW", "DISPUTES"];
@@ -49,6 +50,8 @@ export async function PATCH(req: Request, { params }: IdParams) {
     where: { id },
     data: { ...(status ? { status } : {}), ...(notes !== undefined ? { notes } : {}) },
   });
-  await audit(guard.user.id, status ? "report.status" : "report.update", "ComplianceReport", id, body.data);
-  return NextResponse.json({ id: updated.id, status: updated.status });
+  // Entering the dispute stage turns every Disputable line into a dispute to work
+  const disputes = status === "DISPUTES" && report.status !== "DISPUTES" ? await syncDisputes(id, guard.user.id) : null;
+  await audit(guard.user.id, status ? "report.status" : "report.update", "ComplianceReport", id, { ...body.data, disputes });
+  return NextResponse.json({ id: updated.id, status: updated.status, disputes });
 }

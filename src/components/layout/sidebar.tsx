@@ -7,6 +7,7 @@ import { useState } from "react";
 import {
   LayoutDashboard,
   ClipboardCheck,
+  Gavel,
   Search,
   Users,
   ShieldCheck,
@@ -23,6 +24,7 @@ type NavItem = { href: string; label: string; icon: React.ElementType; permissio
 const navItems: NavItem[] = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard, permission: "view.dashboard" },
   { href: "/reports", label: "Compliance Reports", icon: ClipboardCheck, permission: "reports.view" },
+  { href: "/disputes", label: "Disputes", icon: Gavel, permission: "reports.view" },
   { href: "/po-lookup", label: "PO Lookup", icon: Search, permission: "view.polookup" },
 ];
 
