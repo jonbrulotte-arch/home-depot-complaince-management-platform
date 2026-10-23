@@ -167,3 +167,23 @@ describe("compliance period imports", () => {
     expect(p.lines.some((l) => l.updateOnly)).toBe(false);
   });
 });
+
+describe("Invoice Timeliness exports", () => {
+  it("is detected from the US_INVOICE_TIMELINESS prefix", () => {
+    expect(detectProgram("US_INVOICE_TIMELINESS_RECORDS_PVENDOR_875062_All_Week_2026_10_23_09_29_26.xlsx", ["All LOC"], programs)?.code).toBe("INVOICE_TIMELINESS");
+  });
+
+  it("maps every column and counts each PO on the report as a violation", async () => {
+    const p = await load("invoice-timeliness_RECORDS.xlsx", "INVOICE_TIMELINESS", 202608);
+    expect(p.exportKind).toBe("NON_COMPLIANT");
+    expect(p.warnings).toEqual([]);
+    expect(metric(p, "INVOICE_TIMELINESS")).toMatchObject({ sheet: "All LOC", total: 1, nonCompliant: 1, offset: 0, unmappedHeaders: [] });
+    const [line] = p.lines;
+    expect(line).toMatchObject({ fiscalMonth: 202608, isCompliant: false, offsetAmount: 0 });
+    expect(line.fields).toMatchObject({ poNumber: "72936404", dcNumber: "8119", locationType: "HD.COM", weeksOnReport: 12 });
+    expect(line.fields.goodsReceiptDate?.toISOString().slice(0, 10)).toBe("2026-07-22");
+    expect(line.fields.firstReportedDate?.toISOString().slice(0, 10)).toBe("2026-07-25");
+    expect(line.fields.lastReportedDate?.toISOString().slice(0, 10)).toBe("2026-10-17");
+    expect(line.po).toMatchObject({ mVendor: "60003126", mVendorName: "JS PRODUCTS, INC" });
+  });
+});

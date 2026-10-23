@@ -33,6 +33,9 @@ export interface ProgramDef {
 /** Metrics whose SPM sheet lists every line (compliant and not); other sheets list violations, or carry a $0 offset on compliant rows. */
 export const FULL_POPULATION_METRICS = new Set(["FILL_RATE", "ON_TIME", "ASN_TIMELINESS"]);
 
+/** Metrics whose exports list only violations: every row is non-compliant even without an offset */
+export const VIOLATION_LIST_METRICS = new Set(["INVOICE_TIMELINESS"]);
+
 const DC_FILL_RATE_CODES: ReasonCodeDef[] = [
   { code: "Inaccurate SKU Status", whenToUse: "THD ordered inactive SKU and supplier did not ship", requiredDocs: "Email or ticket communication", docDetails: "SKU(s) required maintenance; Merchant, Merchant Planner, or IPR Analyst acknowledgement" },
   { code: "Unexpected Spike Demand", whenToUse: "Spike order quantity, no advance notice provided by THD", requiredDocs: "Email or ticket communication", docDetails: "PO/SKU(s) impacted; timing of the spike; clear outline of the circumstances" },
@@ -163,9 +166,10 @@ export const PROGRAM_CATALOG: ProgramDef[] = [
   {
     code: "INVOICE_TIMELINESS",
     name: "Invoice Timeliness",
-    filePrefix: "INVOICE",
+    // US_INVOICE_TIMELINESS_RECORDS_PVENDOR_…_All_Week_….xlsx, one "All LOC" sheet
+    filePrefix: "US_INVOICE_TIMELINESS",
     metrics: [
-      { code: "INVOICE_TIMELINESS", name: "Invoice Timeliness", sheetNames: ["Invoice Timeliness", "Invoice"], thresholdPct: 100, offsetType: "NONE", offsetAmount: 0, ruleNotes: "Configure once a sample export is available" },
+      { code: "INVOICE_TIMELINESS", name: "Invoice Timeliness", sheetNames: ["All LOC", "Invoice Timeliness", "Invoice"], thresholdPct: 100, offsetType: "NONE", offsetAmount: 0, ruleNotes: "Every PO on THD's report is a violation: goods received, invoice not yet received. THD charges no offset." },
     ],
   },
 ];
@@ -183,6 +187,13 @@ export const DEFAULT_ALIASES: Record<string, string> = {
   "assessed fscl prd": "fiscalMonth",
   "p-vendor #": "pVendor",
   "m-vendor #": "mVendor",
+  "m-vendor number": "mVendor",
+  "location number": "dcNumber",
+  "location type": "locationType",
+  "goods receipt": "goodsReceiptDate",
+  "original report date": "firstReportedDate",
+  "current report date": "lastReportedDate",
+  "weeks on report": "weeksOnReport",
   "m-vendor name": "mVendorName",
   "dept number": "dept",
   "department #": "dept",

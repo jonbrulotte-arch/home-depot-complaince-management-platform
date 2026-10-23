@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { isFiscalMonth } from "@/lib/fiscal";
 import { periodLabel, periodOfMetric } from "@/lib/shipment-ranges";
 import type { DataPeriod } from "@prisma/client";
-import { FULL_POPULATION_METRICS } from "./catalog";
+import { FULL_POPULATION_METRICS, VIOLATION_LIST_METRICS } from "./catalog";
 import type { ParsedRow, ParsedSheet, ParsedWorkbook } from "./parse";
 import { normalizeHeader, toBoolean, toDate, toJsonValue, toNumber, toText, type CellPrimitive } from "./values";
 
@@ -35,11 +35,13 @@ const TEXT_FIELDS = [
   "bolNumber", "tmsId", "shipmentNumber", "docTraceId", "carrierUsed", "carrierPro", "rgCarriers", "originState",
   "destinationState", "freightTerms", "invoiceNumber", "offsetType", "reason", "lateReason", "spmStatus",
   "spmDisputeReason", "spmSupplierComment", "spmDecision", "spmDecisionDetail", "spmCoordinatorComment",
+  "locationType",
 ] as const;
-const NUMBER_FIELDS = ["orderedQty", "receivedQty", "fillRatePct", "businessDaysLate"] as const;
+const NUMBER_FIELDS = ["orderedQty", "receivedQty", "fillRatePct", "businessDaysLate", "weeksOnReport"] as const;
 const DATE_FIELDS = [
   "poCreateDate", "expectedArrivalDate", "estShipDate", "estDeliveryDate", "actualShipDate", "rtsSent",
   "pickupRequestDate", "trailerCheckIn", "asnTimestamp", "asnReceivedAt", "closedDate", "cancelDate",
+  "goodsReceiptDate", "firstReportedDate", "lastReportedDate",
 ] as const;
 /** Fields used to build the PO record rather than stored on the line */
 const PO_FIELDS = ["pVendor", "mVendor", "mVendorName", "dept"] as const;
@@ -189,6 +191,7 @@ export function classifyLine(
   exportKind: ExportKind,
 ): boolean {
   if (exportKind === "NON_COMPLIANT") return false;
+  if (VIOLATION_LIST_METRICS.has(metricCode)) return false;
   if (offset > 0) return false;
   if (fields.spmStatus && !/^pending supplier$/i.test(fields.spmStatus)) return false;
   if (metricCode === "FILL_RATE") {
@@ -518,6 +521,8 @@ export function transformWorkbook(workbook: ParsedWorkbook, opts: TransformOptio
     );
   }
 
+  // Exports that only ever list violations (Invoice Timeliness) need no ALL_RESULTS/NON_COMPLIANT marker
+  if (exportKind === "UNKNOWN" && metrics.length && metrics.every((m) => VIOLATION_LIST_METRICS.has(m.code))) exportKind = "NON_COMPLIANT";
   if (exportKind === "UNKNOWN") {
     warnings.push("Could not tell from the filename whether this is an ALL_RESULTS or NON_COMPLIANT export; compliance % will not be calculated from it.");
   }

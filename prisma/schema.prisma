@@ -346,6 +346,12 @@ model ComplianceLine {
   reason                String?
   lateReason            String?
   businessDaysLate      Decimal?  @db.Decimal(8, 2)
+  /// Invoice Timeliness: THD lists POs whose goods were received but not yet invoiced
+  goodsReceiptDate      DateTime?
+  firstReportedDate     DateTime?
+  lastReportedDate      DateTime?
+  weeksOnReport         Decimal?  @db.Decimal(8, 2)
+  locationType          String?
   rescheduled           Boolean?
   spmStatus             String?
   spmDisputeReason      String?
