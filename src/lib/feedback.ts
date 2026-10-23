@@ -52,6 +52,9 @@ export async function scorecardFeedback(reportId: string) {
   if (!scorecard?.publishedAt || scorecard.report.status !== "PUBLISHED") return null;
   const data = scorecardData(scorecard.data);
   const violations = data.violations.filter((v): v is ScorecardViolation & { lineId: string } => Boolean(v.lineId));
+  // PO record of each violation's line, for the link to its PO Record page
+  const lines = await prisma.complianceLine.findMany({ where: { id: { in: violations.map((v) => v.lineId) } }, select: { id: true, poRecordId: true } });
+  const poRecordOf = new Map(lines.map((l) => [l.id, l.poRecordId]));
   const feedback = await prisma.scorecardFeedback.findMany({
     where: { reportId },
     include: { author: { select: { name: true } } },
@@ -61,7 +64,7 @@ export async function scorecardFeedback(reportId: string) {
     title: scorecard.report.title,
     data,
     publishedAt: scorecard.publishedAt.toISOString(),
-    violations,
+    violations: violations.map((v) => ({ ...v, poRecordId: poRecordOf.get(v.lineId) ?? null })),
     /** Violations in the snapshot without a line id (generated before feedback existed) */
     missingLineIds: data.violations.length - violations.length,
     feedback: feedback.map((f): FeedbackItem => ({

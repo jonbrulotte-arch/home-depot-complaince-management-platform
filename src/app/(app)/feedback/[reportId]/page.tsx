@@ -43,6 +43,7 @@ export default async function ScorecardFeedbackPage({ params }: { params: Promis
         currentUserId={user.id}
         canSubmit={user.permissions.has("feedback.submit")}
         canDeleteAny={user.permissions.has("admin.users")}
+        canOpenPo={user.permissions.has("view.polookup")}
       />
     </div>
   );

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { MessageSquare, Trash2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -13,7 +14,7 @@ import type { FeedbackItem } from "@/lib/feedback";
 import type { ScorecardViolation } from "@/lib/scorecard";
 import { cn, formatCurrency, formatDateTime } from "@/lib/utils";
 
-type Violation = ScorecardViolation & { lineId: string };
+type Violation = ScorecardViolation & { lineId: string; poRecordId: string | null };
 
 const ALL = "__all__";
 const NO_TEAM = "Not assigned";
@@ -25,6 +26,7 @@ export function FeedbackWorkspace({
   currentUserId,
   canSubmit,
   canDeleteAny,
+  canOpenPo,
 }: {
   reportId: string;
   violations: Violation[];
@@ -32,6 +34,8 @@ export function FeedbackWorkspace({
   currentUserId: string;
   canSubmit: boolean;
   canDeleteAny: boolean;
+  /** PO Record pages need PO Lookup access */
+  canOpenPo: boolean;
 }) {
   const [feedback, setFeedback] = useState(initialFeedback);
   const [program, setProgram] = useState(ALL);
@@ -96,6 +100,7 @@ export function FeedbackWorkspace({
           currentUserId={currentUserId}
           canSubmit={canSubmit}
           canDeleteAny={canDeleteAny}
+          canOpenPo={canOpenPo}
           onAdded={(item) => setFeedback((all) => [...all, item])}
           onDeleted={(id) => setFeedback((all) => all.filter((f) => f.id !== id))}
         />
@@ -111,6 +116,7 @@ function ViolationFeedback({
   currentUserId,
   canSubmit,
   canDeleteAny,
+  canOpenPo,
   onAdded,
   onDeleted,
 }: {
@@ -120,6 +126,7 @@ function ViolationFeedback({
   currentUserId: string;
   canSubmit: boolean;
   canDeleteAny: boolean;
+  canOpenPo: boolean;
   onAdded: (item: FeedbackItem) => void;
   onDeleted: (id: string) => void;
 }) {
@@ -164,7 +171,15 @@ function ViolationFeedback({
           <p className="text-xs text-gray-500">
             {v.program} · {v.metric}
           </p>
-          <p className="font-medium text-gray-900">PO {v.poNumber ?? "—"}</p>
+          <p className="font-medium text-gray-900">
+            {v.poRecordId && canOpenPo ? (
+              <Link href={`/po/${v.poRecordId}`} className="text-blue-600 hover:underline" title="Open the PO record">
+                PO {v.poNumber ?? "—"}
+              </Link>
+            ) : (
+              `PO ${v.poNumber ?? "—"}`
+            )}
+          </p>
         </div>
         {items.length > 0 ? (
           <Badge variant="default">
