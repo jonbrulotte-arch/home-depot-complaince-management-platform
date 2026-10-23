@@ -34,6 +34,7 @@ const data: ScorecardData = {
     totals: { smallParcel: 0, ltl: 5, total: 5 },
     transportationLtl: 5,
     complete: true,
+    ranges: { fillOnTime: { from: "2024-04-01", to: "2024-04-30" }, other: null },
   },
   teamInfluence: [{ team: "Warehouse", amount: 144.64, lines: 1 }],
   trend: [{ fiscalMonth: 202405, label: "Jun 2024", byProgram: { US_RDC: 1359.62 }, preOffset: 1359.62, recovered: 144.64 }],
@@ -51,6 +52,8 @@ describe("scorecard export", () => {
     const values = sc.getSheetValues().flat().filter((v) => v !== undefined && v !== null);
     expect(values).toContain("Below goal");
     expect(values).toContain(1214.98);
+    expect(values).toContain("04/01/2024 - 04/30/2024");
+    expect(values).toContain("Not entered");
 
     const vs = wb.getWorksheet("Violations")!;
     expect(vs.getRow(2).getCell(3).value).toBe("2015449080");

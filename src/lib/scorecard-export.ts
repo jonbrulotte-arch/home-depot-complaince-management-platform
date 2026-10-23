@@ -2,6 +2,7 @@ import ExcelJS from "exceljs";
 import type { ScorecardData } from "@/lib/scorecard";
 import { DISPUTE_STATUS_LABELS } from "@/lib/disputes";
 import { DEFAULT_SITE_NAME } from "@/lib/brand";
+import { formatDateRange, SHIPMENT_RANGES } from "@/lib/shipment-ranges";
 
 const HEADER_FILL: ExcelJS.Fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFF3F4F6" } };
 const TITLE_FONT: Partial<ExcelJS.Font> = { bold: true, size: 14 };
@@ -61,6 +62,7 @@ export async function scorecardWorkbook(data: ScorecardData, status: { version: 
     const sh = data.shipments;
     sc.addRow([]);
     sc.addRow(["Shipments"]).font = { bold: true, size: 12 };
+    for (const { key, label } of sh.ranges ? SHIPMENT_RANGES : []) sc.addRow([`${label} date range`, formatDateRange(sh.ranges![key])]);
     header(sc.addRow(["Mode", ...sh.programs.map((p) => p.name), "Total"]));
     sc.addRow(["Small Parcel", ...sh.programs.map((p) => p.smallParcel), sh.totals.smallParcel]);
     sc.addRow(["LTL & TL", ...sh.programs.map((p) => p.ltl), sh.totals.ltl]);

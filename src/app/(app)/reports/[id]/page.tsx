@@ -13,6 +13,7 @@ import { ImportPanel } from "./import-panel";
 import { ReportActions } from "./report-actions";
 import { ShipmentCounts } from "./shipment-counts";
 import { getShipmentInputs } from "@/lib/shipments";
+import { reportShipmentRanges } from "@/lib/shipment-ranges";
 import { getPeriodBasis } from "@/lib/periods";
 
 const STEPS = [
@@ -114,7 +115,7 @@ export default async function ReportPage({ params }: { params: Promise<{ id: str
 
       {report.notes && <p className="rounded-md border border-gray-200 bg-white px-4 py-3 text-sm text-gray-700 whitespace-pre-wrap">{report.notes}</p>}
 
-      <ShipmentCounts key={report.updatedAt.toISOString()} reportId={id} inputs={shipmentInputs} canEdit={user.permissions.has("reports.import") && report.status !== "PUBLISHED"} />
+      <ShipmentCounts key={report.updatedAt.toISOString()} reportId={id} inputs={shipmentInputs} ranges={reportShipmentRanges(report)} canEdit={user.permissions.has("reports.import") && report.status !== "PUBLISHED"} />
 
       {report.programs.map((rp) => {
         const programStats = stats.filter((s) => s.programId === rp.programId);

@@ -1,5 +1,6 @@
 import { CheckCircle2, XCircle } from "lucide-react";
 import type { ScorecardData, ScorecardShipments } from "@/lib/scorecard";
+import { formatDateRange, SHIPMENT_RANGES } from "@/lib/shipment-ranges";
 import { DISPUTE_STATUS_LABELS } from "@/lib/disputes";
 import { cn, formatCurrency, formatPct, formatUtcDate } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
@@ -206,6 +207,16 @@ function Shipments({ shipments }: { shipments: ScorecardShipments }) {
         </p>
       </CardHeader>
       <CardContent>
+        {shipments.ranges && (
+          <dl className="mb-3 grid gap-x-6 gap-y-1 text-sm sm:grid-cols-2">
+            {SHIPMENT_RANGES.map(({ key, label }) => (
+              <div key={key} className="flex gap-2">
+                <dt className="text-gray-500">{label}:</dt>
+                <dd className={shipments.ranges![key] ? "text-gray-900" : "text-gray-400"}>{formatDateRange(shipments.ranges![key])}</dd>
+              </div>
+            ))}
+          </dl>
+        )}
         {!shipments.complete && <p className="mb-3 text-xs text-amber-700">Some shipment counts were not entered for this period.</p>}
         <div className="overflow-x-auto border border-gray-200 rounded-lg">
           <table className="min-w-full">

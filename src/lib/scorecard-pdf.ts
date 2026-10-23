@@ -2,6 +2,7 @@ import PDFDocument from "pdfkit";
 import type { ScorecardData } from "@/lib/scorecard";
 import { DISPUTE_STATUS_LABELS } from "@/lib/disputes";
 import { DEFAULT_SITE_NAME } from "@/lib/brand";
+import { formatDateRange, SHIPMENT_RANGES } from "@/lib/shipment-ranges";
 
 // Standard PDF fonts only cover WinAnsi, so text avoids symbols such as ≥ and →.
 // Colours from the Sympl design system (gray-900/700/500/200/50, blue-600, red-700, green-700, amber-700)
@@ -124,6 +125,14 @@ export function scorecardPdf(data: ScorecardData, status: { version: number; pub
   if (data.shipments?.programs.length) {
     const sh = data.shipments;
     heading("Shipments", sh.transportationLtl !== null ? `${sh.transportationLtl} RDC + DFC LTL shipments (Transportation)` : undefined);
+    if (sh.ranges) {
+      doc
+        .font("Helvetica")
+        .fontSize(8.5)
+        .fillColor(C.body)
+        .text(SHIPMENT_RANGES.map(({ key, label }) => `${label}: ${formatDateRange(sh.ranges![key])}`).join("     "));
+      doc.moveDown(0.4);
+    }
     const n = (v: number | null) => (v === null ? { text: "Not entered", color: C.muted } : v.toLocaleString("en-US"));
     table(
       [{ header: "Mode", width: 3 }, ...sh.programs.map((p) => ({ header: p.name, width: 3, align: "right" as const })), { header: "Total", width: 2, align: "right" }],

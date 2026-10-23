@@ -5,6 +5,13 @@ import { requireApiPermission } from "@/lib/auth-guard";
 import { badRequest, notFound, parseJson, type IdParams } from "@/lib/api";
 import { audit } from "@/lib/audit";
 import { SHIPMENT_PROGRAMS } from "@/lib/shipments";
+import { isIsoDate } from "@/lib/shipment-ranges";
+
+const isoDate = z.string().trim().refine(isIsoDate, "Dates must be YYYY-MM-DD");
+const range = z
+  .object({ from: isoDate, to: isoDate })
+  .refine((r) => r.from <= r.to, "A range must start on or before its end date")
+  .nullable();
 
 const schema = z.object({
   counts: z
@@ -16,7 +23,10 @@ const schema = z.object({
       }),
     )
     .max(20),
+  ranges: z.object({ fillOnTime: range, other: range }).optional(),
 });
+
+const asDate = (r: { from: string; to: string } | null, end: "from" | "to") => (r ? new Date(`${r[end]}T00:00:00Z`) : null);
 
 export async function PUT(req: Request, { params }: IdParams) {
   const guard = await requireApiPermission("reports.import");
@@ -31,8 +41,9 @@ export async function PUT(req: Request, { params }: IdParams) {
   const allowed = new Set(report.programs.filter((p) => SHIPMENT_PROGRAMS.includes(p.program.code)).map((p) => p.programId));
   if (body.data.counts.some((c) => !allowed.has(c.programId))) return badRequest("Shipment counts apply to the report's Drop Ship, RDC and DFC programs");
 
-  await prisma.$transaction(
-    body.data.counts.map(({ programId, mode, count }) =>
+  const { ranges } = body.data;
+  await prisma.$transaction([
+    ...body.data.counts.map(({ programId, mode, count }) =>
       count === null
         ? prisma.shipmentCount.deleteMany({ where: { reportId: id, programId, mode } })
         : prisma.shipmentCount.upsert({
@@ -41,7 +52,20 @@ export async function PUT(req: Request, { params }: IdParams) {
             update: { count, updatedById: guard.user.id },
           }),
     ),
-  );
+    ...(ranges
+      ? [
+          prisma.complianceReport.update({
+            where: { id },
+            data: {
+              fillOnTimeFrom: asDate(ranges.fillOnTime, "from"),
+              fillOnTimeTo: asDate(ranges.fillOnTime, "to"),
+              otherFrom: asDate(ranges.other, "from"),
+              otherTo: asDate(ranges.other, "to"),
+            },
+          }),
+        ]
+      : []),
+  ]);
   await audit(guard.user.id, "report.shipments", "ComplianceReport", id, body.data);
   return NextResponse.json({ ok: true });
 }

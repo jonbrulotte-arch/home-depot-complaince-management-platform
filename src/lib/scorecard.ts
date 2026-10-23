@@ -5,6 +5,7 @@ import { fiscalLabel, shiftFiscalMonth } from "@/lib/fiscal";
 import { getMetricStats } from "@/lib/reports";
 import { meetsGoal } from "@/lib/scorecard-rules";
 import { getShipmentInputs, type ShipmentInput } from "@/lib/shipments";
+import { reportShipmentRanges, type ShipmentRanges } from "@/lib/shipment-ranges";
 import { TEAM_INFLUENCES } from "@/lib/line-fields";
 
 export interface ScorecardMetric {
@@ -55,6 +56,8 @@ export interface ScorecardShipments {
   /** Transportation measures the RDC and DFC LTL shipments */
   transportationLtl: number | null;
   complete: boolean;
+  /** Date ranges the counts cover; absent on scorecards generated before ranges were collected */
+  ranges?: ShipmentRanges;
 }
 
 export interface ScorecardData {
@@ -111,7 +114,7 @@ export async function buildScorecard(reportId: string): Promise<ScorecardData> {
     prisma.importBatch.aggregate({ _max: { importedAt: true }, where: { lines: { some: inReport } } }),
     getShipmentInputs(reportId),
   ]);
-  const shipments = summarizeShipments(shipmentInputs);
+  const shipments = { ...summarizeShipments(shipmentInputs), ranges: reportShipmentRanges(report) };
   const thdPost = report.historical ? await thdPostDisputeOffsets(stats.map((m) => m.metricId), linesInPeriod(field, fiscalMonth)) : new Map<string, ThdSummary>();
   let thdRecovered = 0;
 

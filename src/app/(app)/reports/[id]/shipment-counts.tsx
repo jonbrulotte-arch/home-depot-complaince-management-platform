@@ -9,6 +9,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { apiFetch } from "@/lib/client-api";
 import type { ShipmentInput } from "@/lib/shipments";
+import { FILL_ON_TIME_LAG_MONTHS, SHIPMENT_RANGES, shiftIsoDate, type ShipmentRanges } from "@/lib/shipment-ranges";
 
 const MODES: { mode: ShipmentMode; label: string }[] = [
   { mode: "SMALL_PARCEL", label: "Small Parcel" },
@@ -16,13 +17,21 @@ const MODES: { mode: ShipmentMode; label: string }[] = [
 ];
 
 type Draft = Record<string, Record<ShipmentMode, string>>;
+type RangeKey = keyof ShipmentRanges;
+type RangeDraft = Record<RangeKey, { from: string; to: string }>;
 
 const toDraft = (inputs: ShipmentInput[]): Draft =>
   Object.fromEntries(inputs.map((i) => [i.programId, { SMALL_PARCEL: i.counts.SMALL_PARCEL?.toString() ?? "", LTL_TL: i.counts.LTL_TL?.toString() ?? "" }]));
 
-export function ShipmentCounts({ reportId, inputs, canEdit }: { reportId: string; inputs: ShipmentInput[]; canEdit: boolean }) {
+const toRangeDraft = (ranges: ShipmentRanges): RangeDraft => ({
+  fillOnTime: { from: ranges.fillOnTime?.from ?? "", to: ranges.fillOnTime?.to ?? "" },
+  other: { from: ranges.other?.from ?? "", to: ranges.other?.to ?? "" },
+});
+
+export function ShipmentCounts({ reportId, inputs, ranges, canEdit }: { reportId: string; inputs: ShipmentInput[]; ranges: ShipmentRanges; canEdit: boolean }) {
   const router = useRouter();
   const [draft, setDraft] = useState<Draft>(() => toDraft(inputs));
+  const [rangeDraft, setRangeDraft] = useState<RangeDraft>(() => toRangeDraft(ranges));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
@@ -39,7 +48,29 @@ export function ShipmentCounts({ reportId, inputs, canEdit }: { reportId: string
     const i = inputs.find((x) => x.code === code);
     return i ? value(i.programId, "LTL_TL") ?? 0 : 0;
   };
-  const missing = inputs.filter((i) => MODES.some(({ mode }) => value(i.programId, mode) === null)).length;
+  // A range is saved only with both dates; one date alone or an end before the start is an error
+  const rangeError = (key: RangeKey) => {
+    const { from, to } = rangeDraft[key];
+    if (!from && !to) return null;
+    if (!from || !to) return "Enter both dates";
+    return from > to ? "Starts after it ends" : null;
+  };
+  const rangesInvalid = SHIPMENT_RANGES.some(({ key }) => rangeError(key) !== null);
+  const missing =
+    inputs.filter((i) => MODES.some(({ mode }) => value(i.programId, mode) === null)).length +
+    SHIPMENT_RANGES.filter(({ key }) => !rangeDraft[key].from || !rangeDraft[key].to).length;
+
+  function setRange(key: RangeKey, end: "from" | "to", v: string) {
+    setRangeDraft({ ...rangeDraft, [key]: { ...rangeDraft[key], [end]: v } });
+    setSaved(false);
+  }
+
+  /** Fill Rate and On Time trail the other data by two months */
+  function fillFromOther() {
+    const { from, to } = rangeDraft.other;
+    setRangeDraft({ ...rangeDraft, fillOnTime: { from: shiftIsoDate(from, -FILL_ON_TIME_LAG_MONTHS), to: shiftIsoDate(to, -FILL_ON_TIME_LAG_MONTHS) } });
+    setSaved(false);
+  }
 
   function set(pid: string, mode: ShipmentMode, v: string) {
     setDraft({ ...draft, [pid]: { ...draft[pid], [mode]: v } });
@@ -52,7 +83,12 @@ export function ShipmentCounts({ reportId, inputs, canEdit }: { reportId: string
     try {
       await apiFetch(`/api/reports/${reportId}/shipments`, {
         method: "PUT",
-        body: { counts: inputs.flatMap((i) => MODES.map(({ mode }) => ({ programId: i.programId, mode, count: value(i.programId, mode) }))) },
+        body: {
+          counts: inputs.flatMap((i) => MODES.map(({ mode }) => ({ programId: i.programId, mode, count: value(i.programId, mode) }))),
+          ranges: Object.fromEntries(
+            SHIPMENT_RANGES.map(({ key }) => [key, rangeDraft[key].from && rangeDraft[key].to ? rangeDraft[key] : null]),
+          ),
+        },
       });
       setSaved(true);
       router.refresh();
@@ -70,17 +106,61 @@ export function ShipmentCounts({ reportId, inputs, canEdit }: { reportId: string
         <div className="space-y-1.5">
           <div className="flex items-center gap-2">
             <CardTitle>Shipment counts</CardTitle>
-            {missing > 0 ? <Badge variant="warning">{missing} program(s) incomplete</Badge> : <Badge variant="success">Complete</Badge>}
+            {missing > 0 ? <Badge variant="warning">{missing} item(s) incomplete</Badge> : <Badge variant="success">Complete</Badge>}
           </div>
           <CardDescription>
-            Shipments in the period by mode, for the scorecard. SPM exports do not carry the mode for RDC/DFC, so enter them from TMS/WMS; Drop Ship is suggested from THD&apos;s Parcel flag.
+            Shipments in the period by mode, for the scorecard, and the dates they cover. SPM exports do not carry the mode for RDC/DFC, so enter them from TMS/WMS; Drop Ship is suggested from THD&apos;s Parcel flag.
           </CardDescription>
         </div>
         {canEdit && (
-          <Button onClick={save} disabled={saving || invalid}>{saving ? "Saving…" : saved ? "Saved" : "Save counts"}</Button>
+          <Button onClick={save} disabled={saving || invalid || rangesInvalid}>{saving ? "Saving…" : saved ? "Saved" : "Save"}</Button>
         )}
       </CardHeader>
       <CardContent className="space-y-3">
+        <div className="overflow-x-auto border border-gray-200 rounded-lg">
+          <table className="min-w-full text-sm">
+            <thead className="bg-gray-50">
+              <tr>
+                {["Compliance period", "From", "To", ""].map((h, i) => (
+                  <th key={i} className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {SHIPMENT_RANGES.map(({ key, label, hint }) => {
+                const err = rangeError(key);
+                return (
+                  <tr key={key} className="border-t border-gray-200">
+                    <td className="px-4 py-3">
+                      <div className="text-gray-900">{label}</div>
+                      <div className="text-xs text-gray-500">{hint}</div>
+                    </td>
+                    {(["from", "to"] as const).map((end) => (
+                      <td key={end} className="px-4 py-2 w-48">
+                        <Input type="date" value={rangeDraft[key][end]} disabled={!canEdit} onChange={(e) => setRange(key, end, e.target.value)} aria-label={`${label} ${end}`} />
+                      </td>
+                    ))}
+                    <td className="px-4 py-3 text-xs">
+                      {err ? (
+                        <span className="text-red-600">{err}</span>
+                      ) : (
+                        key === "fillOnTime" &&
+                        canEdit &&
+                        rangeDraft.other.from &&
+                        rangeDraft.other.to &&
+                        !rangeError("other") && (
+                          <button className="text-blue-600 hover:underline" onClick={fillFromOther}>
+                            Use other range − {FILL_ON_TIME_LAG_MONTHS} months
+                          </button>
+                        )
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
         <div className="overflow-x-auto border border-gray-200 rounded-lg">
           <table className="min-w-full text-sm">
             <thead className="bg-gray-50">
