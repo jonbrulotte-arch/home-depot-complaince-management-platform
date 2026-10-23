@@ -11,7 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { DISPOSITIONS, DispositionBadge, DisputeStatusBadge } from "@/components/shared/status-badges";
 import { apiFetch } from "@/lib/client-api";
-import { TEAM_INFLUENCES } from "@/lib/line-fields";
+import { RETIRED_TEAM_INFLUENCES, TEAM_INFLUENCES } from "@/lib/line-fields";
 import { cn, formatCurrency, formatUtcDateTime } from "@/lib/utils";
 
 export interface TriageReview {
@@ -361,9 +361,11 @@ function LineDetail({
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value={NONE}>Not set</SelectItem>
-                {Object.entries(TEAM_INFLUENCES).map(([k, label]) => (
-                  <SelectItem key={k} value={k}>{label}</SelectItem>
-                ))}
+                {Object.entries(TEAM_INFLUENCES)
+                  .filter(([k]) => !RETIRED_TEAM_INFLUENCES.includes(k) || k === review.teamInfluence)
+                  .map(([k, label]) => (
+                    <SelectItem key={k} value={k}>{label}</SelectItem>
+                  ))}
               </SelectContent>
             </Select>
           </div>

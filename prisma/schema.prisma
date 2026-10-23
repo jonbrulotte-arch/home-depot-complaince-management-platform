@@ -391,7 +391,9 @@ enum Disposition {
 }
 
 enum TeamInfluence {
-  WAREHOUSE
+  WAREHOUSE_SITE_0
+  WAREHOUSE_SITE_3
+  WAREHOUSE // before the warehouse was split by site; no longer offered
   CUSTOMER_SERVICE
   CS_WAREHOUSE
   EDI

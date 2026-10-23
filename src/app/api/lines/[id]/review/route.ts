@@ -7,7 +7,7 @@ import { audit } from "@/lib/audit";
 
 const reviewSchema = z.object({
   disposition: z.enum(["PENDING", "ACCEPTED", "DISPUTABLE", "NOT_DISPUTABLE", "NEEDS_RESEARCH", "RESOLVED"]),
-  teamInfluence: z.enum(["WAREHOUSE", "CUSTOMER_SERVICE", "CS_WAREHOUSE", "EDI", "ECOMM", "CARRIER", "THD", "OTHER"]).nullable().optional(),
+  teamInfluence: z.enum(["WAREHOUSE_SITE_0", "WAREHOUSE_SITE_3", "WAREHOUSE", "CUSTOMER_SERVICE", "CS_WAREHOUSE", "EDI", "ECOMM", "CARRIER", "THD", "OTHER"]).nullable().optional(),
   reasonCodeId: z.string().trim().min(1).nullable().optional(),
   rootCause: z.string().trim().max(2000).nullable().optional(),
   notes: z.string().trim().max(10000).nullable().optional(),
