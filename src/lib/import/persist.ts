@@ -57,6 +57,12 @@ export async function buildPreview(db: Db, args: BuildPreviewArgs): Promise<Impo
     fallbackFiscalMonth: args.fallbackFiscalMonth,
     expectedFiscalMonth: args.expectedFiscalMonth,
   });
+  // SPM's summary download (…_SUM_…) has THD's totals but no PO lines, so nothing can be reviewed or disputed
+  if (!preview.lines.length && !preview.metrics.length && !preview.emptySheets.length && preview.summary.length) {
+    throw new ImportError(
+      "This is a summary-only export: it has THD's totals but no PO lines. In SPM, download the detail export for the month (\"Export All\", a file named …_EXPORT_ALL_FILTERED_NON_COMPLIANT_RECORDS_…) and import that instead.",
+    );
+  }
   if (args.programId && detected && detected.id !== args.programId) {
     preview.warnings.unshift(`This file looks like a ${detected.name} export, not ${program.name}.`);
   }
