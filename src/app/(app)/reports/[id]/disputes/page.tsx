@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import { ChevronLeft } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { requirePagePermission } from "@/lib/auth-guard";
-import { LINE_FIELD_LABELS } from "@/lib/line-fields";
+import { LINE_FIELD_LABELS, TEAM_INFLUENCES } from "@/lib/line-fields";
 import { getPeriodField, linesInPeriod } from "@/lib/periods";
 import type { ChecklistItem } from "@/lib/disputes";
 import { DisputeWorkspace, type DisputeView } from "./dispute-workspace";
@@ -40,7 +40,15 @@ export default async function ReportDisputesPage({ params, searchParams }: { par
       metricName: x.line.metric.name,
       poNumber: x.line.poNumber,
       lineOffset: Number(x.line.offsetAmount),
-      reviewNotes: x.line.review?.notes ?? null,
+      review: x.line.review
+        ? {
+            disposition: x.line.review.disposition,
+            teamInfluence: x.line.review.teamInfluence ? TEAM_INFLUENCES[x.line.review.teamInfluence] : null,
+            rootCause: x.line.review.rootCause,
+            notes: x.line.review.notes,
+            extraFields: Object.entries((x.line.review.extraFields ?? {}) as Record<string, string>),
+          }
+        : null,
       keyFields: LINE_FIELD_LABELS.flatMap(([key, label, kind]) => {
         const v = line[key];
         if (v === null || v === undefined || key.startsWith("spm")) return [];

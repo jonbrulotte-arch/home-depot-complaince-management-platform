@@ -3,13 +3,13 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { AlertTriangle, CalendarClock, Check, ChevronDown, ChevronRight, Copy, Download, Paperclip, Plus, RefreshCw, Trash2 } from "lucide-react";
-import type { DisputeEventType, DisputeStatus, ReportStatus } from "@prisma/client";
+import type { Disposition, DisputeEventType, DisputeStatus, ReportStatus } from "@prisma/client";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { DisputeStatusBadge } from "@/components/shared/status-badges";
+import { DispositionBadge, DisputeStatusBadge } from "@/components/shared/status-badges";
 import { apiFetch } from "@/lib/client-api";
 import { allowedTransitions, DISPUTE_STATUS_LABELS, MAX_ATTACHMENT_BYTES, type ChecklistItem } from "@/lib/disputes";
 import { cn, formatCurrency, formatDateTime, formatUtcDate, formatUtcDateTime } from "@/lib/utils";
@@ -22,7 +22,8 @@ export interface DisputeView {
   metricName: string;
   poNumber: string | null;
   lineOffset: number;
-  reviewNotes: string | null;
+  /** What was recorded for the line in the violation review */
+  review: { disposition: Disposition; teamInfluence: string | null; rootCause: string | null; notes: string | null; extraFields: [string, string][] } | null;
   keyFields: { key: string; label: string; kind: "text" | "date" | "number" | "bool"; value: string | number | boolean }[];
   reasonCodeId: string | null;
   amountDisputed: number;
@@ -384,10 +385,11 @@ function DisputeDetail({ dispute, reasonCodes, canEdit }: { dispute: DisputeView
                 </div>
               ))}
             </dl>
-            {dispute.reviewNotes && <p className="rounded-md bg-gray-50 px-3 py-2 text-sm text-gray-700 whitespace-pre-wrap">Review notes: {dispute.reviewNotes}</p>}
           </div>
         )}
       </div>
+
+      {dispute.review && <ReviewSummary review={dispute.review} open={dispute.status === "PREPARING" || dispute.status === "READY"} />}
 
       <Step n={1} title="Reason code and supporting documents" done={docsDone && Boolean(reason)}>
         <div>
@@ -597,6 +599,43 @@ function DisputeDetail({ dispute, reasonCodes, canEdit }: { dispute: DisputeView
             </li>
           ))}
         </ol>
+      </div>
+    </div>
+  );
+}
+
+/** Root cause, notes and research inputs recorded for the line in the violation review */
+function ReviewSummary({ review, open }: { review: NonNullable<DisputeView["review"]>; open: boolean }) {
+  const fields: [string, string | null][] = [
+    ["Team influence", review.teamInfluence],
+    ["Root cause", review.rootCause],
+    ...review.extraFields,
+  ];
+  return (
+    <div className="rounded-lg border border-gray-200 bg-white">
+      <div className="flex items-center justify-between gap-2 px-4 py-3">
+        <span className="text-sm font-semibold text-gray-900">From the violation review</span>
+        <DispositionBadge disposition={review.disposition} />
+      </div>
+      <div className="border-t border-gray-200 p-4 space-y-3">
+        {review.disposition !== "DISPUTABLE" && open && (
+          <div className="flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+            <AlertTriangle className="h-4 w-4 shrink-0" />
+            This line is no longer marked Disputable. Use Sync from review to withdraw the dispute.
+          </div>
+        )}
+        <dl className="grid grid-cols-1 gap-x-6 gap-y-3 sm:grid-cols-2 lg:grid-cols-3">
+          {fields.map(([label, value]) => (
+            <div key={label}>
+              <dt className="text-xs text-gray-500">{label}</dt>
+              <dd className={cn("text-sm break-words", value ? "text-gray-900" : "text-gray-400")}>{value || "—"}</dd>
+            </div>
+          ))}
+        </dl>
+        <div>
+          <p className="text-xs text-gray-500">Notes</p>
+          <p className={cn("mt-0.5 text-sm whitespace-pre-wrap", review.notes ? "text-gray-700" : "text-gray-400")}>{review.notes || "No notes"}</p>
+        </div>
       </div>
     </div>
   );
