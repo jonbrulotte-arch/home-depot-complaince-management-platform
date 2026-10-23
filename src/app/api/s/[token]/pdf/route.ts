@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { withFeedback } from "@/lib/feedback";
 import { scorecardPdfResponse, sharedScorecard } from "@/lib/scorecard-share";
 
 type Params = { params: Promise<{ token: string }> };
@@ -7,5 +8,5 @@ type Params = { params: Promise<{ token: string }> };
 export async function GET(_req: Request, { params }: Params) {
   const found = await sharedScorecard((await params).token);
   if (!found) return NextResponse.json({ error: "This scorecard link is not available" }, { status: 404 });
-  return scorecardPdfResponse(found.data, found.status);
+  return scorecardPdfResponse(await withFeedback(found.scorecard.reportId, found.data), found.status);
 }

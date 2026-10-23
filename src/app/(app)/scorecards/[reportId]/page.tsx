@@ -9,6 +9,7 @@ import { ScorecardView } from "@/components/scorecard/scorecard-view";
 import { ScorecardToolbar } from "@/components/scorecard/scorecard-toolbar";
 import { ScorecardShareBar } from "@/components/scorecard/scorecard-share-bar";
 import { ensureShareToken } from "@/lib/scorecard-share";
+import { withFeedback } from "@/lib/feedback";
 
 export default async function PublishedScorecardPage({ params }: { params: Promise<{ reportId: string }> }) {
   const user = await requirePagePermission("view.dashboard");
@@ -31,7 +32,7 @@ export default async function PublishedScorecardPage({ params }: { params: Promi
         <ScorecardToolbar reportId={reportId} canRegenerate={false} canExport />
       </div>
       <ScorecardShareBar sharePath={shareToken ? `/s/${shareToken}` : null} feedbackHref={canFeedback ? `/feedback/${reportId}` : null} feedbackCount={feedbackCount} />
-      <ScorecardView data={scorecardData(scorecard.data)} />
+      <ScorecardView data={await withFeedback(reportId, scorecardData(scorecard.data))} />
     </div>
   );
 }

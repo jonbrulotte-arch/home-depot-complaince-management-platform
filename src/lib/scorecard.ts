@@ -53,6 +53,14 @@ export interface ScorecardViolation {
   /** Root cause from the violation review; absent on scorecards generated before it was included */
   rootCause?: string | null;
   notes: string | null;
+  /** Scorecard Feedback on this line, added when the scorecard is shown (`withFeedback`); never stored in the snapshot */
+  feedback?: ScorecardFeedbackNote[];
+}
+
+export interface ScorecardFeedbackNote {
+  author: string | null;
+  body: string;
+  createdAt: string;
 }
 
 export interface ShipmentModeCounts {

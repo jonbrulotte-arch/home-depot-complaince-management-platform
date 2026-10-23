@@ -1,6 +1,6 @@
 import PDFDocument from "pdfkit";
 import type { ScorecardData } from "@/lib/scorecard";
-import { rootCauseAndNotes, shipmentRows } from "@/lib/scorecard-rules";
+import { feedbackText, rootCauseAndNotes, shipmentRows } from "@/lib/scorecard-rules";
 import { DISPUTE_STATUS_LABELS } from "@/lib/disputes";
 import { DEFAULT_SITE_NAME } from "@/lib/brand";
 import { formatDateRange, SHIPMENT_RANGES } from "@/lib/shipment-ranges";
@@ -218,7 +218,7 @@ export function scorecardPdf(data: ScorecardData, status: { version: number; pub
           v.teamInfluence ?? "—",
           v.disputeStatus ? `${DISPUTE_STATUS_LABELS[v.disputeStatus]}${v.reasonCode ? `\n${v.reasonCode}` : ""}` : { text: "Not disputed", color: C.muted },
           v.recovered ? { text: money(v.recovered), color: C.green } : "—",
-          rootCauseAndNotes(v),
+          [rootCauseAndNotes(v), v.feedback?.length ? `Feedback:\n${feedbackText(v.feedback)}` : ""].filter(Boolean).join("\n\n"),
         ])
       : [["No violations this period", "", "", "", "", "", "", ""]],
   );

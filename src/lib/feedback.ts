@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { scorecardData } from "@/lib/scorecard-store";
-import type { ScorecardViolation } from "@/lib/scorecard";
+import type { ScorecardData, ScorecardViolation } from "@/lib/scorecard";
 
 // Scorecard Feedback: people outside the compliance team (the warehouse) comment on each
 // violation of a published scorecard. Feedback is keyed by the compliance line, which scorecards
@@ -76,4 +76,23 @@ export async function scorecardFeedback(reportId: string) {
       createdAt: f.createdAt.toISOString(),
     })),
   };
+}
+
+/**
+ * The scorecard with each violation's current feedback attached. Feedback is live, not part of the
+ * snapshot, so it shows on the scorecard, its public page and downloads without regenerating.
+ */
+export async function withFeedback(reportId: string, data: ScorecardData): Promise<ScorecardData> {
+  if (!data.violations.some((v) => v.lineId)) return data;
+  const feedback = await prisma.scorecardFeedback.findMany({
+    where: { reportId },
+    include: { author: { select: { name: true } } },
+    orderBy: { createdAt: "asc" },
+  });
+  if (!feedback.length) return data;
+  const byLine = new Map<string, NonNullable<ScorecardViolation["feedback"]>>();
+  for (const f of feedback) {
+    byLine.set(f.lineId, [...(byLine.get(f.lineId) ?? []), { author: f.author?.name ?? null, body: f.body, createdAt: f.createdAt.toISOString() }]);
+  }
+  return { ...data, violations: data.violations.map((v) => (v.lineId && byLine.has(v.lineId) ? { ...v, feedback: byLine.get(v.lineId) } : v)) };
 }

@@ -11,6 +11,7 @@ import { ScorecardView } from "@/components/scorecard/scorecard-view";
 import { ScorecardToolbar } from "@/components/scorecard/scorecard-toolbar";
 import { ScorecardShareBar } from "@/components/scorecard/scorecard-share-bar";
 import { ensureShareToken } from "@/lib/scorecard-share";
+import { withFeedback } from "@/lib/feedback";
 
 export default async function ReportScorecardPage({ params }: { params: Promise<{ id: string }> }) {
   const user = await requirePagePermission("reports.view");
@@ -23,7 +24,7 @@ export default async function ReportScorecardPage({ params }: { params: Promise<
 
   // Before generation, show a live preview of what the scorecard will contain
   const scorecard = report.scorecard;
-  const data = scorecard ? scorecardData(scorecard.data) : await buildScorecard(id);
+  const data = scorecard ? await withFeedback(id, scorecardData(scorecard.data)) : await buildScorecard(id);
   const shareToken = await ensureShareToken(id);
   const canFeedback = Boolean(scorecard?.publishedAt) && user.permissions.has("feedback.view");
   const feedbackCount = canFeedback ? await prisma.scorecardFeedback.count({ where: { reportId: id } }) : 0;

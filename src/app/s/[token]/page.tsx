@@ -4,6 +4,7 @@ import { connection } from "next/server";
 import { Download, FileText } from "lucide-react";
 import { getBranding } from "@/lib/branding";
 import { sharedScorecard } from "@/lib/scorecard-share";
+import { withFeedback } from "@/lib/feedback";
 import { formatDate } from "@/lib/utils";
 import { BrandMark } from "@/components/layout/brand-mark";
 import { Button } from "@/components/ui/button";
@@ -44,7 +45,7 @@ export default async function SharedScorecardPage({ params }: { params: Promise<
         <p className="text-sm text-gray-500 print:hidden">
           Published {formatDate(found.scorecard.publishedAt!)} · version {found.scorecard.version}
         </p>
-        <ScorecardView data={found.data} />
+        <ScorecardView data={await withFeedback(found.scorecard.reportId, found.data)} />
       </main>
     </div>
   );

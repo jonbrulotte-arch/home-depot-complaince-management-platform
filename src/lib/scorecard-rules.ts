@@ -49,6 +49,13 @@ export function shipmentRows(sh: ScorecardShipments): ShipmentRow[] {
 }
 
 /** The violation list's "Root cause / Notes" text: the root cause first, then the review notes. */
+/** Feedback on a violation as text for the PDF and Excel: one "Author, date: comment" entry per note */
+export function feedbackText(notes: { author: string | null; body: string; createdAt: string }[] | undefined): string {
+  return (notes ?? [])
+    .map((f) => `${f.author ?? "Former user"}, ${new Date(f.createdAt).toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" })}: ${f.body.trim()}`)
+    .join("\n");
+}
+
 export function rootCauseAndNotes(v: { rootCause?: string | null; notes: string | null }): string {
   return [v.rootCause?.trim() ? `Root cause: ${v.rootCause.trim()}` : null, v.notes?.trim() || null].filter(Boolean).join("\n");
 }

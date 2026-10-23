@@ -1,6 +1,6 @@
 import ExcelJS from "exceljs";
 import type { ScorecardData } from "@/lib/scorecard";
-import { rootCauseAndNotes, shipmentRows } from "@/lib/scorecard-rules";
+import { feedbackText, rootCauseAndNotes, shipmentRows } from "@/lib/scorecard-rules";
 import { DISPUTE_STATUS_LABELS } from "@/lib/disputes";
 import { DEFAULT_SITE_NAME } from "@/lib/brand";
 import { formatDateRange, SHIPMENT_RANGES } from "@/lib/shipment-ranges";
@@ -102,17 +102,17 @@ export async function scorecardWorkbook(data: ScorecardData, status: { version: 
   }
 
   const vs = wb.addWorksheet("Violations");
-  widths(vs, [26, 22, 14, 10, 12, 16, 16, 18, 30, 12, 60]);
-  header(vs.addRow(["Program", "Metric", "PO #", "Site", "Offset", "Decision", "Team influence", "Dispute", "Reason code", "Recovered", "Root cause / Notes"]));
+  widths(vs, [26, 22, 14, 10, 12, 16, 16, 18, 30, 12, 60, 60]);
+  header(vs.addRow(["Program", "Metric", "PO #", "Site", "Offset", "Decision", "Team influence", "Dispute", "Reason code", "Recovered", "Root cause / Notes", "Feedback"]));
   for (const v of data.violations) {
     const row = vs.addRow([
       v.program, v.metric, v.poNumber, v.dcNumber, v.offset, DECISIONS[v.disposition] ?? v.disposition,
-      v.teamInfluence, v.disputeStatus ? DISPUTE_STATUS_LABELS[v.disputeStatus] : "Not disputed", v.reasonCode, v.recovered, rootCauseAndNotes(v),
+      v.teamInfluence, v.disputeStatus ? DISPUTE_STATUS_LABELS[v.disputeStatus] : "Not disputed", v.reasonCode, v.recovered, rootCauseAndNotes(v), feedbackText(v.feedback),
     ]);
     [5, 10].forEach((c) => (row.getCell(c).numFmt = MONEY));
-    row.getCell(11).alignment = { wrapText: true, vertical: "top" };
+    [11, 12].forEach((c) => (row.getCell(c).alignment = { wrapText: true, vertical: "top" }));
   }
-  vs.autoFilter = { from: "A1", to: "K1" };
+  vs.autoFilter = { from: "A1", to: "L1" };
   vs.views = [{ state: "frozen", ySplit: 1 }];
 
   const ytd = wb.addWorksheet("12-Month Offsets");

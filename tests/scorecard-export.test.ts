@@ -1,7 +1,7 @@
 import ExcelJS from "exceljs";
 import { describe, expect, it } from "vitest";
 import { scorecardWorkbook } from "@/lib/scorecard-export";
-import { meetsGoal, rootCauseAndNotes, shipmentRows } from "@/lib/scorecard-rules";
+import { feedbackText, meetsGoal, rootCauseAndNotes, shipmentRows } from "@/lib/scorecard-rules";
 import { scorecardPdf } from "@/lib/scorecard-pdf";
 import type { ScorecardData } from "@/lib/scorecard";
 
@@ -148,5 +148,17 @@ describe("root cause and notes", () => {
     expect(rootCauseAndNotes({ rootCause: " ", notes: null })).toBe("");
     // Scorecards generated before root causes were included have notes only
     expect(rootCauseAndNotes({ notes: "POD attached" })).toBe("POD attached");
+  });
+});
+
+describe("feedback text", () => {
+  it("lists each note with its author and date, oldest first as given", () => {
+    expect(
+      feedbackText([
+        { author: "Dock Lead", body: " Carrier missed the pickup window. ", createdAt: "2026-10-20T15:00:00Z" },
+        { author: null, body: "Rebooked for the next day", createdAt: "2026-10-21T15:00:00Z" },
+      ]),
+    ).toBe("Dock Lead, Oct 20, 2026: Carrier missed the pickup window.\nFormer user, Oct 21, 2026: Rebooked for the next day");
+    expect(feedbackText(undefined)).toBe("");
   });
 });
