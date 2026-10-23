@@ -67,6 +67,18 @@ Reports group lines by the **month the data was received** by default: the repor
 
 The backfill imports every `US_*.xlsx` file, oldest first. Each line keeps the fiscal month from its data. Folder names such as `Sep-2024` supply the month for Drop Ship exports, which have none. Files already imported (same SHA-256) are skipped, and other files (PDFs, emails, research sheets) are listed and skipped. On the Aug-2023 → Jun-2026 archive it loads about 9,300 lines across 7,850 POs.
 
+### Updating a server
+
+From the app folder on the server (the one with `.env`):
+
+```bash
+./scripts/deploy.sh
+```
+
+It backs up the database (`backups/…-pre-deploy.json.gz`, newest 10 kept), pulls the checked-out branch, runs `npm ci`, applies migrations, builds, restarts the `thd-compliance` service and waits for the site on port 8014. If the build or the restart fails, it puts the previous code back and restarts that; migrations are not undone, but the pre-deploy backup can be restored from Admin › Backup & Restore. It stops without changing anything if files on the server were edited.
+
+Options: `--branch <name>` switches branch (e.g. `main` once merged), `--force` rebuilds with no new commits, `--skip-backup`, `--no-restart`. `SERVICE_NAME`, `PORT` and `BACKUP_KEEP` override the defaults.
+
 ## How imports work
 
 - **Program** comes from the filename prefix (`US_DS`, `US_RDC`, `US_DFC`, `US_TRANS`). **Export kind** comes from `ALL_RESULTS` / `NON_COMPLIANT` in the name.
