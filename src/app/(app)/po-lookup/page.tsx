@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { requirePagePermission } from "@/lib/auth-guard";
 import { fiscalLabel } from "@/lib/fiscal";
 import { formatCurrency, formatUtcDate, formatUtcDateTime } from "@/lib/utils";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -42,11 +43,13 @@ export default async function PoLookupPage({ searchParams }: { searchParams: Pro
   const truncated = lines.length > MAX_RESULTS;
   if (truncated) lines = lines.slice(0, MAX_RESULTS);
 
+  // One group per PO record: THD reuses PO numbers, and each use has its own record
   const byPo = new Map<string, typeof lines>();
   for (const l of lines) {
-    const key = l.poNumber ?? "(no PO number)";
+    const key = l.poRecordId ?? l.poNumber ?? "(no PO number)";
     byPo.set(key, [...(byPo.get(key) ?? []), l]);
   }
+  const usesOf = (poNumber: string | null) => [...byPo.values()].filter((g) => g[0].poNumber === poNumber).length;
 
   return (
     <div className="p-6 max-w-7xl mx-auto space-y-6">
@@ -70,15 +73,32 @@ export default async function PoLookupPage({ searchParams }: { searchParams: Pro
         <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">Showing the first {MAX_RESULTS} lines. Refine the search to see more.</p>
       )}
 
-      {[...byPo.entries()].map(([po, poLines]) => {
+      {[...byPo.entries()].map(([key, poLines]) => {
         const record = poLines[0].poRecord;
+        const po = poLines[0].poNumber ?? "(no PO number)";
         const violations = poLines.filter((l) => !l.isCompliant);
         const offset = violations.reduce((s, l) => s + Number(l.offsetAmount), 0);
         return (
-          <Card key={po}>
+          <Card key={key}>
             <CardHeader>
               <div className="flex flex-wrap items-baseline justify-between gap-2">
-                <CardTitle>PO {po}</CardTitle>
+                <div className="flex items-center gap-2">
+                  <CardTitle>
+                    {record ? (
+                      <Link href={`/po/${record.id}`} className="text-blue-600 hover:underline">
+                        PO {po}
+                      </Link>
+                    ) : (
+                      `PO ${po}`
+                    )}
+                  </CardTitle>
+                  {usesOf(poLines[0].poNumber) > 1 && <Badge variant="warning">Reused PO number</Badge>}
+                  {record && (
+                    <Link href={`/po/${record.id}`} className="text-xs text-blue-600 hover:underline">
+                      Open PO record
+                    </Link>
+                  )}
+                </div>
                 <p className="text-sm text-gray-500">
                   {poLines.length} line(s) · {violations.length} non-compliant · {formatCurrency(offset)} offsets
                 </p>

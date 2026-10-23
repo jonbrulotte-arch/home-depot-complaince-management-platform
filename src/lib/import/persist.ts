@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { Prisma, type DataPeriod, type PrismaClient } from "@prisma/client";
 import { ImportError, parseWorkbook } from "./parse";
+import { lineAnchorDate, pickPoInstance, poInstanceKey } from "@/lib/po";
 import { detectProgram, SUMMARY_SHEET, transformWorkbook, type ConfigAlias, type ConfigProgram, type ImportPreview, type MappedLine } from "./transform";
 
 type Db = PrismaClient;
@@ -136,23 +137,12 @@ export async function persistImport(db: Db, args: PersistArgs): Promise<PersistR
       const lines = reconciled.filter((l) => !l.updateOnly || existingIds.has(`${l.metricId}|${l.lineKey}`));
       const skipped = reconciled.length - lines.length;
 
-      // PO records: create missing ones, then touch lastSeenAt on all
-      const poInfo = new Map<string, NonNullable<MappedLine["po"]>>();
-      for (const line of lines) if (line.po && !poInfo.has(line.po.poNumber)) poInfo.set(line.po.poNumber, line.po);
-      const poNumbers = [...poInfo.keys()];
-      if (poNumbers.length) {
-        await tx.poRecord.createMany({ data: [...poInfo.values()], skipDuplicates: true });
-        await tx.poRecord.updateMany({ where: { poNumber: { in: poNumbers } }, data: { lastSeenAt: new Date() } });
-      }
-      const poIds = new Map(
-        (await tx.poRecord.findMany({ where: { poNumber: { in: poNumbers } }, select: { id: true, poNumber: true } })).map((p) => [p.poNumber, p.id]),
-      );
-
+      const poIdFor = await resolvePoRecords(tx, lines);
 
       const toCreate: Prisma.ComplianceLineCreateManyInput[] = [];
       let updated = 0;
       for (const line of lines) {
-        const data = lineData(line, batch.id, line.po ? (poIds.get(line.po.poNumber) ?? null) : null);
+        const data = lineData(line, batch.id, poIdFor(line));
         const id = existingIds.get(`${line.metricId}|${line.lineKey}`);
         if (id) {
           await tx.complianceLine.update({ where: { id }, data });
@@ -220,6 +210,49 @@ async function reconcileSummaryLines(tx: Prisma.TransactionClient, lines: Mapped
   });
   const skip = new Set(covered.map((c) => `${c.metricId}|${c.fiscalMonth}`));
   return lines.filter((l) => l.sourceSheet !== SUMMARY_SHEET || !skip.has(`${l.metricId}|${l.fiscalMonth}`));
+}
+
+/**
+ * Creates missing PO records and returns which record each line goes on. A PO record is one use of
+ * a PO number (number + create date, see src/lib/po.ts); lines without a create date join the
+ * use nearest their ship or check-in date, or a record with an unknown date when there is none.
+ */
+async function resolvePoRecords(tx: Prisma.TransactionClient, lines: MappedLine[]): Promise<(line: MappedLine) => string | null> {
+  type Info = NonNullable<MappedLine["po"]>;
+  const dated = new Map<string, Info & { instanceKey: string }>();
+  const undated = new Map<string, Info>();
+  for (const { po } of lines) {
+    if (!po) continue;
+    if (po.poCreateDate) {
+      const instanceKey = poInstanceKey(po.poNumber, po.poCreateDate);
+      if (!dated.has(instanceKey)) dated.set(instanceKey, { ...po, instanceKey });
+    } else if (!undated.has(po.poNumber)) {
+      undated.set(po.poNumber, po);
+    }
+  }
+  const poNumbers = [...new Set([...[...dated.values()].map((p) => p.poNumber), ...undated.keys()])];
+  if (!poNumbers.length) return () => null;
+  if (dated.size) await tx.poRecord.createMany({ data: [...dated.values()], skipDuplicates: true });
+
+  const find = () => tx.poRecord.findMany({ where: { poNumber: { in: poNumbers } }, select: { id: true, poNumber: true, poCreateDate: true, instanceKey: true } });
+  let records = await find();
+  const unknown = [...undated.values()].filter((po) => !records.some((r) => r.poNumber === po.poNumber));
+  if (unknown.length) {
+    await tx.poRecord.createMany({ data: unknown.map((po) => ({ ...po, instanceKey: poInstanceKey(po.poNumber, null) })), skipDuplicates: true });
+    records = await find();
+  }
+  const byKey = new Map(records.map((r) => [r.instanceKey, r.id]));
+  const byNumber = new Map<string, typeof records>();
+  for (const r of records) byNumber.set(r.poNumber, [...(byNumber.get(r.poNumber) ?? []), r]);
+
+  const poIdFor = (line: MappedLine) => {
+    if (!line.po) return null;
+    if (line.po.poCreateDate) return byKey.get(poInstanceKey(line.po.poNumber, line.po.poCreateDate)) ?? null;
+    return pickPoInstance(byNumber.get(line.po.poNumber) ?? [], lineAnchorDate(line.fields))?.id ?? null;
+  };
+  const used = [...new Set(lines.map(poIdFor).filter((id): id is string => id !== null))];
+  await tx.poRecord.updateMany({ where: { id: { in: used } }, data: { lastSeenAt: new Date() } });
+  return poIdFor;
 }
 
 function groupKeys(lines: MappedLine[]): [string, string[]][] {

@@ -274,9 +274,13 @@ model SpmSummaryRow {
   postDisputePerfPct Decimal?    @db.Decimal(6, 3)
 }
 
+/// One use of a PO number. THD reuses PO numbers, so a record is the number plus the PO create date
+/// from the exports (`instanceKey`, see src/lib/po.ts); lines without a date join the nearest use.
 model PoRecord {
   id           String           @id @default(cuid())
-  poNumber     String           @unique
+  poNumber     String
+  /// "poNumber|YYYY-MM-DD" (PO create date), or "poNumber|" when no export gave the date
+  instanceKey  String           @unique
   pVendor      String?
   mVendor      String?
   mVendorName  String?
@@ -286,6 +290,8 @@ model PoRecord {
   firstSeenAt  DateTime         @default(now())
   lastSeenAt   DateTime         @default(now())
   lines        ComplianceLine[]
+
+  @@index([poNumber])
 }
 
 model ComplianceLine {
