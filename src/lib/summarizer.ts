@@ -5,6 +5,13 @@ import type { ScorecardData } from "@/lib/scorecard";
 // page loads the scorecards and supplies the links.
 
 export const NOT_ASSIGNED = "Not assigned";
+export const MAX_SUMMARY_REPORTS = 24;
+
+/** Report ids from the address (`?r=a,b`), de-duplicated and capped */
+export function parseReportIds(r: string | string[] | null | undefined): string[] {
+  const ids = (Array.isArray(r) ? r.join(",") : (r ?? "")).split(",").map((id) => id.trim());
+  return [...new Set(ids)].filter((id) => /^[a-z0-9]{20,40}$/i.test(id)).slice(0, MAX_SUMMARY_REPORTS);
+}
 
 export interface SummaryInput {
   reportId: string;
@@ -12,6 +19,12 @@ export interface SummaryInput {
   data: ScorecardData;
   /** The public scorecard page (`/s/<token>`), or the sign-in page when there is no public link */
   scorecardPath: string;
+  /**
+   * Amount disputed on each line whose dispute is submitted and awaiting THD's decision now, by line
+   * id. Read live, since a published snapshot keeps the status it had when generated; violations
+   * without a line id (older snapshots) fall back to the snapshot's status and offset.
+   */
+  awaiting?: Record<string, number>;
 }
 
 export interface SummaryRow {
@@ -21,6 +34,8 @@ export interface SummaryRow {
   dcNumber: string | null;
   offset: number;
   team: string;
+  /** Submitted for dispute and awaiting THD's decision; 0 when not */
+  awaiting: number;
 }
 
 export interface SummaryGroup {
@@ -28,6 +43,8 @@ export interface SummaryGroup {
   metric: string;
   violations: number;
   offset: number;
+  awaiting: number;
+  awaitingDisputes: number;
   rows: SummaryRow[];
 }
 
@@ -40,6 +57,8 @@ export interface SummaryReport {
   preOffset: number;
   recovered: number;
   postOffset: number;
+  awaiting: number;
+  awaitingDisputes: number;
   scorecardPath: string;
 }
 
@@ -49,8 +68,8 @@ export interface Summary {
   /** Compliance types in scorecard order (program, then metric) */
   groups: SummaryGroup[];
   /** Teams responsible, largest offset first */
-  teams: { team: string; violations: number; offset: number }[];
-  totals: { violations: number; preOffset: number; recovered: number; postOffset: number };
+  teams: { team: string; violations: number; offset: number; awaiting: number }[];
+  totals: { violations: number; preOffset: number; recovered: number; postOffset: number; awaiting: number; awaitingDisputes: number };
 }
 
 const round = (n: number) => Math.round(n * 100) / 100;
@@ -63,22 +82,32 @@ export function buildSummary(inputs: SummaryInput[]): Summary {
   for (const { data } of sorted) {
     for (const p of data.programs) for (const m of p.metrics) if (!order.includes(`${p.name}|${m.name}`)) order.push(`${p.name}|${m.name}`);
   }
-  const teams = new Map<string, { team: string; violations: number; offset: number }>();
+  const teams = new Map<string, { team: string; violations: number; offset: number; awaiting: number }>();
+  const awaitingByReport = new Map<string, { amount: number; disputes: number }>();
 
-  for (const { reportId, data } of sorted) {
+  for (const { reportId, data, awaiting: live } of sorted) {
+    const reportAwaiting = { amount: 0, disputes: 0 };
     for (const v of data.violations) {
       const key = `${v.program}|${v.metric}`;
-      const group = groups.get(key) ?? { program: v.program, metric: v.metric, violations: 0, offset: 0, rows: [] };
+      const group = groups.get(key) ?? { program: v.program, metric: v.metric, violations: 0, offset: 0, awaiting: 0, awaitingDisputes: 0, rows: [] };
       const team = v.teamInfluence?.trim() || NOT_ASSIGNED;
-      group.rows.push({ reportId, periodLabel: data.periodLabel, poNumber: v.poNumber, dcNumber: v.dcNumber, offset: v.offset, team });
+      const awaiting = v.lineId && live ? (live[v.lineId] ?? 0) : v.disputeStatus === "SUBMITTED" ? v.offset : 0;
+      const isAwaiting = v.lineId && live ? v.lineId in live : v.disputeStatus === "SUBMITTED";
+      group.rows.push({ reportId, periodLabel: data.periodLabel, poNumber: v.poNumber, dcNumber: v.dcNumber, offset: v.offset, team, awaiting });
       group.violations += 1;
       group.offset = round(group.offset + v.offset);
+      group.awaiting = round(group.awaiting + awaiting);
+      if (isAwaiting) group.awaitingDisputes += 1;
       groups.set(key, group);
-      const t = teams.get(team) ?? { team, violations: 0, offset: 0 };
+      const t = teams.get(team) ?? { team, violations: 0, offset: 0, awaiting: 0 };
       t.violations += 1;
       t.offset = round(t.offset + v.offset);
+      t.awaiting = round(t.awaiting + awaiting);
       teams.set(team, t);
+      reportAwaiting.amount = round(reportAwaiting.amount + awaiting);
+      if (isAwaiting) reportAwaiting.disputes += 1;
     }
+    awaitingByReport.set(reportId, reportAwaiting);
   }
 
   const rank = (key: string) => (order.includes(key) ? order.indexOf(key) : order.length);
@@ -91,6 +120,8 @@ export function buildSummary(inputs: SummaryInput[]): Summary {
     preOffset: data.totals.preOffset,
     recovered: data.totals.recovered,
     postOffset: data.totals.postOffset,
+    awaiting: awaitingByReport.get(reportId)!.amount,
+    awaitingDisputes: awaitingByReport.get(reportId)!.disputes,
     scorecardPath,
   }));
   const sum = (f: (r: SummaryReport) => number) => round(reports.reduce((s, r) => s + f(r), 0));
@@ -99,7 +130,7 @@ export function buildSummary(inputs: SummaryInput[]): Summary {
     reports,
     groups: [...groups.entries()].sort(([a], [b]) => rank(a) - rank(b)).map(([, g]) => g),
     teams: [...teams.values()].sort((a, b) => b.offset - a.offset || b.violations - a.violations || a.team.localeCompare(b.team)),
-    totals: { violations: sum((r) => r.violations), preOffset: sum((r) => r.preOffset), recovered: sum((r) => r.recovered), postOffset: sum((r) => r.postOffset) },
+    totals: { violations: sum((r) => r.violations), preOffset: sum((r) => r.preOffset), recovered: sum((r) => r.recovered), postOffset: sum((r) => r.postOffset), awaiting: sum((r) => r.awaiting), awaitingDisputes: sum((r) => r.awaitingDisputes) },
   };
 }
 
@@ -156,14 +187,16 @@ export function summaryEmail(summary: Summary, links: EmailLinks, intro = ""): {
     money(r.preOffset),
     money(r.recovered),
     money(r.postOffset),
+    money(r.awaiting),
     link(r.scorecardPath, "View scorecard"),
   ]);
-  if (multi) overview.push(["<b>Total</b>", `<b>${summary.totals.violations}</b>`, `<b>${money(summary.totals.preOffset)}</b>`, `<b>${money(summary.totals.recovered)}</b>`, `<b>${money(summary.totals.postOffset)}</b>`, ""]);
-  html.push(table(["Period", "Violations", "Offsets", "Recovered", "Post-dispute", "Scorecard"], overview, [1, 2, 3, 4]));
+  if (multi) overview.push(["<b>Total</b>", `<b>${summary.totals.violations}</b>`, `<b>${money(summary.totals.preOffset)}</b>`, `<b>${money(summary.totals.recovered)}</b>`, `<b>${money(summary.totals.postOffset)}</b>`, `<b>${money(summary.totals.awaiting)}</b>`, ""]);
+  html.push(table(["Period", "Violations", "Offsets", "Recovered", "Post-dispute", "Awaiting THD decision", "Scorecard"], overview, [1, 2, 3, 4, 5]));
+  const awaitingText = (amount: number, disputes: number) => (disputes ? `, ${money(amount)} submitted and awaiting THD's decision (${disputes} dispute${disputes === 1 ? "" : "s"})` : "");
   for (const r of summary.reports) {
-    text.push(`- ${r.periodLabel}: ${r.violations} violation(s), ${money(r.preOffset)} in offsets, ${money(r.recovered)} recovered, ${money(r.postOffset)} post-dispute. Scorecard: ${url(r.scorecardPath)}`);
+    text.push(`- ${r.periodLabel}: ${r.violations} violation(s), ${money(r.preOffset)} in offsets, ${money(r.recovered)} recovered, ${money(r.postOffset)} post-dispute${awaitingText(r.awaiting, r.awaitingDisputes)}. Scorecard: ${url(r.scorecardPath)}`);
   }
-  if (multi) text.push(`- Total: ${summary.totals.violations} violation(s), ${money(summary.totals.preOffset)} in offsets, ${money(summary.totals.postOffset)} post-dispute`);
+  if (multi) text.push(`- Total: ${summary.totals.violations} violation(s), ${money(summary.totals.preOffset)} in offsets, ${money(summary.totals.postOffset)} post-dispute${awaitingText(summary.totals.awaiting, summary.totals.awaitingDisputes)}`);
   if (links.dashboardPath) {
     html.push(`<p style="margin:0 0 16px 0">${link(links.dashboardPath, "Open the compliance dashboard")}</p>`);
     text.push(`Compliance dashboard: ${url(links.dashboardPath)}`);
@@ -179,21 +212,22 @@ export function summaryEmail(summary: Summary, links: EmailLinks, intro = ""): {
   }
   for (const g of summary.groups) {
     const title = `${g.program} · ${g.metric}`;
-    html.push(`<p style="margin:0 0 6px 0"><b>${esc(title)}</b> <span style="color:#6b7280">(${g.violations} violation${g.violations === 1 ? "" : "s"}, ${money(g.offset)})</span></p>`);
-    const head = [...(multi ? ["Period"] : []), "PO #", "Offset", "Team responsible"];
-    const rows = g.rows.map((r) => [...(multi ? [esc(r.periodLabel)] : []), esc(r.poNumber ?? "—"), money(r.offset), esc(r.team)]);
-    html.push(table(head, rows, [multi ? 2 : 1]));
-    text.push(`${title} (${g.violations} violation${g.violations === 1 ? "" : "s"}, ${money(g.offset)})`);
-    for (const r of g.rows) text.push(`  - PO ${r.poNumber ?? "—"}${multi ? ` (${r.periodLabel})` : ""}: ${money(r.offset)}, ${r.team}`);
+    const groupAside = `${g.violations} violation${g.violations === 1 ? "" : "s"}, ${money(g.offset)}${g.awaitingDisputes ? `, ${money(g.awaiting)} awaiting THD decision` : ""}`;
+    html.push(`<p style="margin:0 0 6px 0"><b>${esc(title)}</b> <span style="color:#6b7280">(${groupAside})</span></p>`);
+    const head = [...(multi ? ["Period"] : []), "PO #", "Offset", "Team responsible", "Awaiting THD decision"];
+    const rows = g.rows.map((r) => [...(multi ? [esc(r.periodLabel)] : []), esc(r.poNumber ?? "—"), money(r.offset), esc(r.team), r.awaiting ? money(r.awaiting) : "—"]);
+    html.push(table(head, rows, multi ? [2, 4] : [1, 3]));
+    text.push(`${title} (${groupAside})`);
+    for (const r of g.rows) text.push(`  - PO ${r.poNumber ?? "—"}${multi ? ` (${r.periodLabel})` : ""}: ${money(r.offset)}, ${r.team}${r.awaiting ? `, ${money(r.awaiting)} awaiting THD decision` : ""}`);
     text.push("");
   }
 
   // By team
   if (summary.teams.length) {
     html.push(`<h3 style="margin:0 0 8px 0;font-size:16px">By team responsible</h3>`);
-    html.push(table(["Team", "Violations", "Offsets"], summary.teams.map((t) => [esc(t.team), String(t.violations), money(t.offset)]), [1, 2]));
+    html.push(table(["Team", "Violations", "Offsets", "Awaiting THD decision"], summary.teams.map((t) => [esc(t.team), String(t.violations), money(t.offset), t.awaiting ? money(t.awaiting) : "—"]), [1, 2, 3]));
     text.push("BY TEAM RESPONSIBLE");
-    for (const t of summary.teams) text.push(`- ${t.team}: ${t.violations} violation(s), ${money(t.offset)}`);
+    for (const t of summary.teams) text.push(`- ${t.team}: ${t.violations} violation(s), ${money(t.offset)}${t.awaiting ? `, ${money(t.awaiting)} awaiting THD decision` : ""}`);
   }
   html.push(`</div>`);
   return { html: html.join(""), text: text.join("\n").trim() };

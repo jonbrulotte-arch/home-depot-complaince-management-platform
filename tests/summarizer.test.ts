@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { ScorecardData, ScorecardViolation } from "@/lib/scorecard";
-import { buildSummary, defaultSubject, summaryEmail, type SummaryInput } from "@/lib/summarizer";
+import { buildSummary, defaultSubject, parseReportIds, summaryEmail, type SummaryInput } from "@/lib/summarizer";
 
 const violation = (program: string, metric: string, poNumber: string, offset: number, teamInfluence: string | null): ScorecardViolation => ({
   program, metric, poNumber, dcNumber: null, offset, disposition: "ACCEPTED", teamInfluence, disputeStatus: null, reasonCode: null, recovered: null, notes: null,
@@ -42,11 +42,11 @@ describe("summarizer", () => {
       ["Jun 2026", "333", "Not assigned"],
     ]);
     expect(s.teams).toEqual([
-      { team: "EDI", violations: 1, offset: 1000 },
-      { team: "Warehouse (Site 0)", violations: 2, offset: 500 },
-      { team: "Not assigned", violations: 1, offset: 250 },
+      { team: "EDI", violations: 1, offset: 1000, awaiting: 0 },
+      { team: "Warehouse (Site 0)", violations: 2, offset: 500, awaiting: 0 },
+      { team: "Not assigned", violations: 1, offset: 250, awaiting: 0 },
     ]);
-    expect(s.totals).toEqual({ violations: 4, preOffset: 1750, recovered: 250, postOffset: 1500 });
+    expect(s.totals).toEqual({ violations: 4, preOffset: 1750, recovered: 250, postOffset: 1500, awaiting: 0, awaitingDisputes: 0 });
     expect(defaultSubject(s)).toBe("THD Compliance Summary: May 2026 & Jun 2026");
   });
 
@@ -70,5 +70,35 @@ describe("summarizer", () => {
     expect(html).not.toContain("/d/");
     expect(text).toContain("No violations.");
     expect(s.teams).toEqual([]);
+  });
+});
+
+describe("report ids from the address", () => {
+  it("keeps valid ids once, in order, and caps the list", () => {
+    const id = (n: number) => `cmvk8ahgi00fnu07d5nu${String(n).padStart(5, "0")}`;
+    expect(parseReportIds(`${id(1)},${id(2)},${id(1)}, ,../etc,${id(3)}`)).toEqual([id(1), id(2), id(3)]);
+    expect(parseReportIds([id(1), id(2)])).toEqual([id(1), id(2)]);
+    expect(parseReportIds(null)).toEqual([]);
+    expect(parseReportIds(Array.from({ length: 30 }, (_, i) => id(i)).join(","))).toHaveLength(24);
+  });
+});
+
+describe("disputes awaiting THD's decision", () => {
+  it("uses the live dispute status by line, and the snapshot's for violations without a line id", () => {
+    const withLines = input("r7", 202606, "Jul 2026", [
+      { ...violation("US RDC", "Late ASN", "555", 250, "EDI"), lineId: "line-a", disputeStatus: "SUBMITTED" }, // decided since: not awaiting
+      { ...violation("US RDC", "Late ASN", "666", 250, "EDI"), lineId: "line-b", disputeStatus: "PREPARING" }, // submitted since
+      { ...violation("US DFC", "Missing ASN", "777", 1000, null), disputeStatus: "SUBMITTED" }, // older snapshot, no line id
+    ]);
+    const s = buildSummary([{ ...withLines, awaiting: { "line-b": 200 } }]);
+    expect(s.groups[0].rows.map((r) => r.awaiting)).toEqual([0, 200]);
+    expect(s.groups[0]).toMatchObject({ awaiting: 200, awaitingDisputes: 1 });
+    expect(s.groups[1]).toMatchObject({ awaiting: 1000, awaitingDisputes: 1 });
+    expect(s.reports[0]).toMatchObject({ awaiting: 1200, awaitingDisputes: 2 });
+    expect(s.totals).toMatchObject({ awaiting: 1200, awaitingDisputes: 2 });
+    expect(s.teams.find((t) => t.team === "EDI")?.awaiting).toBe(200);
+    const { text } = summaryEmail(s, { origin: "https://x", dashboardPath: null });
+    expect(text).toContain("$1,200.00 submitted and awaiting THD's decision (2 disputes)");
+    expect(text).toContain("  - PO 666: $250.00, EDI, $200.00 awaiting THD decision");
   });
 });

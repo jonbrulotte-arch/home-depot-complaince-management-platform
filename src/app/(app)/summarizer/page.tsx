@@ -1,49 +1,23 @@
 import Link from "next/link";
-import { ExternalLink } from "lucide-react";
-import { prisma } from "@/lib/prisma";
+import { ExternalLink, FileText } from "lucide-react";
 import { requirePagePermission } from "@/lib/auth-guard";
 import { recentPublishedReports } from "@/lib/dashboard";
-import { scorecardData } from "@/lib/scorecard-store";
-import { ensureShareToken } from "@/lib/scorecard-share";
-import { buildSummary, periodsLabel, type Summary } from "@/lib/summarizer";
+import { parseReportIds, periodsLabel, type Summary } from "@/lib/summarizer";
+import { loadSummary } from "@/lib/summarizer-data";
 import { cn, formatCurrency } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { ReportPicker } from "./report-picker";
 import { SummaryEmail } from "./summary-email";
 
-const MAX_REPORTS = 24;
 const th = "px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider";
 const td = "px-4 py-2.5 text-sm";
 
 export default async function SummarizerPage({ searchParams }: { searchParams: Promise<{ r?: string | string[] }> }) {
   const user = await requirePagePermission("summarizer.use");
   const { r } = await searchParams;
-  const requested = [...new Set((Array.isArray(r) ? r.join(",") : (r ?? "")).split(","))].filter((id) => /^[a-z0-9]{20,40}$/i.test(id)).slice(0, MAX_REPORTS);
-
-  const [published, settings] = await Promise.all([
-    recentPublishedReports(500),
-    prisma.siteSettings.findUnique({ where: { id: "site" }, select: { publicDashboardToken: true } }),
-  ]);
-  const chosen = requested.length
-    ? await prisma.complianceReport.findMany({
-        where: { id: { in: requested }, status: "PUBLISHED", scorecard: { publishedAt: { not: null } } },
-        select: { id: true, title: true, scorecard: { select: { data: true } } },
-      })
-    : [];
-  const summary = chosen.length
-    ? buildSummary(
-        await Promise.all(
-          chosen.map(async (c) => ({
-            reportId: c.id,
-            title: c.title,
-            data: scorecardData(c.scorecard!.data),
-            // The team may not have accounts, so the email links to the public scorecard pages
-            scorecardPath: await ensureShareToken(c.id).then((t) => (t ? `/s/${t}` : `/scorecards/${c.id}`)),
-          })),
-        ),
-      )
-    : null;
-  const dashboardPath = settings?.publicDashboardToken ? `/d/${settings.publicDashboardToken}` : null;
+  const requested = parseReportIds(r);
+  const [published, { summary, dashboardPath }] = await Promise.all([recentPublishedReports(500), loadSummary(requested)]);
 
   return (
     <div className="p-6 max-w-7xl mx-auto space-y-6">
@@ -106,18 +80,27 @@ function SummaryView({ summary, dashboardPath }: { summary: Summary; dashboardPa
     ["Offsets", formatCurrency(summary.totals.preOffset)],
     ["Recovered in disputes", formatCurrency(summary.totals.recovered), "text-green-700"],
     ["Post-dispute offsets", formatCurrency(summary.totals.postOffset), summary.totals.postOffset > 0 ? "text-red-700" : undefined],
+    [`Awaiting THD decision (${summary.totals.awaitingDisputes} disputes)`, formatCurrency(summary.totals.awaiting), summary.totals.awaiting > 0 ? "text-amber-700" : undefined],
   ];
   return (
     <div className="space-y-6">
-      <div>
-        <h2 className="text-xl font-bold text-gray-900">Scorecard Summary: {periodsLabel(summary)}</h2>
-        {dashboardPath && (
-          <a href={dashboardPath} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-sm text-blue-600 hover:underline">
-            Public dashboard <ExternalLink className="h-3.5 w-3.5" />
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h2 className="text-xl font-bold text-gray-900">Scorecard Summary: {periodsLabel(summary)}</h2>
+          {dashboardPath && (
+            <a href={dashboardPath} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-sm text-blue-600 hover:underline">
+              Public dashboard <ExternalLink className="h-3.5 w-3.5" />
+            </a>
+          )}
+        </div>
+        <Button asChild variant="outline" size="sm">
+          <a href={`/api/summarizer/pdf?r=${summary.reports.map((s) => s.reportId).join(",")}`}>
+            <FileText className="h-4 w-4 mr-1.5" />
+            Export PDF
           </a>
-        )}
+        </Button>
       </div>
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
         {stats.map(([label, value, tone]) => (
           <div key={label} className="rounded-lg border border-gray-200 bg-white px-4 py-3">
             <p className="text-xs text-gray-500">{label}</p>
@@ -133,7 +116,7 @@ function SummaryView({ summary, dashboardPath }: { summary: Summary; dashboardPa
         <table className="min-w-full">
           <thead className="bg-gray-50">
             <tr>
-              {["Period", "Violations", "Offsets", "Recovered", "Post-dispute", "Scorecard"].map((h) => (
+              {["Period", "Violations", "Offsets", "Recovered", "Post-dispute", "Awaiting THD decision", "Scorecard"].map((h) => (
                 <th key={h} className={th}>{h}</th>
               ))}
             </tr>
@@ -146,6 +129,9 @@ function SummaryView({ summary, dashboardPath }: { summary: Summary; dashboardPa
                 <td className={cn(td, "text-gray-700")}>{formatCurrency(r.preOffset)}</td>
                 <td className={cn(td, r.recovered ? "text-green-700" : "text-gray-400")}>{r.recovered ? formatCurrency(r.recovered) : "—"}</td>
                 <td className={cn(td, "font-medium text-gray-900")}>{formatCurrency(r.postOffset)}</td>
+                <td className={cn(td, r.awaiting ? "text-amber-700" : "text-gray-400")}>
+                  {r.awaitingDisputes ? `${formatCurrency(r.awaiting)} (${r.awaitingDisputes})` : "—"}
+                </td>
                 <td className={td}>
                   <Link href={`/scorecards/${r.reportId}`} className="text-blue-600 hover:underline">
                     Open
@@ -171,12 +157,13 @@ function SummaryView({ summary, dashboardPath }: { summary: Summary; dashboardPa
               </CardTitle>
               <p className="text-sm text-gray-500">
                 {g.violations} violation(s) · <span className="font-medium text-gray-900">{formatCurrency(g.offset)}</span>
+                {g.awaitingDisputes > 0 && <span className="text-amber-700"> · {formatCurrency(g.awaiting)} awaiting THD decision</span>}
               </p>
             </CardHeader>
             <table className="min-w-full">
               <thead className="bg-gray-50">
                 <tr>
-                  {[...(multi ? ["Period"] : []), "PO #", "Offset", "Team responsible"].map((h) => (
+                  {[...(multi ? ["Period"] : []), "PO #", "Offset", "Team responsible", "Awaiting THD decision"].map((h) => (
                     <th key={h} className={th}>{h}</th>
                   ))}
                 </tr>
@@ -188,6 +175,7 @@ function SummaryView({ summary, dashboardPath }: { summary: Summary; dashboardPa
                     <td className={cn(td, "text-gray-900")}>{row.poNumber ?? "—"}</td>
                     <td className={cn(td, "text-gray-900")}>{formatCurrency(row.offset)}</td>
                     <td className={cn(td, "text-gray-700")}>{row.team}</td>
+                    <td className={cn(td, row.awaiting ? "text-amber-700" : "text-gray-400")}>{row.awaiting ? formatCurrency(row.awaiting) : "—"}</td>
                   </tr>
                 ))}
               </tbody>
@@ -204,7 +192,7 @@ function SummaryView({ summary, dashboardPath }: { summary: Summary; dashboardPa
           <table className="min-w-full">
             <thead className="bg-gray-50">
               <tr>
-                {["Team", "Violations", "Offsets"].map((h) => (
+                {["Team", "Violations", "Offsets", "Awaiting THD decision"].map((h) => (
                   <th key={h} className={th}>{h}</th>
                 ))}
               </tr>
@@ -215,6 +203,7 @@ function SummaryView({ summary, dashboardPath }: { summary: Summary; dashboardPa
                   <td className={cn(td, "text-gray-900")}>{t.team}</td>
                   <td className={cn(td, "text-gray-700")}>{t.violations}</td>
                   <td className={cn(td, "font-medium text-gray-900")}>{formatCurrency(t.offset)}</td>
+                  <td className={cn(td, t.awaiting ? "text-amber-700" : "text-gray-400")}>{t.awaiting ? formatCurrency(t.awaiting) : "—"}</td>
                 </tr>
               ))}
             </tbody>
