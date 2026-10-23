@@ -1,6 +1,6 @@
 import PDFDocument from "pdfkit";
 import type { ScorecardData } from "@/lib/scorecard";
-import { shipmentRows } from "@/lib/scorecard-rules";
+import { rootCauseAndNotes, shipmentRows } from "@/lib/scorecard-rules";
 import { DISPUTE_STATUS_LABELS } from "@/lib/disputes";
 import { DEFAULT_SITE_NAME } from "@/lib/brand";
 import { formatDateRange, SHIPMENT_RANGES } from "@/lib/shipment-ranges";
@@ -207,7 +207,7 @@ export function scorecardPdf(data: ScorecardData, status: { version: number; pub
       { header: "Team", width: 2 },
       { header: "Dispute", width: 3.2 },
       { header: "Recovered", width: 1.8, align: "right" },
-      { header: "Notes", width: 5 },
+      { header: "Root cause / Notes", width: 5 },
     ],
     data.violations.length
       ? data.violations.map((v) => [
@@ -218,7 +218,7 @@ export function scorecardPdf(data: ScorecardData, status: { version: number; pub
           v.teamInfluence ?? "—",
           v.disputeStatus ? `${DISPUTE_STATUS_LABELS[v.disputeStatus]}${v.reasonCode ? `\n${v.reasonCode}` : ""}` : { text: "Not disputed", color: C.muted },
           v.recovered ? { text: money(v.recovered), color: C.green } : "—",
-          v.notes ?? "",
+          rootCauseAndNotes(v),
         ])
       : [["No violations this period", "", "", "", "", "", "", ""]],
   );

@@ -48,6 +48,8 @@ export interface ScorecardViolation {
   disputeStatus: DisputeStatus | null;
   reasonCode: string | null;
   recovered: number | null;
+  /** Root cause from the violation review; absent on scorecards generated before it was included */
+  rootCause?: string | null;
   notes: string | null;
 }
 
@@ -183,6 +185,7 @@ export async function buildScorecard(reportId: string): Promise<ScorecardData> {
     disputeStatus: l.dispute && l.dispute.status !== "WITHDRAWN" ? l.dispute.status : null,
     reasonCode: l.dispute?.reasonCode?.code ?? null,
     recovered: l.dispute?.amountRecovered == null ? null : Number(l.dispute.amountRecovered),
+    rootCause: l.review?.rootCause ?? null,
     notes: l.review?.notes ?? null,
   }));
 

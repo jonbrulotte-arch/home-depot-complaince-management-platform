@@ -1,7 +1,7 @@
 import ExcelJS from "exceljs";
 import { describe, expect, it } from "vitest";
 import { scorecardWorkbook } from "@/lib/scorecard-export";
-import { meetsGoal, shipmentRows } from "@/lib/scorecard-rules";
+import { meetsGoal, rootCauseAndNotes, shipmentRows } from "@/lib/scorecard-rules";
 import { scorecardPdf } from "@/lib/scorecard-pdf";
 import type { ScorecardData } from "@/lib/scorecard";
 
@@ -27,7 +27,7 @@ const data: ScorecardData = {
   ],
   totals: { lines: 5, violations: 4, preOffset: 1359.62, postOffset: 1214.98, disputedAmount: 144.64, recovered: 144.64, deniedAmount: 0, pendingAmount: 0, pendingDisputes: 0 },
   violations: [
-    { program: "US Rapid Deployment Center", metric: "Fill Rate", poNumber: "2015449080", dcNumber: "5851", offset: 144.64, disposition: "DISPUTABLE", teamInfluence: "Warehouse", disputeStatus: "APPROVED", reasonCode: "Order Shipped Complete", recovered: 144.64, notes: "POD attached" },
+    { program: "US Rapid Deployment Center", metric: "Fill Rate", poNumber: "2015449080", dcNumber: "5851", offset: 144.64, disposition: "DISPUTABLE", teamInfluence: "Warehouse", disputeStatus: "APPROVED", reasonCode: "Order Shipped Complete", recovered: 144.64, rootCause: "Carrier delay", notes: "POD attached" },
   ],
   shipments: {
     programs: [
@@ -72,6 +72,8 @@ describe("scorecard export", () => {
     const vs = wb.getWorksheet("Violations")!;
     expect(vs.getRow(2).getCell(3).value).toBe("2015449080");
     expect(vs.getRow(2).getCell(8).value).toBe("Approved");
+    expect(vs.getRow(1).getCell(11).value).toBe("Root cause / Notes");
+    expect(vs.getRow(2).getCell(11).value).toBe("Root cause: Carrier delay\nPOD attached");
     expect(wb.getWorksheet("12-Month Offsets")!.getRow(3).getCell(2).value).toBe(1359.62);
   });
 });
@@ -136,5 +138,15 @@ describe("shipment rows", () => {
     wb.getWorksheet("Scorecard")!.eachRow((r) => labels.push(String(r.getCell(1).value)));
     expect(labels).toContain("Both periods");
     expect(labels.filter((l) => l === "LTL & TL")).toHaveLength(3);
+  });
+});
+
+describe("root cause and notes", () => {
+  it("puts the root cause first and leaves out what is missing", () => {
+    expect(rootCauseAndNotes({ rootCause: "Customer Cancelled Order", notes: "Called 6/22" })).toBe("Root cause: Customer Cancelled Order\nCalled 6/22");
+    expect(rootCauseAndNotes({ rootCause: null, notes: "Invoicing needs manual intervention." })).toBe("Invoicing needs manual intervention.");
+    expect(rootCauseAndNotes({ rootCause: " ", notes: null })).toBe("");
+    // Scorecards generated before root causes were included have notes only
+    expect(rootCauseAndNotes({ notes: "POD attached" })).toBe("POD attached");
   });
 });

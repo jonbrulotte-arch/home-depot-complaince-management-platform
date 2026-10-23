@@ -47,3 +47,8 @@ export function shipmentRows(sh: ScorecardShipments): ShipmentRow[] {
     ...combined,
   ];
 }
+
+/** The violation list's "Root cause / Notes" text: the root cause first, then the review notes. */
+export function rootCauseAndNotes(v: { rootCause?: string | null; notes: string | null }): string {
+  return [v.rootCause?.trim() ? `Root cause: ${v.rootCause.trim()}` : null, v.notes?.trim() || null].filter(Boolean).join("\n");
+}

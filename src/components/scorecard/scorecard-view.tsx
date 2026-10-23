@@ -165,7 +165,7 @@ export function ScorecardView({ data, showViolations = true }: { data: Scorecard
                 <table className="min-w-full">
                   <thead className="bg-gray-50">
                     <tr>
-                      {["Program · Metric", "PO #", "Site", "Offset", "Team", "Dispute", "Recovered", "Notes"].map((h) => (
+                      {["Program · Metric", "PO #", "Site", "Offset", "Team", "Dispute", "Recovered", "Root cause / Notes"].map((h) => (
                         <th key={h} className={th}>{h}</th>
                       ))}
                     </tr>
@@ -183,7 +183,10 @@ export function ScorecardView({ data, showViolations = true }: { data: Scorecard
                           {v.reasonCode && <div className="text-xs text-gray-500">{v.reasonCode}</div>}
                         </td>
                         <td className={cn(td, v.recovered ? "text-green-700" : "text-gray-400")}>{v.recovered ? formatCurrency(v.recovered) : "—"}</td>
-                        <td className={cn(td, "max-w-xs text-xs text-gray-600 whitespace-pre-wrap")}>{v.notes ?? ""}</td>
+                        <td className={cn(td, "max-w-xs text-xs text-gray-600 whitespace-pre-wrap")}>
+                          {v.rootCause && <div className="font-medium text-gray-800">{v.rootCause}</div>}
+                          {v.notes}
+                        </td>
                       </tr>
                     ))}
                   </tbody>
