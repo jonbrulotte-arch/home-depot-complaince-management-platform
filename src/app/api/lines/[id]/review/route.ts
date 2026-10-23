@@ -6,7 +6,7 @@ import { badRequest, notFound, parseJson, type IdParams } from "@/lib/api";
 import { audit } from "@/lib/audit";
 
 const reviewSchema = z.object({
-  disposition: z.enum(["PENDING", "ACCEPTED", "DISPUTABLE", "NOT_DISPUTABLE", "NEEDS_RESEARCH"]),
+  disposition: z.enum(["PENDING", "ACCEPTED", "DISPUTABLE", "NOT_DISPUTABLE", "NEEDS_RESEARCH", "RESOLVED"]),
   teamInfluence: z.enum(["WAREHOUSE", "CUSTOMER_SERVICE", "CS_WAREHOUSE", "EDI", "ECOMM", "CARRIER", "THD", "OTHER"]).nullable().optional(),
   reasonCodeId: z.string().trim().min(1).nullable().optional(),
   rootCause: z.string().trim().max(2000).nullable().optional(),

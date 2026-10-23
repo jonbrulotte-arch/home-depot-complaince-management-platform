@@ -387,6 +387,7 @@ enum Disposition {
   DISPUTABLE
   NOT_DISPUTABLE
   NEEDS_RESEARCH
+  RESOLVED // not a real violation (e.g. cancelled by the customer); counts as compliant on the scorecard
 }
 
 enum TeamInfluence {

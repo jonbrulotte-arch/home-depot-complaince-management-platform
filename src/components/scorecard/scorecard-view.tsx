@@ -90,6 +90,7 @@ export function ScorecardView({ data, showViolations = true }: { data: Scorecard
                       <td className={cn(td, m.violations ? "text-red-700 font-medium" : "text-gray-400")}>
                         {m.violations}
                         {m.disputed > 0 && <span className="ml-1 text-xs font-normal text-gray-500">({m.disputed} disputed, {m.approved} approved)</span>}
+                        {m.resolved ? <div className="text-xs font-normal text-gray-500">{m.resolved} cancelled / resolved, not counted</div> : null}
                       </td>
                       <td className={cn(td, "text-gray-700")}>{m.preOffset ? formatCurrency(m.preOffset) : "—"}</td>
                       <td className={cn(td, "font-medium", m.postOffset ? "text-gray-900" : "text-gray-400")}>

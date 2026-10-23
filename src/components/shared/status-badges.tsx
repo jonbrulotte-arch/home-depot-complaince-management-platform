@@ -30,6 +30,7 @@ export const DISPOSITIONS: Record<Disposition, { label: string; variant: "second
   DISPUTABLE: { label: "Disputable", variant: "success" },
   NOT_DISPUTABLE: { label: "Not disputable", variant: "warning" },
   NEEDS_RESEARCH: { label: "Needs research", variant: "purple" },
+  RESOLVED: { label: "Cancelled / Resolved", variant: "default" },
 };
 
 export function DispositionBadge({ disposition }: { disposition: Disposition | null | undefined }) {

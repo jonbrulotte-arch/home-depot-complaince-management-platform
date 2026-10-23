@@ -167,7 +167,11 @@ export function scorecardPdf(data: ScorecardData, status: { version: number; pub
           pct(m.prePct),
           pct(m.postPct),
           meets === null ? "—" : meets ? { text: "Meets goal", color: C.green } : { text: "Below goal", color: C.red },
-          m.violations ? { text: `${m.violations}${m.disputed ? ` (${m.disputed} disputed, ${m.approved} approved)` : ""}`, color: C.red } : "0",
+          m.violations
+            ? { text: `${m.violations}${m.disputed ? ` (${m.disputed} disputed, ${m.approved} approved)` : ""}${m.resolved ? `\n${m.resolved} resolved, not counted` : ""}`, color: C.red }
+            : m.resolved
+              ? { text: `0\n${m.resolved} resolved, not counted`, color: C.muted }
+              : "0",
           m.preOffset ? money(m.preOffset) : "—",
           m.postOffset ? { text: `${money(m.postOffset)}${m.thdPostDispute ? " *" : ""}`, bold: true, color: C.text } : m.thdPostDispute ? "— *" : "—",
         ];

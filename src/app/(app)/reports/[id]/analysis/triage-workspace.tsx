@@ -56,7 +56,7 @@ interface HistoryItem {
 }
 
 const NONE = "__none__";
-const DISPOSITION_ORDER: Disposition[] = ["ACCEPTED", "DISPUTABLE", "NOT_DISPUTABLE", "NEEDS_RESEARCH", "PENDING"];
+const DISPOSITION_ORDER: Disposition[] = ["ACCEPTED", "DISPUTABLE", "NOT_DISPUTABLE", "RESOLVED", "NEEDS_RESEARCH", "PENDING"];
 
 function isDone(line: TriageLine) {
   return Boolean(line.review && line.review.disposition !== "PENDING" && line.review.disposition !== "NEEDS_RESEARCH");
@@ -317,6 +317,12 @@ function LineDetail({
             </Button>
           ))}
         </div>
+
+        {review.disposition === "RESOLVED" && (
+          <p className="rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-800">
+            Not a real violation, e.g. the customer cancelled the order. The line counts as compliant on the scorecard and is left out of its violations; say why in the notes.
+          </p>
+        )}
 
         {review.disposition === "DISPUTABLE" && (
           <div>

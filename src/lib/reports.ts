@@ -21,6 +21,8 @@ export interface MetricStat {
   thresholdPct: number | null;
   offsetType: "NONE" | "FLAT" | "PCT_VALUE" | null;
   meetsThreshold: boolean | null;
+  /** Lines reviewed as Cancelled / Resolved, which count as compliant */
+  resolved: number;
   /** Lines with an active (not withdrawn) dispute */
   disputed: number;
   approved: number;
@@ -59,6 +61,7 @@ export async function getMetricStats(programIds: string[], fiscalMonth: number):
         metricId: true,
         orderedQty: true,
         receivedQty: true,
+        offsetAmount: true,
         review: { select: { disposition: true } },
         dispute: { select: { status: true, amountRecovered: true } },
       },
@@ -73,34 +76,44 @@ export async function getMetricStats(programIds: string[], fiscalMonth: number):
     const ordered = rows.reduce((sum, g) => sum + decimal(g._sum.orderedQty), 0);
     const received = rows.reduce((sum, g) => sum + decimal(g._sum.receivedQty), 0);
 
+    const lines = nonCompliant.filter((l) => l.metricId === m.id);
+    // Cancelled / Resolved lines are not real violations: they count as compliant, with their
+    // shortfall restored, before and after disputes
+    const resolvedLines = lines.filter((l) => l.review?.disposition === "RESOLVED");
+    const shortfall = (ls: typeof lines) => ls.reduce((sum, l) => sum + Math.max(0, decimal(l.orderedQty) - decimal(l.receivedQty)), 0);
+
     // A percentage needs compliant lines as a denominator; violation-only exports have none.
     // Fill Rate is measured in units when quantities are present, as THD does.
     let compliancePct: number | null = null;
     if (compliant > 0) {
-      compliancePct = m.code === "FILL_RATE" && ordered > 0 ? (received / ordered) * 100 : (compliant / (compliant + nc)) * 100;
+      compliancePct =
+        m.code === "FILL_RATE" && ordered > 0
+          ? Math.min(100, ((received + shortfall(resolvedLines)) / ordered) * 100)
+          : ((compliant + resolvedLines.length) / (compliant + nc)) * 100;
     }
     const rule = ruleFor(m.rules, fiscalMonth);
     const thresholdPct = rule ? Number(rule.thresholdPct) : null;
 
-    const lines = nonCompliant.filter((l) => l.metricId === m.id);
     const disputes = lines.flatMap((l) => (l.dispute && l.dispute.status !== "WITHDRAWN" ? [{ ...l.dispute, line: l }] : []));
     const approvedLines = disputes.filter((d) => d.status === "APPROVED");
     const recovered = disputes
       .filter((d) => d.status === "APPROVED" || d.status === "PARTIAL")
       .reduce((sum, d) => sum + decimal(d.amountRecovered), 0);
     // An approved dispute turns the line compliant, which recalculates the metric
+    const cleared = [...resolvedLines, ...approvedLines.filter((d) => d.line.review?.disposition !== "RESOLVED").map((d) => d.line)];
     let postDisputePct: number | null = null;
     if (compliancePct !== null) {
       if (m.code === "FILL_RATE" && ordered > 0) {
-        const restored = approvedLines.reduce((sum, d) => sum + Math.max(0, decimal(d.line.orderedQty) - decimal(d.line.receivedQty)), 0);
-        postDisputePct = Math.min(100, ((received + restored) / ordered) * 100);
+        postDisputePct = Math.min(100, ((received + shortfall(cleared)) / ordered) * 100);
       } else {
-        postDisputePct = ((compliant + approvedLines.length) / (compliant + nc)) * 100;
+        postDisputePct = ((compliant + cleared.length) / (compliant + nc)) * 100;
       }
     }
     // Percentage-based offsets are only assessed below the threshold, so they fall away entirely
-    // when the recalculated performance meets it
-    let postDisputeOffset = Math.max(0, offset - recovered);
+    // when the recalculated performance meets it. Offsets THD charged on resolved lines are
+    // shown pre-dispute but not owed.
+    const resolvedOffset = resolvedLines.filter((l) => !(l.dispute && ["APPROVED", "PARTIAL"].includes(l.dispute.status))).reduce((sum, l) => sum + decimal(l.offsetAmount), 0);
+    let postDisputeOffset = Math.max(0, offset - recovered - resolvedOffset);
     if (rule?.offsetType === "PCT_VALUE" && postDisputePct !== null && thresholdPct !== null && postDisputePct >= thresholdPct) {
       postDisputeOffset = 0;
     }
@@ -117,6 +130,7 @@ export async function getMetricStats(programIds: string[], fiscalMonth: number):
       thresholdPct,
       offsetType: rule?.offsetType ?? null,
       meetsThreshold: compliancePct == null || thresholdPct == null ? null : compliancePct >= thresholdPct,
+      resolved: resolvedLines.length,
       disputed: disputes.length,
       approved: approvedLines.length,
       recovered: Math.round(recovered * 100) / 100,

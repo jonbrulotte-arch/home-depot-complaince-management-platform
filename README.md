@@ -7,7 +7,7 @@ Monthly compliance analysis for our Home Depot programs. Import the raw SPM expo
 - **Compliance reports**: create a report for a THD fiscal month, pick the programs, and import each program's SPM export. You see a preview first (lines, violations, offsets, warnings) and nothing is written until you confirm.
 - **PO records database**: every line, compliant and non-compliant, from every import. Each line keeps the canonical fields plus every original column.
 - **Analysis**: non-compliant lines grouped by program → metric. One line at a time, you record:
-  - a decision: accepted, disputable (with the THD dispute reason code and the documents it needs), not disputable, or needs research
+  - a decision: accepted, disputable (with the THD dispute reason code and the documents it needs), not disputable, cancelled / resolved, or needs research. **Cancelled / Resolved** is for lines that aren't real violations, such as orders the customer cancelled that THD's data still flags: they count as compliant on the scorecard (performance, violations and post-dispute offset) and are left out of its violations list; the pre-dispute offset still shows what THD charged.
   - team influence and root cause
   - notes and extra research inputs
 

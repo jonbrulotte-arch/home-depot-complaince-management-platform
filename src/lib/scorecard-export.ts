@@ -17,6 +17,7 @@ const DECISIONS: Record<string, string> = {
   DISPUTABLE: "Disputable",
   NOT_DISPUTABLE: "Not disputable",
   NEEDS_RESEARCH: "Needs research",
+  RESOLVED: "Cancelled / Resolved",
 };
 
 function header(row: ExcelJS.Row) {
@@ -77,7 +78,7 @@ export async function scorecardWorkbook(data: ScorecardData, status: { version: 
   for (const program of data.programs) {
     sc.addRow([]);
     sc.addRow([`${program.name}`, `${program.lines} ${data.shipments?.programs.some((p) => p.code === program.code && p.total !== null) ? "shipments" : "lines"}`]).font = { bold: true, size: 12 };
-    header(sc.addRow(["Metric", "Goal", "Pre-dispute", "Post-dispute", "Result", "Violations", "Pre-dispute $", "Post-dispute $", "Disputed"]));
+    header(sc.addRow(["Metric", "Goal", "Pre-dispute", "Post-dispute", "Result", "Violations", "Pre-dispute $", "Post-dispute $", "Disputed", "Cancelled / Resolved"]));
     for (const m of program.metrics) {
       const row = sc.addRow([
         m.name,
@@ -89,6 +90,7 @@ export async function scorecardWorkbook(data: ScorecardData, status: { version: 
         m.preOffset,
         m.postOffset,
         m.disputed,
+        m.resolved ?? 0,
       ]);
       [2, 3, 4].forEach((c) => (row.getCell(c).numFmt = PCT));
       [7, 8].forEach((c) => (row.getCell(c).numFmt = MONEY));

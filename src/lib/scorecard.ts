@@ -21,6 +21,8 @@ export interface ScorecardMetric {
   postOffset: number;
   disputed: number;
   approved: number;
+  /** Lines reviewed as Cancelled / Resolved: compliant, and not counted in `violations` */
+  resolved?: number;
   /** Post-dispute offset taken from THD's own SPM summary (historical reports) */
   thdPostDispute?: boolean;
 }
@@ -142,7 +144,8 @@ export async function buildScorecard(reportId: string): Promise<ScorecardData> {
           name: m.name,
           goalPct: m.thresholdPct,
           lines: m.total,
-          violations: m.nonCompliant,
+          violations: m.nonCompliant - m.resolved,
+          ...(m.resolved ? { resolved: m.resolved } : {}),
           prePct: m.compliancePct,
           postPct: m.postDisputePct,
           // THD charges only while a metric misses its goal, so a $0 post-dispute offset means it met it
@@ -167,7 +170,9 @@ export async function buildScorecard(reportId: string): Promise<ScorecardData> {
     };
   });
 
-  const violations: ScorecardViolation[] = lines.map((l) => ({
+  // Cancelled / Resolved lines are not violations: leave them out of the list and totals
+  const standing = lines.filter((l) => l.review?.disposition !== "RESOLVED");
+  const violations: ScorecardViolation[] = standing.map((l) => ({
     program: l.metric.program.name,
     metric: l.metric.name,
     poNumber: l.poNumber,
@@ -186,7 +191,7 @@ export async function buildScorecard(reportId: string): Promise<ScorecardData> {
     round(activeDisputes.filter((d) => statuses.includes(d.status)).reduce((s, d) => s + Number(d[field] ?? 0), 0));
 
   const byTeam = new Map<string, { amount: number; lines: number }>();
-  for (const l of lines) {
+  for (const l of standing) {
     const team = l.review?.teamInfluence ? TEAM_INFLUENCES[l.review.teamInfluence as TeamInfluence] : "Not assigned";
     const entry = byTeam.get(team) ?? { amount: 0, lines: 0 };
     entry.amount += Number(l.offsetAmount);
@@ -205,7 +210,7 @@ export async function buildScorecard(reportId: string): Promise<ScorecardData> {
     programs,
     totals: {
       lines: programs.reduce((s, p) => s + p.lines, 0),
-      violations: lines.length,
+      violations: standing.length,
       preOffset: round(programs.reduce((s, p) => s + p.preOffset, 0)),
       postOffset: round(programs.reduce((s, p) => s + p.postOffset, 0)),
       disputedAmount: sumDisputes(["PREPARING", "READY", "SUBMITTED", "APPROVED", "PARTIAL", "DENIED"], "amountDisputed"),

@@ -207,7 +207,10 @@ export default async function ReportPage({ params }: { params: Promise<{ id: str
                           {slotsFor(programStats).length > 1 && <div className="text-xs text-gray-400">{periodLabel(periodOfMetric(m.code))}</div>}
                         </td>
                         <td className="px-4 py-3 text-gray-700">{m.total}</td>
-                        <td className="px-4 py-3">{m.nonCompliant ? <span className="font-medium text-red-700">{m.nonCompliant}</span> : <span className="text-gray-400">0</span>}</td>
+                        <td className="px-4 py-3">
+                          {m.nonCompliant ? <span className="font-medium text-red-700">{m.nonCompliant}</span> : <span className="text-gray-400">0</span>}
+                          {m.resolved > 0 && <div className="text-xs text-gray-500">{m.resolved} cancelled / resolved</div>}
+                        </td>
                         <td className="px-4 py-3 text-gray-700">{m.nonCompliant ? `${m.reviewed}/${m.nonCompliant}` : "—"}</td>
                         <td className="px-4 py-3">
                           {m.compliancePct == null ? (

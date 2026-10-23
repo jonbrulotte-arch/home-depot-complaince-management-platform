@@ -91,6 +91,12 @@ describe("meeting the goal", () => {
     expect(meetsGoal({ ...flat, nonCompliant: 1, approved: 0 })).toBe(false);
     expect(meetsGoal({ ...flat, nonCompliant: 1, approved: 1 })).toBe(true);
   });
+
+  it("does not count Cancelled / Resolved lines as violations", () => {
+    const flat = { ...base, thresholdPct: 100, offsetType: "FLAT" as const };
+    expect(meetsGoal({ ...flat, nonCompliant: 2, approved: 1, resolved: 1 })).toBe(true);
+    expect(meetsGoal({ ...flat, nonCompliant: 2, approved: 0, resolved: 1 })).toBe(false);
+  });
 });
 
 describe("scorecard PDF", () => {
