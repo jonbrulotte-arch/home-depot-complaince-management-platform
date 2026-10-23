@@ -41,6 +41,7 @@ model User {
   shipmentCounts      ShipmentCount[]
   scorecardsGenerated Scorecard[]         @relation("ScorecardGeneratedBy")
   scorecardsPublished Scorecard[]         @relation("ScorecardPublishedBy")
+  scorecardFeedback   ScorecardFeedback[]
 }
 
 model AuditLog {
@@ -169,27 +170,28 @@ enum ReportStatus {
 }
 
 model ComplianceReport {
-  id             String           @id @default(cuid())
+  id             String              @id @default(cuid())
   periodId       String
-  period         CompliancePeriod @relation(fields: [periodId], references: [id])
-  status         ReportStatus     @default(DRAFT)
+  period         CompliancePeriod    @relation(fields: [periodId], references: [id])
+  status         ReportStatus        @default(DRAFT)
   title          String
   notes          String?
   /// Created from the historical SPM archive: lines auto-accepted, dispute results from THD's exports
-  historical     Boolean          @default(false)
+  historical     Boolean             @default(false)
   /// Date ranges the shipment counts cover. THD reports Fill Rate and On Time two months behind
   /// the other metrics, so they cover an earlier range.
-  fillOnTimeFrom DateTime?        @db.Date
-  fillOnTimeTo   DateTime?        @db.Date
-  otherFrom      DateTime?        @db.Date
-  otherTo        DateTime?        @db.Date
+  fillOnTimeFrom DateTime?           @db.Date
+  fillOnTimeTo   DateTime?           @db.Date
+  otherFrom      DateTime?           @db.Date
+  otherTo        DateTime?           @db.Date
   createdById    String?
-  createdBy      User?            @relation(fields: [createdById], references: [id], onDelete: SetNull)
-  createdAt      DateTime         @default(now())
-  updatedAt      DateTime         @updatedAt
+  createdBy      User?               @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @updatedAt
   programs       ReportProgram[]
   scorecard      Scorecard?
   shipments      ShipmentCount[]
+  feedback       ScorecardFeedback[]
 
   @@index([periodId])
 }
@@ -367,8 +369,9 @@ model ComplianceLine {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  review  LineReview?
-  dispute Dispute?
+  review   LineReview?
+  dispute  Dispute?
+  feedback ScorecardFeedback[]
 
   @@unique([metricId, lineKey])
   @@index([poNumber])
@@ -518,8 +521,26 @@ model Scorecard {
   publishedAt   DateTime?
   publishedById String?
   publishedBy   User?            @relation("ScorecardPublishedBy", fields: [publishedById], references: [id], onDelete: SetNull)
+  /// Unguessable token for the public link (/s/<token>); made when first shared, works while published
+  shareToken    String?          @unique
 
   @@index([publishedAt])
+}
+
+/// Contextual feedback on a violation of a published scorecard, e.g. from the warehouse team
+model ScorecardFeedback {
+  id        String           @id @default(cuid())
+  reportId  String
+  report    ComplianceReport @relation(fields: [reportId], references: [id], onDelete: Cascade)
+  lineId    String
+  line      ComplianceLine   @relation(fields: [lineId], references: [id], onDelete: Cascade)
+  authorId  String?
+  author    User?            @relation(fields: [authorId], references: [id], onDelete: SetNull)
+  body      String
+  createdAt DateTime         @default(now())
+  updatedAt DateTime         @updatedAt
+
+  @@index([reportId, lineId])
 }
 
 enum ShipmentMode {

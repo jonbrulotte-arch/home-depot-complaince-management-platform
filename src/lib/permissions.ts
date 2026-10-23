@@ -7,6 +7,8 @@ export const PERMISSIONS = {
   "reports.advance": "Advance report status",
   "lines.triage": "Review and triage non-compliant lines",
   "disputes.manage": "Manage disputes",
+  "feedback.view": "View published scorecards and their violation feedback",
+  "feedback.submit": "Give feedback on scorecard violations",
   "admin.users": "Manage users",
   "admin.rbac": "Manage roles and permissions",
   "admin.programs": "Manage programs, metrics, thresholds and column mappings",
@@ -33,10 +35,31 @@ export const DEFAULT_ROLES: { name: string; description: string; permissions: Pe
       "reports.advance",
       "lines.triage",
       "disputes.manage",
+      "feedback.view",
+      "feedback.submit",
     ],
   },
   { name: "Viewer", description: "Read-only dashboard and PO Lookup", permissions: ["view.dashboard", "view.polookup"] },
+  {
+    name: "Warehouse",
+    description: "Warehouse team: reviews published scorecards and gives feedback on violations",
+    permissions: ["feedback.view", "feedback.submit"],
+  },
 ];
+
+/** Landing pages in order of preference; a user starts on the first one their role allows. */
+const HOME_PAGES: [Permission, string][] = [
+  ["view.dashboard", "/dashboard"],
+  ["reports.view", "/reports"],
+  ["feedback.view", "/feedback"],
+  ["view.polookup", "/po-lookup"],
+  ["admin.users", "/admin/users"],
+  ["admin.settings", "/admin/settings"],
+];
+
+export function homePath(permissions: Set<Permission>): string {
+  return HOME_PAGES.find(([p]) => permissions.has(p))?.[1] ?? "/no-access";
+}
 
 export function isPermission(value: string): value is Permission {
   return value in PERMISSIONS;

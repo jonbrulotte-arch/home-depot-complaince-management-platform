@@ -7,12 +7,17 @@ import { scorecardData } from "@/lib/scorecard-store";
 import { formatDate } from "@/lib/utils";
 import { ScorecardView } from "@/components/scorecard/scorecard-view";
 import { ScorecardToolbar } from "@/components/scorecard/scorecard-toolbar";
+import { ScorecardShareBar } from "@/components/scorecard/scorecard-share-bar";
+import { ensureShareToken } from "@/lib/scorecard-share";
 
 export default async function PublishedScorecardPage({ params }: { params: Promise<{ reportId: string }> }) {
-  await requirePagePermission("view.dashboard");
+  const user = await requirePagePermission("view.dashboard");
   const { reportId } = await params;
   const scorecard = await prisma.scorecard.findUnique({ where: { reportId } });
   if (!scorecard?.publishedAt) notFound();
+  const shareToken = await ensureShareToken(reportId);
+  const canFeedback = user.permissions.has("feedback.view");
+  const feedbackCount = canFeedback ? await prisma.scorecardFeedback.count({ where: { reportId } }) : 0;
 
   return (
     <div className="p-6 max-w-7xl mx-auto space-y-6 print:p-0 print:max-w-none">
@@ -25,6 +30,7 @@ export default async function PublishedScorecardPage({ params }: { params: Promi
         </div>
         <ScorecardToolbar reportId={reportId} canRegenerate={false} canExport />
       </div>
+      <ScorecardShareBar sharePath={shareToken ? `/s/${shareToken}` : null} feedbackHref={canFeedback ? `/feedback/${reportId}` : null} feedbackCount={feedbackCount} />
       <ScorecardView data={scorecardData(scorecard.data)} />
     </div>
   );

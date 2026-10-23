@@ -38,6 +38,8 @@ export interface ScorecardProgram {
 }
 
 export interface ScorecardViolation {
+  /** The compliance line, for feedback; absent on scorecards generated before feedback existed */
+  lineId?: string;
   program: string;
   metric: string;
   poNumber: string | null;
@@ -175,6 +177,7 @@ export async function buildScorecard(reportId: string): Promise<ScorecardData> {
   // Cancelled / Resolved lines are not violations: leave them out of the list and totals
   const standing = lines.filter((l) => l.review?.disposition !== "RESOLVED");
   const violations: ScorecardViolation[] = standing.map((l) => ({
+    lineId: l.id,
     program: l.metric.program.name,
     metric: l.metric.name,
     poNumber: l.poNumber,
