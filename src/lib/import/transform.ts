@@ -196,8 +196,12 @@ export function classifyLine(
   if (fields.spmStatus && !/^pending supplier$/i.test(fields.spmStatus)) return false;
   if (metricCode === "FILL_RATE") {
     if (fields.cancelDate) return false;
-    if (fields.fillRatePct != null && fields.fillRatePct < 100) return false;
-    if (fields.orderedQty != null && fields.receivedQty != null && fields.receivedQty < fields.orderedQty) return false;
+    // Quantities are what THD measures; the Fill Rate column (percent or fraction) is a fallback
+    if (fields.orderedQty != null && fields.receivedQty != null) {
+      if (fields.receivedQty < fields.orderedQty) return false;
+    } else if (fields.fillRatePct != null && fields.fillRatePct < 100) {
+      return false;
+    }
   }
   if (metricCode === "ON_TIME") {
     if (fields.businessDaysLate != null && fields.businessDaysLate > 0) return false;
@@ -434,8 +438,16 @@ export function transformWorkbook(workbook: ParsedWorkbook, opts: TransformOptio
       warnings.push(`Sheet "${sheet.name}" has no PO Number column; lines will not link to PO records.`);
     }
 
-    for (const row of rows) {
-      const mapped = mapRow(sheet, row.values, aliasMap);
+    const mappedRows = rows.map((row) => ({ row, mapped: mapRow(sheet, row.values, aliasMap) }));
+    // THD's older exports give Fill Rate as a percent (100), newer ones as a fraction (1)
+    const fillRates = mappedRows.map((r) => r.mapped.fields.fillRatePct).filter((v): v is number => v != null);
+    if (fillRates.length && fillRates.every((v) => v <= 1)) {
+      for (const { mapped } of mappedRows) {
+        if (mapped.fields.fillRatePct != null) mapped.fields.fillRatePct = Math.round(mapped.fields.fillRatePct * 10000) / 100;
+      }
+    }
+
+    for (const { row, mapped } of mappedRows) {
       const fiscalMonth = mapped.fiscalMonth ?? opts.fallbackFiscalMonth;
       const isCompliant = classifyLine(metric.code, mapped.fields, mapped.offset, mapped.hasOffset, exportKind);
       if (mapped.shiftedOffset) shiftedRows += 1;

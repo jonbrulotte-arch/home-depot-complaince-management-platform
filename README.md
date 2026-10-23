@@ -93,6 +93,7 @@ Options: `--branch <name>` switches branch (e.g. `main` once merged), `--force` 
   - notes typed beside the data
   - hand-added subtotal rows
   - the "RESULT DATA EMPTY" placeholder sheets
+  - Fill Rate given as a percent (older exports, `100`) or a fraction (newer, `1`); lines are judged by ordered vs received quantity whenever the export has it
   - Invoice Timeliness (`US_INVOICE_TIMELINESS_RECORDS_…`, one "All LOC" sheet): THD lists POs whose goods were received but not invoiced, so every row is a violation (no offset). Weeks on report, location type, goods receipt and the first/latest report dates are kept as fields.
   - summary-only downloads (`…_SUM_…`): THD's totals with no PO lines. Each metric with offsets becomes one line without a PO, and the detail export for the same month replaces it.
 - **Offsets are checked against THD's Summary sheet.** Any difference is shown as a warning.

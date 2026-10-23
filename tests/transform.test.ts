@@ -187,3 +187,19 @@ describe("Invoice Timeliness exports", () => {
     expect(line.po).toMatchObject({ mVendor: "60003126", mVendorName: "JS PRODUCTS, INC" });
   });
 });
+
+describe("Fill Rate as a fraction", () => {
+  it("reads 1 as 100% and finds no shortfall when every line was received in full", async () => {
+    const p = await load("dfc-fill-rate-fraction_ALL_RESULTS.xlsx", "US_DFC", 202604, "FILL_ON_TIME");
+    expect(metric(p, "FILL_RATE")).toMatchObject({ total: 79, nonCompliant: 0 });
+    expect(new Set(p.lines.filter((l) => l.metricCode === "FILL_RATE").map((l) => l.fields.fillRatePct))).toEqual(new Set([100]));
+    // On Time matches THD's own summary for the month: 3 of 79 late
+    expect(metric(p, "ON_TIME")).toMatchObject({ total: 79, nonCompliant: 3 });
+  });
+
+  it("classifies by quantity when the export has it", () => {
+    expect(classifyLine("FILL_RATE", { fillRatePct: 1, orderedQty: 12, receivedQty: 12 }, 0, true, "ALL_RESULTS")).toBe(true);
+    expect(classifyLine("FILL_RATE", { fillRatePct: 100, orderedQty: 12, receivedQty: 10 }, 0, true, "ALL_RESULTS")).toBe(false);
+    expect(classifyLine("FILL_RATE", { fillRatePct: 92 }, 0, true, "ALL_RESULTS")).toBe(false);
+  });
+});
