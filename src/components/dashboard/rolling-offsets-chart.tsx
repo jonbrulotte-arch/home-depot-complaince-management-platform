@@ -3,19 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { cn, formatCurrency } from "@/lib/utils";
-
-export interface RollingPoint {
-  month: number;
-  label: string;
-  /** Pre-dispute offsets assessed in this month */
-  monthOffset: number;
-  /** Total of this month and the 11 before it */
-  rolling: number;
-  /** Change in the rolling total from the previous month (null for the first month) */
-  change: number | null;
-  /** Months of data inside the window, when fewer than 12 (the archive's first year) */
-  monthsInWindow: number;
-}
+import type { RollingPoint } from "@/lib/dashboard";
 
 // Colors validated as a pair (blue / red, the diverging poles) against the white card surface.
 const BLUE = "#2a78d6";

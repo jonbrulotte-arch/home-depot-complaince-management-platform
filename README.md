@@ -35,6 +35,8 @@ Monthly compliance analysis for our Home Depot programs. Import the raw SPM expo
 - **Custom Branding** (Admin › Settings): a site name and logo that replace "Sympl CM" in the sidebar, on the sign-in page, in the browser tab and on exported scorecards. When it is off, the default branding is used.
 - **PO Lookup**: search by PO (prefix), SKU, tracking #, PRO #, BOL #, TMS shipment ID or ASN doc trace ID.
 - **Dashboard**: 12-month pre-dispute offsets by program, and open work. A chart shows the 12-month total for every month since the data begins (not only the last year), with columns for how much it rose or fell from the month before; months in the first year, with less than 12 months of data behind them, are shaded. Hover or use the arrow keys for each month's figures, or switch to the table.
+  Recent reports lists published reports only, the most recent report month at the top.
+- **Public dashboard** (Admin › Settings › Public dashboard, off by default): a sign-in-free copy of the dashboard at `/d/<token>` with the 12-month offsets, the chart, the latest scorecard and every published scorecard, each linking to its public scorecard page. Internal work in progress (reports under review, lines not yet reviewed) is left out. *New link* replaces the address (the old one stops working) and *Turn off* takes the page down.
 - **Admin**:
   - Users
   - Roles & Access (role × permission matrix; built-in Admin, Analyst and Viewer roles)

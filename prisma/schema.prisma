@@ -583,16 +583,18 @@ model ShipmentCount {
 
 /// Single row (id "site") of platform-wide settings.
 model SiteSettings {
-  id                String      @id @default("site")
+  id                   String      @id @default("site")
   /// When off, the default Sympl CM branding is shown
-  brandingEnabled   Boolean     @default(false)
-  siteName          String?
-  logo              Bytes?
-  logoContentType   String?
+  brandingEnabled      Boolean     @default(false)
+  siteName             String?
+  logo                 Bytes?
+  logoContentType      String?
   /// Which month groups lines into reports
-  reportPeriodBasis PeriodBasis @default(RECEIVED_MONTH)
-  updatedAt         DateTime    @updatedAt
-  updatedById       String?
+  reportPeriodBasis    PeriodBasis @default(RECEIVED_MONTH)
+  /// Token for the public dashboard (/d/<token>); null while it is turned off
+  publicDashboardToken String?     @unique
+  updatedAt            DateTime    @updatedAt
+  updatedById          String?
 }
 
 enum PeriodBasis {
