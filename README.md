@@ -34,7 +34,7 @@ Monthly compliance analysis for our Home Depot programs. Import the raw SPM expo
 - **Backup & Restore** (Admin): one-click backups of all data, including attachments, saved on the server (`BACKUP_DIR`, default `./backups`). You can download them or restore from a stored or uploaded file. A restore replaces everything in one transaction, takes a safety backup first, and requires the same schema version. Scheduled backups: `npm run backup -- --keep 30` from cron. Disaster recovery: `npm run restore -- <file> --yes`.
 - **Custom Branding** (Admin › Settings): a site name and logo that replace "Sympl CM" in the sidebar, on the sign-in page, in the browser tab and on exported scorecards. When it is off, the default branding is used.
 - **PO Lookup**: search by PO (prefix), SKU, tracking #, PRO #, BOL #, TMS shipment ID or ASN doc trace ID.
-- **Dashboard**: 12-month pre-dispute offsets by program, and open work.
+- **Dashboard**: 12-month pre-dispute offsets by program, and open work. A chart shows the 12-month total for every month since the data begins (not only the last year), with columns for how much it rose or fell from the month before; months in the first year, with less than 12 months of data behind them, are shaded. Hover or use the arrow keys for each month's figures, or switch to the table.
 - **Admin**:
   - Users
   - Roles & Access (role × permission matrix; built-in Admin, Analyst and Viewer roles)

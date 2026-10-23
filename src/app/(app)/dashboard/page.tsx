@@ -9,6 +9,7 @@ import { StatCard } from "@/components/shared/stat-card";
 import { ReportStatusBadge } from "@/components/shared/status-badges";
 import { scorecardData } from "@/lib/scorecard-store";
 import { getPeriodField, linesInPeriod, type PeriodField } from "@/lib/periods";
+import { RollingOffsetsChart, type RollingPoint } from "@/components/dashboard/rolling-offsets-chart";
 
 export default async function DashboardPage() {
   const user = await requirePagePermission("view.dashboard");
@@ -18,7 +19,7 @@ export default async function DashboardPage() {
   const lastMonth = latest._max[field];
   const months = lastMonth ? Array.from({ length: 12 }, (_, i) => shiftFiscalMonth(lastMonth, i - 11)) : [];
 
-  const [programs, metrics, offsets, pendingReview, openReports, recentReports, latestScorecard] = await Promise.all([
+  const [programs, metrics, offsets, allMonths, pendingReview, openReports, recentReports, latestScorecard] = await Promise.all([
     prisma.program.findMany({ where: { active: true }, orderBy: { sortOrder: "asc" } }),
     prisma.metric.findMany({ select: { id: true, programId: true } }),
     months.length
@@ -31,6 +32,10 @@ export default async function DashboardPage() {
           })
           .then((rows) => rows.map((g) => ({ ...g, month: (g as unknown as Record<PeriodField, number>)[field] })))
       : Promise.resolve([]),
+    // Every month's offsets, for the 12-month total over the whole history
+    prisma.complianceLine
+      .groupBy({ by: [field], where: { isCompliant: false }, _sum: { offsetAmount: true } })
+      .then((rows) => rows.map((g) => ({ month: (g as unknown as Record<PeriodField, number>)[field], offset: Number(g._sum.offsetAmount ?? 0) }))),
     prisma.complianceLine.count({ where: { isCompliant: false, OR: [{ review: null }, { review: { disposition: "PENDING" } }] } }),
     prisma.complianceReport.count({ where: { status: { not: "PUBLISHED" } } }),
     user.permissions.has("reports.view")
@@ -49,6 +54,7 @@ export default async function DashboardPage() {
   const monthTotal = (fm: number) => programs.reduce((s, p) => s + (cell.get(`${p.id}|${fm}`) ?? 0), 0);
   const rowTotal = (pid: string) => months.reduce((s, fm) => s + (cell.get(`${pid}|${fm}`) ?? 0), 0);
   const twelveMonthTotal = months.reduce((s, fm) => s + monthTotal(fm), 0);
+  const rolling = rollingTotals(allMonths, lastMonth);
   const lastMonthViolations = lastMonth ? offsets.filter((g) => g.month === lastMonth).reduce((s, g) => s + g._count._all, 0) : 0;
 
   return (
@@ -87,6 +93,20 @@ export default async function DashboardPage() {
             </CardContent>
           </Card>
         </Link>
+      )}
+
+      {rolling.length > 1 && (
+        <Card>
+          <CardHeader>
+            <CardTitle>12-month offset total over time</CardTitle>
+            <CardDescription>
+              Each month&apos;s total of pre-dispute offsets for that month and the 11 before it, the same figure as the 12-mo total below, across all imported data, with how much it changed from the month before.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <RollingOffsetsChart points={rolling} />
+          </CardContent>
+        </Card>
       )}
 
       <Card>
@@ -157,4 +177,23 @@ export default async function DashboardPage() {
       )}
     </div>
   );
+}
+
+/** The rolling 12-month offset total for every month from the first with data to the latest. */
+function rollingTotals(months: { month: number; offset: number }[], lastMonth: number | null | undefined): RollingPoint[] {
+  const first = months.filter((m) => m.month > 0).reduce((min, m) => Math.min(min, m.month), Infinity);
+  if (!lastMonth || !Number.isFinite(first)) return [];
+  const byMonth = new Map(months.map((m) => [m.month, m.offset]));
+  const series: number[] = [];
+  for (let fm = first; fm <= lastMonth; fm = shiftFiscalMonth(fm, 1)) series.push(fm);
+  const offsetOf = (fm: number) => byMonth.get(fm) ?? 0;
+  const round = (v: number) => Math.round(v * 100) / 100;
+  let previous: number | null = null;
+  return series.map((fm, i) => {
+    const window = series.slice(Math.max(0, i - 11), i + 1);
+    const rolling = round(window.reduce((s, m) => s + offsetOf(m), 0));
+    const point: RollingPoint = { month: fm, label: fiscalLabel(fm), monthOffset: round(offsetOf(fm)), rolling, change: previous === null ? null : round(rolling - previous), monthsInWindow: window.length };
+    previous = rolling;
+    return point;
+  });
 }
