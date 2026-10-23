@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { apiFetch } from "@/lib/client-api";
+import { copyText } from "@/lib/clipboard";
 
 const noSubscribe = () => () => {};
 
@@ -37,7 +38,7 @@ export function PublicDashboardSettings({ initialToken }: { initialToken: string
   }
 
   async function copy() {
-    await navigator.clipboard.writeText(`${origin}${path}`);
+    if (!(await copyText(`${origin}${path}`))) return;
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   }

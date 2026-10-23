@@ -5,6 +5,7 @@ import Link from "next/link";
 import { Check, Copy, ExternalLink, Link2, MessageSquare } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { copyText } from "@/lib/clipboard";
 
 const noSubscribe = () => () => {};
 
@@ -16,7 +17,7 @@ export function ScorecardShareBar({ sharePath, feedbackHref, feedbackCount }: { 
   const url = sharePath ? `${origin}${sharePath}` : "";
 
   async function copy() {
-    await navigator.clipboard.writeText(url);
+    if (!(await copyText(url))) return;
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   }

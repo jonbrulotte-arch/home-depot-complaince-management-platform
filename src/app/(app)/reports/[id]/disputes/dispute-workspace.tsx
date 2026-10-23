@@ -11,6 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { DispositionBadge, DisputeStatusBadge } from "@/components/shared/status-badges";
 import { apiFetch } from "@/lib/client-api";
+import { copyText } from "@/lib/clipboard";
 import { allowedTransitions, DISPUTE_STATUS_LABELS, MAX_ATTACHMENT_BYTES, type ChecklistItem } from "@/lib/disputes";
 import { cn, formatCurrency, formatDateTime, formatUtcDate, formatUtcDateTime } from "@/lib/utils";
 
@@ -334,7 +335,7 @@ function DisputeDetail({ dispute, reasonCodes, canEdit }: { dispute: DisputeView
   }
 
   async function copyComment() {
-    await navigator.clipboard.writeText(comment);
+    if (!(await copyText(comment))) return;
     setCopied(true);
     setTimeout(() => setCopied(false), 1500);
   }

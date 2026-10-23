@@ -8,6 +8,12 @@ describe("roles and landing pages", () => {
     expect([...role("Warehouse")].sort()).toEqual(["feedback.submit", "feedback.view"]);
   });
 
+  it("lets Analysts use the Summarizer but not Viewers or the Warehouse", () => {
+    expect(role("Analyst").has("summarizer.use")).toBe(true);
+    expect(role("Viewer").has("summarizer.use")).toBe(false);
+    expect(role("Warehouse").has("summarizer.use")).toBe(false);
+  });
+
   it("sends each user to the first page their role allows", () => {
     expect(homePath(role("Admin"))).toBe("/dashboard");
     expect(homePath(role("Viewer"))).toBe("/dashboard");

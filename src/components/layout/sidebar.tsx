@@ -19,6 +19,7 @@ import {
   ChevronLeft,
   ChevronRight,
   MessageSquare,
+  Mail,
 } from "lucide-react";
 import { cn, getInitials } from "@/lib/utils";
 import type { Permission } from "@/lib/permissions";
@@ -34,6 +35,7 @@ const navItems: NavItem[] = [
   { href: "/disputes", label: "Disputes", icon: Gavel, permission: "reports.view" },
   { href: "/po-lookup", label: "PO Lookup", icon: Search, permission: "view.polookup" },
   { href: "/feedback", label: "Scorecard Feedback", icon: MessageSquare, permission: "feedback.view" },
+  { href: "/summarizer", label: "Summarizer", icon: Mail, permission: "summarizer.use" },
 ];
 
 const adminNavItems: NavItem[] = [
