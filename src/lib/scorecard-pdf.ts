@@ -1,5 +1,6 @@
 import PDFDocument from "pdfkit";
 import type { ScorecardData } from "@/lib/scorecard";
+import { shipmentRows } from "@/lib/scorecard-rules";
 import { DISPUTE_STATUS_LABELS } from "@/lib/disputes";
 import { DEFAULT_SITE_NAME } from "@/lib/brand";
 import { formatDateRange, SHIPMENT_RANGES } from "@/lib/shipment-ranges";
@@ -136,12 +137,11 @@ export function scorecardPdf(data: ScorecardData, status: { version: number; pub
     const n = (v: number | null) => (v === null ? { text: "Not entered", color: C.muted } : v.toLocaleString("en-US"));
     table(
       [{ header: "Mode", width: 3 }, ...sh.programs.map((p) => ({ header: p.name, width: 3, align: "right" as const })), { header: "Total", width: 2, align: "right" }],
-      [
-        ["Small Parcel", ...sh.programs.map((p) => n(p.smallParcel)), sh.totals.smallParcel.toLocaleString("en-US")],
-        ["LTL & TL", ...sh.programs.map((p) => n(p.ltl)), sh.totals.ltl.toLocaleString("en-US")],
-        ["Total", ...sh.programs.map((p) => n(p.total)), sh.totals.total.toLocaleString("en-US")],
-      ],
-      { boldLast: true },
+      shipmentRows(sh).map((row) =>
+        row.heading
+          ? [{ text: row.label, bold: true, color: C.muted }, ...sh.programs.map(() => ""), ""]
+          : [row.bold ? { text: row.label, bold: true, color: C.text } : row.label, ...row.values.map(n), { text: (row.total ?? 0).toLocaleString("en-US"), bold: row.bold }],
+      ),
     );
   }
 

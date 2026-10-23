@@ -5,7 +5,7 @@ import { fiscalLabel, shiftFiscalMonth } from "@/lib/fiscal";
 import { getMetricStats } from "@/lib/reports";
 import { meetsGoal } from "@/lib/scorecard-rules";
 import { getShipmentInputs, type ShipmentInput } from "@/lib/shipments";
-import { reportShipmentRanges, type ShipmentRanges } from "@/lib/shipment-ranges";
+import { reportShipmentRanges, SHIPMENT_RANGES, type ShipmentRanges } from "@/lib/shipment-ranges";
 import { TEAM_INFLUENCES } from "@/lib/line-fields";
 
 export interface ScorecardMetric {
@@ -49,10 +49,19 @@ export interface ScorecardViolation {
   notes: string | null;
 }
 
+export interface ShipmentModeCounts {
+  smallParcel: number | null;
+  ltl: number | null;
+  total: number | null;
+}
+
 export interface ScorecardShipments {
-  /** Per shipping program; null where the user has not entered a count */
-  programs: { code: string; name: string; smallParcel: number | null; ltl: number | null; total: number | null }[];
-  totals: { smallParcel: number; ltl: number; total: number };
+  /** Per shipping program, both compliance periods combined; null where nothing was entered */
+  programs: ({ code: string; name: string } & ShipmentModeCounts & {
+    /** Counts per compliance period; absent on scorecards generated before periods were collected */
+    periods?: Record<keyof ShipmentRanges, ShipmentModeCounts>;
+  })[];
+  totals: { smallParcel: number; ltl: number; total: number; periods?: Record<keyof ShipmentRanges, { smallParcel: number; ltl: number; total: number }> };
   /** Transportation measures the RDC and DFC LTL shipments */
   transportationLtl: number | null;
   complete: boolean;
@@ -271,18 +280,37 @@ async function buildTrend(programIds: string[], programs: { id: string; code: st
   });
 }
 
+/** Adds counts, keeping null when none of them were entered */
+const addCounts = (...values: (number | null)[]) => (values.every((v) => v === null) ? null : values.reduce<number>((s, v) => s + (v ?? 0), 0));
+
 export function summarizeShipments(inputs: ShipmentInput[]): ScorecardShipments {
   const programs = inputs.map((i) => {
-    const smallParcel = i.counts.SMALL_PARCEL;
-    const ltl = i.counts.LTL_TL;
-    return { code: i.code, name: i.name, smallParcel, ltl, total: smallParcel === null && ltl === null ? null : (smallParcel ?? 0) + (ltl ?? 0) };
+    const periods = Object.fromEntries(
+      SHIPMENT_RANGES.map(({ key, period }) => {
+        const { SMALL_PARCEL: smallParcel, LTL_TL: ltl } = i.counts[period];
+        return [key, { smallParcel, ltl, total: addCounts(smallParcel, ltl) }];
+      }),
+    ) as Record<keyof ShipmentRanges, ShipmentModeCounts>;
+    const smallParcel = addCounts(periods.fillOnTime.smallParcel, periods.other.smallParcel);
+    const ltl = addCounts(periods.fillOnTime.ltl, periods.other.ltl);
+    return { code: i.code, name: i.name, smallParcel, ltl, total: addCounts(smallParcel, ltl), periods };
   });
   const sum = (pick: (p: (typeof programs)[number]) => number | null) => programs.reduce((s, p) => s + (pick(p) ?? 0), 0);
+  const periodTotals = (key: keyof ShipmentRanges) => ({
+    smallParcel: sum((p) => p.periods[key].smallParcel),
+    ltl: sum((p) => p.periods[key].ltl),
+    total: sum((p) => p.periods[key].total),
+  });
   const dcs = programs.filter((p) => p.code === "US_RDC" || p.code === "US_DFC");
   return {
     programs,
-    totals: { smallParcel: sum((p) => p.smallParcel), ltl: sum((p) => p.ltl), total: sum((p) => p.total) },
+    totals: {
+      smallParcel: sum((p) => p.smallParcel),
+      ltl: sum((p) => p.ltl),
+      total: sum((p) => p.total),
+      periods: { fillOnTime: periodTotals("fillOnTime"), other: periodTotals("other") },
+    },
     transportationLtl: dcs.length && dcs.some((p) => p.ltl !== null) ? dcs.reduce((s, p) => s + (p.ltl ?? 0), 0) : null,
-    complete: programs.every((p) => p.smallParcel !== null && p.ltl !== null),
+    complete: programs.every((p) => SHIPMENT_RANGES.every(({ key }) => p.periods[key].smallParcel !== null && p.periods[key].ltl !== null)),
   };
 }

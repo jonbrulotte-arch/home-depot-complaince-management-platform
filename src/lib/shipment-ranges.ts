@@ -1,6 +1,8 @@
+import type { ShipmentPeriod } from "@prisma/client";
+
 // Date ranges the shipment counts cover (database-free, so client components can use it).
 // THD reports Fill Rate and On Time two months behind the other metrics, so a report collects
-// two ranges.
+// two ranges, and shipment counts for each; together they make the report's totals.
 
 /** Dates are ISO calendar dates, YYYY-MM-DD */
 export interface DateRange {
@@ -13,9 +15,9 @@ export interface ShipmentRanges {
   other: DateRange | null;
 }
 
-export const SHIPMENT_RANGES: { key: keyof ShipmentRanges; label: string; hint: string }[] = [
-  { key: "fillOnTime", label: "On-Time & Fill Rate", hint: "Two months before the other data" },
-  { key: "other", label: "All other data", hint: "ASN, TMS, Routing Guide and the rest" },
+export const SHIPMENT_RANGES: { key: keyof ShipmentRanges; period: ShipmentPeriod; label: string; hint: string }[] = [
+  { key: "fillOnTime", period: "FILL_ON_TIME", label: "On-Time & Fill Rate", hint: "Two months before the other data" },
+  { key: "other", period: "OTHER", label: "All other data", hint: "ASN, TMS, Routing Guide and the rest" },
 ];
 
 /** How many months Fill Rate and On Time trail the other metrics */

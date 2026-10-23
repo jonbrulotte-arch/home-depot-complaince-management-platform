@@ -18,11 +18,12 @@ const schema = z.object({
     .array(
       z.object({
         programId: z.string().trim().min(1),
+        period: z.enum(["FILL_ON_TIME", "OTHER"]),
         mode: z.enum(["SMALL_PARCEL", "LTL_TL"]),
         count: z.number().int().min(0).max(10_000_000).nullable(),
       }),
     )
-    .max(20),
+    .max(40),
   ranges: z.object({ fillOnTime: range, other: range }).optional(),
 });
 
@@ -43,12 +44,12 @@ export async function PUT(req: Request, { params }: IdParams) {
 
   const { ranges } = body.data;
   await prisma.$transaction([
-    ...body.data.counts.map(({ programId, mode, count }) =>
+    ...body.data.counts.map(({ programId, period, mode, count }) =>
       count === null
-        ? prisma.shipmentCount.deleteMany({ where: { reportId: id, programId, mode } })
+        ? prisma.shipmentCount.deleteMany({ where: { reportId: id, programId, period, mode } })
         : prisma.shipmentCount.upsert({
-            where: { reportId_programId_mode: { reportId: id, programId, mode } },
-            create: { reportId: id, programId, mode, count, updatedById: guard.user.id },
+            where: { reportId_programId_period_mode: { reportId: id, programId, period, mode } },
+            create: { reportId: id, programId, period, mode, count, updatedById: guard.user.id },
             update: { count, updatedById: guard.user.id },
           }),
     ),

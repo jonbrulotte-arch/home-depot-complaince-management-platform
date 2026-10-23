@@ -1,5 +1,6 @@
 import { CheckCircle2, XCircle } from "lucide-react";
 import type { ScorecardData, ScorecardShipments } from "@/lib/scorecard";
+import { shipmentRows } from "@/lib/scorecard-rules";
 import { formatDateRange, SHIPMENT_RANGES } from "@/lib/shipment-ranges";
 import { DISPUTE_STATUS_LABELS } from "@/lib/disputes";
 import { cn, formatCurrency, formatPct, formatUtcDate } from "@/lib/utils";
@@ -196,7 +197,7 @@ export function ScorecardView({ data, showViolations = true }: { data: Scorecard
 }
 
 function Shipments({ shipments }: { shipments: ScorecardShipments }) {
-  const n = (v: number | null) => (v === null ? <span className="text-gray-400">Not entered</span> : v.toLocaleString("en-US"));
+  const count = (v: number | null) => (v === null ? <span className="text-gray-400">Not entered</span> : v.toLocaleString("en-US"));
   return (
     <Card className="print:break-inside-avoid print:shadow-none">
       <CardHeader className="flex flex-row items-baseline justify-between space-y-0 pb-3">
@@ -230,21 +231,21 @@ function Shipments({ shipments }: { shipments: ScorecardShipments }) {
               </tr>
             </thead>
             <tbody>
-              {(
-                [
-                  ["Small Parcel", (p: ScorecardShipments["programs"][number]) => p.smallParcel, shipments.totals.smallParcel],
-                  ["LTL & TL", (p: ScorecardShipments["programs"][number]) => p.ltl, shipments.totals.ltl],
-                  ["Total", (p: ScorecardShipments["programs"][number]) => p.total, shipments.totals.total],
-                ] as const
-              ).map(([label, pick, total]) => (
-                <tr key={label} className={cn("border-t border-gray-200", label === "Total" && "bg-gray-50 font-semibold")}>
-                  <td className={cn(td, "text-gray-900")}>{label}</td>
-                  {shipments.programs.map((p) => (
-                    <td key={p.code} className={cn(td, "text-right text-gray-900")}>{n(pick(p))}</td>
-                  ))}
-                  <td className={cn(td, "text-right text-gray-900")}>{total.toLocaleString("en-US")}</td>
-                </tr>
-              ))}
+              {shipmentRows(shipments).map((row, i) =>
+                row.heading ? (
+                  <tr key={i} className="border-t border-gray-200 bg-gray-50">
+                    <td colSpan={shipments.programs.length + 2} className={cn(td, "py-2 text-xs font-medium uppercase tracking-wider text-gray-500")}>{row.label}</td>
+                  </tr>
+                ) : (
+                  <tr key={i} className={cn("border-t border-gray-200", row.bold && "bg-gray-50 font-semibold")}>
+                    <td className={cn(td, "text-gray-900")}>{row.label}</td>
+                    {row.values.map((v, n) => (
+                      <td key={n} className={cn(td, "text-right text-gray-900")}>{count(v)}</td>
+                    ))}
+                    <td className={cn(td, "text-right text-gray-900")}>{(row.total ?? 0).toLocaleString("en-US")}</td>
+                  </tr>
+                ),
+              )}
             </tbody>
           </table>
         </div>

@@ -1,5 +1,6 @@
 import ExcelJS from "exceljs";
 import type { ScorecardData } from "@/lib/scorecard";
+import { shipmentRows } from "@/lib/scorecard-rules";
 import { DISPUTE_STATUS_LABELS } from "@/lib/disputes";
 import { DEFAULT_SITE_NAME } from "@/lib/brand";
 import { formatDateRange, SHIPMENT_RANGES } from "@/lib/shipment-ranges";
@@ -64,9 +65,11 @@ export async function scorecardWorkbook(data: ScorecardData, status: { version: 
     sc.addRow(["Shipments"]).font = { bold: true, size: 12 };
     for (const { key, label } of sh.ranges ? SHIPMENT_RANGES : []) sc.addRow([`${label} date range`, formatDateRange(sh.ranges![key])]);
     header(sc.addRow(["Mode", ...sh.programs.map((p) => p.name), "Total"]));
-    sc.addRow(["Small Parcel", ...sh.programs.map((p) => p.smallParcel), sh.totals.smallParcel]);
-    sc.addRow(["LTL & TL", ...sh.programs.map((p) => p.ltl), sh.totals.ltl]);
-    sc.addRow(["Total", ...sh.programs.map((p) => p.total), sh.totals.total]).font = { bold: true };
+    for (const row of shipmentRows(sh)) {
+      const added = sc.addRow(row.heading ? [row.label] : [row.label, ...row.values, row.total]);
+      if (row.heading) added.font = { bold: true, color: { argb: "FF6B7280" } };
+      if (row.bold) added.font = { bold: true };
+    }
     if (sh.transportationLtl !== null) sc.addRow(["Transportation (RDC + DFC LTL)", sh.transportationLtl]);
     if (!sh.complete) sc.addRow(["Some shipment counts were not entered."]).font = { italic: true, color: { argb: "FFB45309" } };
   }

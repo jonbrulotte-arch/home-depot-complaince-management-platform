@@ -166,8 +166,8 @@ export async function createHistoricalReport(db: PrismaClient, month: Historical
   for (const s of shipments) {
     for (const mode of ["SMALL_PARCEL", "LTL_TL"] as const) {
       const count = s.suggested[mode];
-      if (count === undefined || s.counts[mode] !== null) continue;
-      await db.shipmentCount.create({ data: { reportId: report.id, programId: s.programId, mode, count, updatedById: userId } });
+      if (count === undefined || s.counts.FILL_ON_TIME[mode] !== null) continue;
+      await db.shipmentCount.create({ data: { reportId: report.id, programId: s.programId, period: "FILL_ON_TIME", mode, count, updatedById: userId } });
     }
   }
 

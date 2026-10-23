@@ -1,7 +1,7 @@
 import ExcelJS from "exceljs";
 import { describe, expect, it } from "vitest";
 import { scorecardWorkbook } from "@/lib/scorecard-export";
-import { meetsGoal } from "@/lib/scorecard-rules";
+import { meetsGoal, shipmentRows } from "@/lib/scorecard-rules";
 import { scorecardPdf } from "@/lib/scorecard-pdf";
 import type { ScorecardData } from "@/lib/scorecard";
 
@@ -30,8 +30,22 @@ const data: ScorecardData = {
     { program: "US Rapid Deployment Center", metric: "Fill Rate", poNumber: "2015449080", dcNumber: "5851", offset: 144.64, disposition: "DISPUTABLE", teamInfluence: "Warehouse", disputeStatus: "APPROVED", reasonCode: "Order Shipped Complete", recovered: 144.64, notes: "POD attached" },
   ],
   shipments: {
-    programs: [{ code: "US_RDC", name: "US Rapid Deployment Center", smallParcel: 0, ltl: 5, total: 5 }],
-    totals: { smallParcel: 0, ltl: 5, total: 5 },
+    programs: [
+      {
+        code: "US_RDC",
+        name: "US Rapid Deployment Center",
+        smallParcel: 0,
+        ltl: 5,
+        total: 5,
+        periods: { fillOnTime: { smallParcel: 0, ltl: 2, total: 2 }, other: { smallParcel: 0, ltl: 3, total: 3 } },
+      },
+    ],
+    totals: {
+      smallParcel: 0,
+      ltl: 5,
+      total: 5,
+      periods: { fillOnTime: { smallParcel: 0, ltl: 2, total: 2 }, other: { smallParcel: 0, ltl: 3, total: 3 } },
+    },
     transportationLtl: 5,
     complete: true,
     ranges: { fillOnTime: { from: "2024-04-01", to: "2024-04-30" }, other: null },
@@ -91,5 +105,30 @@ describe("scorecard PDF", () => {
     const pdf = await scorecardPdf(many, { version: 1, publishedAt: null });
     const pages = pdf.toString("latin1").match(/\/Type \/Page\b/g) ?? [];
     expect(pages.length).toBeGreaterThan(2);
+  });
+});
+
+describe("shipment rows", () => {
+  it("lists each compliance period, then both combined", () => {
+    const rows = shipmentRows(data.shipments!);
+    expect(rows.map((r) => r.label)).toEqual(["On-Time & Fill Rate", "Small Parcel", "LTL & TL", "All other data", "Small Parcel", "LTL & TL", "Both periods", "Small Parcel", "LTL & TL", "Total"]);
+    expect(rows[2]).toMatchObject({ values: [2], total: 2 });
+    expect(rows[5]).toMatchObject({ values: [3], total: 3 });
+    expect(rows[9]).toMatchObject({ bold: true, values: [5], total: 5 });
+  });
+
+  it("shows only totals for scorecards saved before periods were collected", () => {
+    const program = { ...data.shipments!.programs[0], periods: undefined };
+    const rows = shipmentRows({ ...data.shipments!, programs: [program], totals: { smallParcel: 0, ltl: 5, total: 5 } });
+    expect(rows.map((r) => r.label)).toEqual(["Small Parcel", "LTL & TL", "Total"]);
+  });
+
+  it("writes the period rows to Excel", async () => {
+    const wb = new ExcelJS.Workbook();
+    await wb.xlsx.load((await scorecardWorkbook(data, { version: 1, publishedAt: null })) as unknown as ArrayBuffer);
+    const labels: string[] = [];
+    wb.getWorksheet("Scorecard")!.eachRow((r) => labels.push(String(r.getCell(1).value)));
+    expect(labels).toContain("Both periods");
+    expect(labels.filter((l) => l === "LTL & TL")).toHaveLength(3);
   });
 });

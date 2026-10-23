@@ -1,4 +1,4 @@
-import { Prisma, type ShipmentMode } from "@prisma/client";
+import { Prisma, type ShipmentMode, type ShipmentPeriod } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { getPeriodField, linesInPeriod } from "@/lib/periods";
 
@@ -13,8 +13,10 @@ export interface ShipmentInput {
   programId: string;
   code: string;
   name: string;
-  counts: Record<ShipmentMode, number | null>;
-  /** Values derived from the SPM data, when it carries enough to suggest them */
+  /** Entered counts per compliance period; the two periods together make the report's totals */
+  counts: Record<ShipmentPeriod, Record<ShipmentMode, number | null>>;
+  /** Values derived from the SPM data, when it carries enough to suggest them. They come from the
+   * On Time data, so they are for the On-Time & Fill Rate period. */
   suggested: Partial<Record<ShipmentMode, number>>;
   /** Distinct TMS shipments in the On Time data, a reference for RDC/DFC totals */
   shipmentsInData: number | null;
@@ -32,8 +34,11 @@ export async function getShipmentInputs(reportId: string): Promise<ShipmentInput
   return Promise.all(
     programs.map(async (program) => {
       const stored = report.shipments.filter((s) => s.programId === program.id);
-      const counts = { SMALL_PARCEL: null, LTL_TL: null } as Record<ShipmentMode, number | null>;
-      for (const s of stored) counts[s.mode] = s.count;
+      const counts: ShipmentInput["counts"] = {
+        FILL_ON_TIME: { SMALL_PARCEL: null, LTL_TL: null },
+        OTHER: { SMALL_PARCEL: null, LTL_TL: null },
+      };
+      for (const s of stored) counts[s.period][s.mode] = s.count;
 
       const suggested: ShipmentInput["suggested"] = {};
       let shipmentsInData: number | null = null;

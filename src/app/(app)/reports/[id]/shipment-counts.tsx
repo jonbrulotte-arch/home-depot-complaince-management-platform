@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import type { ShipmentMode } from "@prisma/client";
+import type { ShipmentMode, ShipmentPeriod } from "@prisma/client";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -16,12 +16,16 @@ const MODES: { mode: ShipmentMode; label: string }[] = [
   { mode: "LTL_TL", label: "LTL & TL" },
 ];
 
-type Draft = Record<string, Record<ShipmentMode, string>>;
+/** Program → compliance period → mode → typed value */
+type Draft = Record<string, Record<ShipmentPeriod, Record<ShipmentMode, string>>>;
 type RangeKey = keyof ShipmentRanges;
 type RangeDraft = Record<RangeKey, { from: string; to: string }>;
 
+const PERIODS = SHIPMENT_RANGES.map((r) => r.period);
+const modeDraft = (counts: Record<ShipmentMode, number | null>) => ({ SMALL_PARCEL: counts.SMALL_PARCEL?.toString() ?? "", LTL_TL: counts.LTL_TL?.toString() ?? "" });
 const toDraft = (inputs: ShipmentInput[]): Draft =>
-  Object.fromEntries(inputs.map((i) => [i.programId, { SMALL_PARCEL: i.counts.SMALL_PARCEL?.toString() ?? "", LTL_TL: i.counts.LTL_TL?.toString() ?? "" }]));
+  Object.fromEntries(inputs.map((i) => [i.programId, { FILL_ON_TIME: modeDraft(i.counts.FILL_ON_TIME), OTHER: modeDraft(i.counts.OTHER) }]));
+const th = "px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider";
 
 const toRangeDraft = (ranges: ShipmentRanges): RangeDraft => ({
   fillOnTime: { from: ranges.fillOnTime?.from ?? "", to: ranges.fillOnTime?.to ?? "" },
@@ -36,18 +40,19 @@ export function ShipmentCounts({ reportId, inputs, ranges, canEdit }: { reportId
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
 
-  const value = (pid: string, mode: ShipmentMode) => {
-    const v = draft[pid][mode].trim();
+  const value = (pid: string, period: ShipmentPeriod, mode: ShipmentMode) => {
+    const v = draft[pid][period][mode].trim();
     return v === "" ? null : Number(v);
   };
-  const invalid = inputs.some((i) => MODES.some(({ mode }) => {
-    const v = value(i.programId, mode);
-    return v !== null && (!Number.isInteger(v) || v < 0);
-  }));
-  const ltl = (code: string) => {
-    const i = inputs.find((x) => x.code === code);
-    return i ? value(i.programId, "LTL_TL") ?? 0 : 0;
-  };
+  const cells = inputs.flatMap((i) => PERIODS.flatMap((period) => MODES.map(({ mode }) => ({ programId: i.programId, period, mode, count: value(i.programId, period, mode) }))));
+  const invalid = cells.some(({ count }) => count !== null && (!Number.isInteger(count) || count < 0));
+  /** Sum over programs (all when `codes` is omitted), periods and modes */
+  const sum = (opts: { programId?: string; codes?: string[]; period?: ShipmentPeriod; mode?: ShipmentMode }) =>
+    cells
+      .filter((c) => (!opts.programId || c.programId === opts.programId) && (!opts.period || c.period === opts.period) && (!opts.mode || c.mode === opts.mode))
+      .filter((c) => !opts.codes || opts.codes.includes(inputs.find((i) => i.programId === c.programId)!.code))
+      .reduce((s, c) => s + (c.count ?? 0), 0);
+  const DCS = ["US_RDC", "US_DFC"];
   // A range is saved only with both dates; one date alone or an end before the start is an error
   const rangeError = (key: RangeKey) => {
     const { from, to } = rangeDraft[key];
@@ -56,8 +61,9 @@ export function ShipmentCounts({ reportId, inputs, ranges, canEdit }: { reportId
     return from > to ? "Starts after it ends" : null;
   };
   const rangesInvalid = SHIPMENT_RANGES.some(({ key }) => rangeError(key) !== null);
+  // One item per program and period with a count missing, plus each range without both dates
   const missing =
-    inputs.filter((i) => MODES.some(({ mode }) => value(i.programId, mode) === null)).length +
+    inputs.reduce((n, i) => n + PERIODS.filter((period) => MODES.some(({ mode }) => value(i.programId, period, mode) === null)).length, 0) +
     SHIPMENT_RANGES.filter(({ key }) => !rangeDraft[key].from || !rangeDraft[key].to).length;
 
   function setRange(key: RangeKey, end: "from" | "to", v: string) {
@@ -72,8 +78,8 @@ export function ShipmentCounts({ reportId, inputs, ranges, canEdit }: { reportId
     setSaved(false);
   }
 
-  function set(pid: string, mode: ShipmentMode, v: string) {
-    setDraft({ ...draft, [pid]: { ...draft[pid], [mode]: v } });
+  function set(pid: string, period: ShipmentPeriod, mode: ShipmentMode, v: string) {
+    setDraft({ ...draft, [pid]: { ...draft[pid], [period]: { ...draft[pid][period], [mode]: v } } });
     setSaved(false);
   }
 
@@ -84,7 +90,7 @@ export function ShipmentCounts({ reportId, inputs, ranges, canEdit }: { reportId
       await apiFetch(`/api/reports/${reportId}/shipments`, {
         method: "PUT",
         body: {
-          counts: inputs.flatMap((i) => MODES.map(({ mode }) => ({ programId: i.programId, mode, count: value(i.programId, mode) }))),
+          counts: cells,
           ranges: Object.fromEntries(
             SHIPMENT_RANGES.map(({ key }) => [key, rangeDraft[key].from && rangeDraft[key].to ? rangeDraft[key] : null]),
           ),
@@ -109,7 +115,7 @@ export function ShipmentCounts({ reportId, inputs, ranges, canEdit }: { reportId
             {missing > 0 ? <Badge variant="warning">{missing} item(s) incomplete</Badge> : <Badge variant="success">Complete</Badge>}
           </div>
           <CardDescription>
-            Shipments in the period by mode, for the scorecard, and the dates they cover. SPM exports do not carry the mode for RDC/DFC, so enter them from TMS/WMS; Drop Ship is suggested from THD&apos;s Parcel flag.
+            Shipments by mode for each compliance period, and the dates they cover; the two periods together make the totals. SPM exports do not carry the mode for RDC/DFC, so enter them from TMS/WMS; Drop Ship&apos;s On-Time &amp; Fill Rate counts are suggested from THD&apos;s Parcel flag.
           </CardDescription>
         </div>
         {canEdit && (
@@ -165,33 +171,57 @@ export function ShipmentCounts({ reportId, inputs, ranges, canEdit }: { reportId
           <table className="min-w-full text-sm">
             <thead className="bg-gray-50">
               <tr>
-                {["Program", ...MODES.map((m) => m.label), "Total", "From the data"].map((h) => (
-                  <th key={h} className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{h}</th>
+                <th rowSpan={2} className={th}>Program</th>
+                {SHIPMENT_RANGES.map((r) => (
+                  <th key={r.key} colSpan={MODES.length} className={`${th} border-l border-gray-200 pb-1`}>{r.label}</th>
                 ))}
+                <th rowSpan={2} className={`${th} border-l border-gray-200`}>Total</th>
+                <th rowSpan={2} className={th}>From the data</th>
+              </tr>
+              <tr>
+                {SHIPMENT_RANGES.flatMap((r) =>
+                  MODES.map((m, i) => (
+                    <th key={`${r.key}-${m.mode}`} className={`${th} pt-1 normal-case tracking-normal ${i === 0 ? "border-l border-gray-200" : ""}`}>{m.label}</th>
+                  )),
+                )}
               </tr>
             </thead>
             <tbody>
               {inputs.map((i) => {
-                const total = MODES.reduce((s, { mode }) => s + (value(i.programId, mode) ?? 0), 0);
+                const total = sum({ programId: i.programId });
                 const hasSuggestion = i.suggested.SMALL_PARCEL !== undefined || i.suggested.LTL_TL !== undefined;
                 return (
                   <tr key={i.programId} className="border-t border-gray-200">
                     <td className="px-4 py-3 text-gray-900">{i.name}</td>
-                    {MODES.map(({ mode }) => (
-                      <td key={mode} className="px-4 py-2 w-40">
-                        <Input type="number" min={0} step={1} value={draft[i.programId][mode]} disabled={!canEdit} placeholder="—" onChange={(e) => set(i.programId, mode, e.target.value)} aria-label={`${i.name} ${mode}`} />
-                      </td>
-                    ))}
-                    <td className="px-4 py-3 text-gray-900 font-medium">{total || "—"}</td>
+                    {SHIPMENT_RANGES.flatMap((r) =>
+                      MODES.map(({ mode, label }, n) => (
+                        <td key={`${r.key}-${mode}`} className={`px-3 py-2 w-32 ${n === 0 ? "border-l border-gray-200" : ""}`}>
+                          <Input
+                            type="number"
+                            min={0}
+                            step={1}
+                            value={draft[i.programId][r.period][mode]}
+                            disabled={!canEdit}
+                            placeholder="—"
+                            onChange={(e) => set(i.programId, r.period, mode, e.target.value)}
+                            aria-label={`${i.name} ${r.label} ${label}`}
+                          />
+                        </td>
+                      )),
+                    )}
+                    <td className="px-4 py-3 text-gray-900 font-medium border-l border-gray-200">{total || "—"}</td>
                     <td className="px-4 py-3 text-xs text-gray-500">
                       {hasSuggestion && (
                         <>
-                          {i.suggested.SMALL_PARCEL ?? 0} parcel / {i.suggested.LTL_TL ?? 0} LTL orders
+                          {i.suggested.SMALL_PARCEL ?? 0} parcel / {i.suggested.LTL_TL ?? 0} LTL orders (On-Time &amp; Fill Rate)
                           {canEdit && (
                             <button
                               className="ml-2 text-blue-600 hover:underline"
                               onClick={() => {
-                                setDraft({ ...draft, [i.programId]: { SMALL_PARCEL: String(i.suggested.SMALL_PARCEL ?? 0), LTL_TL: String(i.suggested.LTL_TL ?? 0) } });
+                                setDraft({
+                                  ...draft,
+                                  [i.programId]: { ...draft[i.programId], FILL_ON_TIME: { SMALL_PARCEL: String(i.suggested.SMALL_PARCEL ?? 0), LTL_TL: String(i.suggested.LTL_TL ?? 0) } },
+                                });
                                 setSaved(false);
                               }}
                             >
@@ -205,15 +235,27 @@ export function ShipmentCounts({ reportId, inputs, ranges, canEdit }: { reportId
                   </tr>
                 );
               })}
-              {inputs.some((i) => i.code === "US_RDC" || i.code === "US_DFC") && (
+              {inputs.some((i) => DCS.includes(i.code)) && (
                 <tr className="border-t border-gray-200 bg-gray-50">
                   <td className="px-4 py-3 text-gray-700">US Transportation (RDC + DFC LTL)</td>
-                  <td className="px-4 py-3 text-gray-400">—</td>
-                  <td className="px-4 py-3 text-gray-700">{ltl("US_RDC") + ltl("US_DFC")}</td>
-                  <td className="px-4 py-3 text-gray-700">{ltl("US_RDC") + ltl("US_DFC")}</td>
+                  {SHIPMENT_RANGES.flatMap((r) => [
+                    <td key={`${r.key}-sp`} className="px-4 py-3 text-gray-400 border-l border-gray-200">—</td>,
+                    <td key={`${r.key}-ltl`} className="px-4 py-3 text-gray-700">{sum({ codes: DCS, period: r.period, mode: "LTL_TL" })}</td>,
+                  ])}
+                  <td className="px-4 py-3 text-gray-700 border-l border-gray-200">{sum({ codes: DCS, mode: "LTL_TL" })}</td>
                   <td className="px-4 py-3 text-xs text-gray-500">Derived</td>
                 </tr>
               )}
+              <tr className="border-t border-gray-200 bg-gray-50 font-semibold">
+                <td className="px-4 py-3 text-gray-900">Total</td>
+                {SHIPMENT_RANGES.flatMap((r) =>
+                  MODES.map(({ mode }, n) => (
+                    <td key={`${r.key}-${mode}`} className={`px-4 py-3 text-gray-900 ${n === 0 ? "border-l border-gray-200" : ""}`}>{sum({ period: r.period, mode })}</td>
+                  )),
+                )}
+                <td className="px-4 py-3 text-gray-900 border-l border-gray-200">{sum({})}</td>
+                <td />
+              </tr>
             </tbody>
           </table>
         </div>
