@@ -285,21 +285,25 @@ model PoRecord {
 }
 
 model ComplianceLine {
-  id            String      @id @default(cuid())
+  id             String      @id @default(cuid())
   /// Business key (metric|fiscalMonth|identifiers|occurrence) so re-imports update instead of duplicating
-  lineKey       String
-  metricId      String
-  metric        Metric      @relation(fields: [metricId], references: [id])
-  batchId       String
-  batch         ImportBatch @relation(fields: [batchId], references: [id], onDelete: Cascade)
-  poRecordId    String?
-  poRecord      PoRecord?   @relation(fields: [poRecordId], references: [id])
-  fiscalMonth   Int
+  lineKey        String
+  metricId       String
+  metric         Metric      @relation(fields: [metricId], references: [id])
+  batchId        String
+  batch          ImportBatch @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  /// The import that first created the line (batchId is the latest one to write it). Purging a
+  /// report's imports deletes only the lines they created. Null when unknown (older imports that
+  /// also updated existing lines), so those lines are kept.
+  createdBatchId String?
+  poRecordId     String?
+  poRecord       PoRecord?   @relation(fields: [poRecordId], references: [id])
+  fiscalMonth    Int
   /// Month the line was first received: the report it was imported into, or the archive folder
   /// it came from. Reports group by this or by fiscalMonth (SiteSettings.reportPeriodBasis).
-  receivedMonth Int
-  isCompliant   Boolean
-  offsetAmount  Decimal     @default(0) @db.Decimal(12, 2)
+  receivedMonth  Int
+  isCompliant    Boolean
+  offsetAmount   Decimal     @default(0) @db.Decimal(12, 2)
 
   // Canonical fields (null when the export does not carry them)
   poNumber              String?
@@ -362,6 +366,7 @@ model ComplianceLine {
   @@index([poNumber])
   @@index([fiscalMonth, metricId])
   @@index([receivedMonth, metricId])
+  @@index([createdBatchId])
   @@index([docTraceId])
   @@index([tmsId])
   @@index([carrierPro])

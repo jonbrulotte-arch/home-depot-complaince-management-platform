@@ -148,7 +148,7 @@ export async function persistImport(db: Db, args: PersistArgs): Promise<PersistR
           updated += 1;
         } else {
           // A line keeps the month it was first received; later exports only update it
-          toCreate.push({ ...data, metricId: line.metricId, lineKey: line.lineKey, receivedMonth: receivedMonthFor(line.fiscalMonth, args.receivedMonth) });
+          toCreate.push({ ...data, createdBatchId: batch.id, metricId: line.metricId, lineKey: line.lineKey, receivedMonth: receivedMonthFor(line.fiscalMonth, args.receivedMonth) });
         }
       }
       for (let i = 0; i < toCreate.length; i += 1000) {

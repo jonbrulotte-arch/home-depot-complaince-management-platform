@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ProgramStatusBadge, ReportStatusBadge } from "@/components/shared/status-badges";
 import { ImportPanel } from "./import-panel";
+import { PurgeButton } from "./purge-button";
 import { ReportActions } from "./report-actions";
 import { ShipmentCounts } from "./shipment-counts";
 import { getShipmentInputs } from "@/lib/shipments";
@@ -126,7 +127,12 @@ export default async function ReportPage({ params }: { params: Promise<{ id: str
                 <CardTitle>{rp.program.name}</CardTitle>
                 <ProgramStatusBadge status={rp.status} />
               </div>
-              {canImport && <ImportPanel reportId={id} programId={rp.programId} programName={rp.program.name} />}
+              {canImport && (
+                <div className="flex items-center gap-2">
+                  {rp.batches.length > 0 && <PurgeButton reportId={id} programId={rp.programId} programName={rp.program.name} />}
+                  <ImportPanel reportId={id} programId={rp.programId} programName={rp.program.name} />
+                </div>
+              )}
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="overflow-x-auto border border-gray-200 rounded-lg">
