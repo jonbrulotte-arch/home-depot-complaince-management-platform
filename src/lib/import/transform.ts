@@ -378,9 +378,12 @@ export interface TransformOptions {
   expectedFiscalMonth?: number;
 }
 
+/** `sourceSheet` of lines built from THD's Summary totals in a summary-only export (no PO detail) */
+export const SUMMARY_SHEET = "Summary";
+
 export function transformWorkbook(workbook: ParsedWorkbook, opts: TransformOptions): ImportPreview {
   const { program } = opts;
-  const exportKind = detectExportKind(opts.fileName);
+  let exportKind = detectExportKind(opts.fileName);
   const warnings: string[] = [];
   const metrics: MetricPreview[] = [];
   const emptySheets: string[] = [];
@@ -461,6 +464,45 @@ export function transformWorkbook(workbook: ParsedWorkbook, opts: TransformOptio
     metrics.push(preview);
   }
 
+  // SPM's summary download (…_SUM_…) has THD's totals but no PO lines. Each metric with offsets
+  // becomes one non-compliant line without a PO so the month's offsets count; a detail export for
+  // the same metric and month replaces it (see persistImport).
+  const summaryOnly = !metrics.length && !emptySheets.length && summary.some((s) => s.mVendor === null);
+  if (summaryOnly) {
+    exportKind = "NON_COMPLIANT";
+    const fiscalMonth = opts.fallbackFiscalMonth;
+    for (const s of summary) {
+      const metric = program.metrics.find((m) => m.id === s.metricId);
+      if (s.mVendor !== null || !metric || !s.offsetsPreDispute) continue;
+      const offset = Math.round(s.offsetsPreDispute * 100) / 100;
+      lines.push({
+        metricId: metric.id,
+        metricCode: metric.code,
+        lineKey: hashKey(`${metric.code}|${fiscalMonth}|THD_SUMMARY`, 1),
+        fiscalMonth,
+        isCompliant: false,
+        offsetAmount: offset,
+        fields: { spmStatus: s.programStatus },
+        po: null,
+        raw: {
+          Source: "THD Summary totals (summary-only export, no PO detail)",
+          Metric: s.metricLabel,
+          "Program Status": s.programStatus,
+          "Non-Compliant Lines": s.nonCompliantLines,
+          "Offsets Pre-Dispute": s.offsetsPreDispute,
+          "Offsets Post-Dispute": s.offsetsPostDispute,
+        },
+        sourceSheet: SUMMARY_SHEET,
+        sourceRow: 0,
+      });
+      fiscalMonths[fiscalMonth] = (fiscalMonths[fiscalMonth] ?? 0) + 1;
+      metrics.push({ metricId: metric.id, code: metric.code, name: metric.name, sheet: SUMMARY_SHEET, total: 1, nonCompliant: 1, offset, unmappedHeaders: [] });
+    }
+    warnings.push(
+      "Summary-only export: it has THD's totals but no PO lines. Each metric with offsets is recorded as one line without a PO; importing the detail export for the same month replaces it.",
+    );
+  }
+
   if (exportKind === "UNKNOWN") {
     warnings.push("Could not tell from the filename whether this is an ALL_RESULTS or NON_COMPLIANT export; compliance % will not be calculated from it.");
   }
@@ -481,7 +523,7 @@ export function transformWorkbook(workbook: ParsedWorkbook, opts: TransformOptio
       warnings.push(`${m.name}: THD summary shows $${s.offsetsPreDispute.toFixed(2)} pre-dispute offsets; the detail rows total $${m.offset.toFixed(2)}.`);
     }
   }
-  if (!lines.length) warnings.push("No data rows were found in this file.");
+  if (!lines.length) warnings.push(summaryOnly ? "THD's summary shows no offsets, so there is nothing to import." : "No data rows were found in this file.");
 
   return { programId: program.id, programCode: program.code, exportKind, fiscalMonths, metrics, emptySheets, summary, lines, warnings };
 }

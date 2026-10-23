@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { Prisma, type PrismaClient } from "@prisma/client";
 import { ImportError, parseWorkbook } from "./parse";
-import { detectProgram, transformWorkbook, type ConfigAlias, type ConfigProgram, type ImportPreview, type MappedLine } from "./transform";
+import { detectProgram, SUMMARY_SHEET, transformWorkbook, type ConfigAlias, type ConfigProgram, type ImportPreview, type MappedLine } from "./transform";
 
 type Db = PrismaClient;
 
@@ -57,12 +57,6 @@ export async function buildPreview(db: Db, args: BuildPreviewArgs): Promise<Impo
     fallbackFiscalMonth: args.fallbackFiscalMonth,
     expectedFiscalMonth: args.expectedFiscalMonth,
   });
-  // SPM's summary download (…_SUM_…) has THD's totals but no PO lines, so nothing can be reviewed or disputed
-  if (!preview.lines.length && !preview.metrics.length && !preview.emptySheets.length && preview.summary.length) {
-    throw new ImportError(
-      "This is a summary-only export: it has THD's totals but no PO lines. In SPM, download the detail export for the month (\"Export All\", a file named …_EXPORT_ALL_FILTERED_NON_COMPLIANT_RECORDS_…) and import that instead.",
-    );
-  }
   if (args.programId && detected && detected.id !== args.programId) {
     preview.warnings.unshift(`This file looks like a ${detected.name} export, not ${program.name}.`);
   }
@@ -124,9 +118,11 @@ export async function persistImport(db: Db, args: PersistArgs): Promise<PersistR
         await tx.spmSummaryRow.createMany({ data: preview.summary.map((s) => ({ ...s, batchId: batch.id })) });
       }
 
+      const lines = await reconcileSummaryLines(tx, preview.lines);
+
       // PO records: create missing ones, then touch lastSeenAt on all
       const poInfo = new Map<string, NonNullable<MappedLine["po"]>>();
-      for (const line of preview.lines) if (line.po && !poInfo.has(line.po.poNumber)) poInfo.set(line.po.poNumber, line.po);
+      for (const line of lines) if (line.po && !poInfo.has(line.po.poNumber)) poInfo.set(line.po.poNumber, line.po);
       const poNumbers = [...poInfo.keys()];
       if (poNumbers.length) {
         await tx.poRecord.createMany({ data: [...poInfo.values()], skipDuplicates: true });
@@ -137,14 +133,14 @@ export async function persistImport(db: Db, args: PersistArgs): Promise<PersistR
       );
 
       const existing = await tx.complianceLine.findMany({
-        where: { OR: groupKeys(preview.lines).map(([metricId, keys]) => ({ metricId, lineKey: { in: keys } })) },
+        where: { OR: groupKeys(lines).map(([metricId, keys]) => ({ metricId, lineKey: { in: keys } })) },
         select: { id: true, metricId: true, lineKey: true },
       });
       const existingIds = new Map(existing.map((l) => [`${l.metricId}|${l.lineKey}`, l.id]));
 
       const toCreate: Prisma.ComplianceLineCreateManyInput[] = [];
       let updated = 0;
-      for (const line of preview.lines) {
+      for (const line of lines) {
         const data = lineData(line, batch.id, line.po ? (poIds.get(line.po.poNumber) ?? null) : null);
         const id = existingIds.get(`${line.metricId}|${line.lineKey}`);
         if (id) {
@@ -190,6 +186,29 @@ export async function persistImport(db: Db, args: PersistArgs): Promise<PersistR
     },
     { timeout: 300_000, maxWait: 30_000 },
   );
+}
+
+/**
+ * Lines from a summary-only export stand in for a metric and month until its detail arrives:
+ * detail lines delete them (with any review), and they are skipped where detail already exists.
+ */
+async function reconcileSummaryLines(tx: Prisma.TransactionClient, lines: MappedLine[]): Promise<MappedLine[]> {
+  const pairs = (summary: boolean) => [
+    ...new Map(lines.filter((l) => (l.sourceSheet === SUMMARY_SHEET) === summary).map((l) => [`${l.metricId}|${l.fiscalMonth}`, { metricId: l.metricId, fiscalMonth: l.fiscalMonth }])).values(),
+  ];
+  const detail = pairs(false);
+  if (detail.length) {
+    await tx.complianceLine.deleteMany({ where: { sourceSheet: SUMMARY_SHEET, OR: detail } });
+  }
+  const summary = pairs(true);
+  if (!summary.length) return lines;
+  const covered = await tx.complianceLine.findMany({
+    where: { sourceSheet: { not: SUMMARY_SHEET }, OR: summary },
+    distinct: ["metricId", "fiscalMonth"],
+    select: { metricId: true, fiscalMonth: true },
+  });
+  const skip = new Set(covered.map((c) => `${c.metricId}|${c.fiscalMonth}`));
+  return lines.filter((l) => l.sourceSheet !== SUMMARY_SHEET || !skip.has(`${l.metricId}|${l.fiscalMonth}`));
 }
 
 function groupKeys(lines: MappedLine[]): [string, string[]][] {

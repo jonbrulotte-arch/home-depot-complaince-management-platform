@@ -128,3 +128,15 @@ describe("real SPM exports", () => {
     expect(metric(a, "ASNT_LATE_ASN")).toMatchObject({ nonCompliant: 3, offset: 750 });
   });
 });
+
+describe("summary-only exports", () => {
+  it("records each metric with offsets as one line from THD's totals", async () => {
+    const p = await load("dfc-summary-only_SUM.xlsx", "US_DFC", 202604);
+    expect(p.exportKind).toBe("NON_COMPLIANT");
+    expect(p.lines).toHaveLength(1);
+    const [line] = p.lines;
+    expect(line).toMatchObject({ metricCode: "ASNT_MISSING_ASN", fiscalMonth: 202604, isCompliant: false, offsetAmount: 1000, po: null, sourceSheet: "Summary" });
+    expect(metric(p, "ASNT_MISSING_ASN").offset).toBe(1000);
+    expect(p.warnings.some((w) => w.startsWith("Summary-only export"))).toBe(true);
+  });
+});

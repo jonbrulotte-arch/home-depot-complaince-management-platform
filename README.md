@@ -54,6 +54,7 @@ npm run dev
 ```bash
 unzip "reference/Compliance Tool Exports.zip" -d reference/_extracted
 npm run backfill -- reference/_extracted            # add --dry-run to preview
+npm run backfill -- reference/exports               # exports added after the archive zip
 npm run historical-reports -- --dry-run             # then without --dry-run
 ```
 
@@ -79,6 +80,8 @@ It backs up the database (`backups/…-pre-deploy.json.gz`, newest 10 kept), pul
 
 Options: `--branch <name>` switches branch (e.g. `main` once merged), `--force` rebuilds with no new commits, `--skip-backup`, `--no-restart`. `SERVICE_NAME`, `PORT` and `BACKUP_KEEP` override the defaults.
 
+`reference/exports/` holds SPM exports received after the archive zip, in the same `YYYY/Mon-YYYY/` folders (e.g. the May 2026 DFC summary, which supplies the $1,000 Missing ASN missing from the archive).
+
 ## How imports work
 
 - **Program** comes from the filename prefix (`US_DS`, `US_RDC`, `US_DFC`, `US_TRANS`). **Export kind** comes from `ALL_RESULTS` / `NON_COMPLIANT` in the name.
@@ -88,6 +91,7 @@ Options: `--branch <name>` switches branch (e.g. `main` once merged), `--force` 
   - notes typed beside the data
   - hand-added subtotal rows
   - the "RESULT DATA EMPTY" placeholder sheets
+  - summary-only downloads (`…_SUM_…`): THD's totals with no PO lines. Each metric with offsets becomes one line without a PO, and the detail export for the same month replaces it.
 - **Offsets are checked against THD's Summary sheet.** Any difference is shown as a warning.
 - **Re-importing is safe.** A line is identified by metric, fiscal month and its shipment identifiers, so importing the same or a newer export updates lines instead of duplicating them.
 
