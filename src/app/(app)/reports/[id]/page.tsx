@@ -14,7 +14,9 @@ import { PurgeButton } from "./purge-button";
 import { ReportActions } from "./report-actions";
 import { ShipmentCounts } from "./shipment-counts";
 import { getShipmentInputs } from "@/lib/shipments";
-import { reportShipmentRanges } from "@/lib/shipment-ranges";
+import { FILL_ON_TIME_LAG_MONTHS, formatDateRange, periodLabel, periodOfMetric, reportShipmentRanges, SHIPMENT_RANGES } from "@/lib/shipment-ranges";
+import { fiscalLabel, shiftFiscalMonth } from "@/lib/fiscal";
+import type { DataPeriod } from "@prisma/client";
 import { getPeriodBasis } from "@/lib/periods";
 
 const STEPS = [
@@ -54,6 +56,14 @@ export default async function ReportPage({ params }: { params: Promise<{ id: str
   const disputeStage = report.status !== "DRAFT" && report.status !== "IN_REVIEW";
   const stepIndex = STEPS.findIndex((s) => s.status === report.status);
   const canImport = user.permissions.has("reports.import") && (report.status === "DRAFT" || report.status === "IN_REVIEW");
+  const ranges = reportShipmentRanges(report);
+  /** The compliance periods a program has metrics in, each imported separately */
+  const slotsFor = (metrics: { code: string }[]) => {
+    const slots = SHIPMENT_RANGES.filter((r) => metrics.some((m) => periodOfMetric(m.code) === r.period));
+    return slots.length ? slots : SHIPMENT_RANGES.filter((r) => r.period === "OTHER");
+  };
+  /** THD's fiscal month for a period's data: Fill Rate and On Time trail by two months when grouping by month received */
+  const dataMonth = (period: DataPeriod) => (period === "FILL_ON_TIME" && basis === "RECEIVED_MONTH" ? shiftFiscalMonth(fiscalMonth, -FILL_ON_TIME_LAG_MONTHS) : fiscalMonth);
 
   return (
     <div className="p-6 max-w-7xl mx-auto space-y-6">
@@ -116,7 +126,7 @@ export default async function ReportPage({ params }: { params: Promise<{ id: str
 
       {report.notes && <p className="rounded-md border border-gray-200 bg-white px-4 py-3 text-sm text-gray-700 whitespace-pre-wrap">{report.notes}</p>}
 
-      <ShipmentCounts key={report.updatedAt.toISOString()} reportId={id} inputs={shipmentInputs} ranges={reportShipmentRanges(report)} canEdit={user.permissions.has("reports.import") && report.status !== "PUBLISHED"} />
+      <ShipmentCounts key={report.updatedAt.toISOString()} reportId={id} inputs={shipmentInputs} ranges={ranges} canEdit={user.permissions.has("reports.import") && report.status !== "PUBLISHED"} />
 
       {report.programs.map((rp) => {
         const programStats = stats.filter((s) => s.programId === rp.programId);
@@ -127,14 +137,59 @@ export default async function ReportPage({ params }: { params: Promise<{ id: str
                 <CardTitle>{rp.program.name}</CardTitle>
                 <ProgramStatusBadge status={rp.status} />
               </div>
-              {canImport && (
-                <div className="flex items-center gap-2">
-                  {rp.batches.length > 0 && <PurgeButton reportId={id} programId={rp.programId} programName={rp.program.name} />}
-                  <ImportPanel reportId={id} programId={rp.programId} programName={rp.program.name} />
-                </div>
-              )}
             </CardHeader>
             <CardContent className="space-y-4">
+              {/* One SPM import per compliance period, each independent of the other */}
+              <div className={cn("grid gap-3", slotsFor(programStats).length > 1 && "lg:grid-cols-2")}>
+                {slotsFor(programStats).map((slot) => {
+                  const batches = rp.batches.filter((b) => b.period === slot.period);
+                  const range = ranges[slot.key];
+                  return (
+                    <div key={slot.period} className="rounded-lg border border-gray-200 p-4 space-y-3">
+                      <div className="flex flex-wrap items-start justify-between gap-2">
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <span className="font-medium text-gray-900">{slot.label}</span>
+                            {batches.length ? <Badge variant="default">Imported</Badge> : <Badge variant="secondary">Not imported</Badge>}
+                          </div>
+                          <p className="mt-0.5 text-xs text-gray-500">
+                            {programStats.filter((m) => periodOfMetric(m.code) === slot.period).map((m) => m.name).join(", ")}
+                            {" · "}
+                            {range ? formatDateRange(range) : `THD ${fiscalLabel(dataMonth(slot.period))} data`}
+                          </p>
+                        </div>
+                        {canImport && (
+                          <div className="flex items-center gap-2">
+                            {batches.length > 0 && (
+                              <PurgeButton reportId={id} programId={rp.programId} programName={rp.program.name} period={slot.period} periodLabel={slot.label} />
+                            )}
+                            <ImportPanel reportId={id} programId={rp.programId} programName={rp.program.name} period={slot.period} periodLabel={slot.label} />
+                          </div>
+                        )}
+                      </div>
+                      {batches.length > 0 ? (
+                        <ul className="space-y-1">
+                          {batches.map((b) => (
+                            <li key={b.id} className="flex flex-wrap items-center gap-2 text-xs text-gray-500">
+                              <Badge variant="outline">{b.exportKind.replace("_", " ")}</Badge>
+                              <span className="text-gray-700 break-all">{b.fileName}</span>
+                              <span>
+                                · {b.rowCount} rows ({b.createdCount} new, {b.updatedCount} updated
+                                {b.rowCount > b.createdCount + b.updatedCount && `, ${b.rowCount - b.createdCount - b.updatedCount} not added (other period)`})
+                              </span>
+                              <span>· {formatDateTime(b.importedAt)}{b.importedBy ? ` by ${b.importedBy.name}` : ""}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      ) : (
+                        <p className="text-xs text-gray-400">
+                          Download the {rp.program.name} {slot.period === "OTHER" ? "export" : "Fill Rate & On Time export"} for {fiscalLabel(dataMonth(slot.period))} from SPM and import it here.
+                        </p>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
               <div className="overflow-x-auto border border-gray-200 rounded-lg">
                 <table className="min-w-full text-sm">
                   <thead className="bg-gray-50">
@@ -147,7 +202,10 @@ export default async function ReportPage({ params }: { params: Promise<{ id: str
                   <tbody>
                     {programStats.map((m) => (
                       <tr key={m.metricId} className="border-t border-gray-200 hover:bg-gray-50">
-                        <td className="px-4 py-3 text-gray-900">{m.name}</td>
+                        <td className="px-4 py-3 text-gray-900">
+                          {m.name}
+                          {slotsFor(programStats).length > 1 && <div className="text-xs text-gray-400">{periodLabel(periodOfMetric(m.code))}</div>}
+                        </td>
                         <td className="px-4 py-3 text-gray-700">{m.total}</td>
                         <td className="px-4 py-3">{m.nonCompliant ? <span className="font-medium text-red-700">{m.nonCompliant}</span> : <span className="text-gray-400">0</span>}</td>
                         <td className="px-4 py-3 text-gray-700">{m.nonCompliant ? `${m.reviewed}/${m.nonCompliant}` : "—"}</td>
@@ -174,26 +232,6 @@ export default async function ReportPage({ params }: { params: Promise<{ id: str
                   </tbody>
                 </table>
               </div>
-              {rp.batches.length > 0 && (
-                <div>
-                  <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Imports</p>
-                  <ul className="space-y-1">
-                    {rp.batches.map((b) => (
-                      <li key={b.id} className="flex flex-wrap items-center gap-2 text-xs text-gray-500">
-                        <Badge variant="outline">{b.exportKind.replace("_", " ")}</Badge>
-                        <span className="text-gray-700">{b.fileName}</span>
-                        <span>· {b.rowCount} rows ({b.createdCount} new, {b.updatedCount} updated)</span>
-                        <span>· {formatDateTime(b.importedAt)}{b.importedBy ? ` by ${b.importedBy.name}` : ""}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-              {rp.batches.length === 0 && programStats.every((m) => m.total === 0) && (
-                <p className="text-sm text-gray-400">
-                  No data yet. Download the {rp.program.name} export for {report.period.label} from the Supplier Performance Management tool and import it here.
-                </p>
-              )}
             </CardContent>
           </Card>
         );

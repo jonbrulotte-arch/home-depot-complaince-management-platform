@@ -1,6 +1,7 @@
+import type { DataPeriod } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 
-// Purging a program's imports from a report undoes them: the lines those imports created go,
+// Purging a program's imports for one compliance period of a report undoes them: the lines those imports created go,
 // with their reviews and disputes (cascade). Lines that were already in the database and were
 // only updated by these imports stay, pointed back at the import that created them.
 
@@ -14,13 +15,13 @@ export interface PurgeSummary {
   disputes: number;
 }
 
-async function batchIds(reportProgramId: string) {
-  return (await prisma.importBatch.findMany({ where: { reportProgramId }, select: { id: true } })).map((b) => b.id);
+async function batchIds(reportProgramId: string, period: DataPeriod) {
+  return (await prisma.importBatch.findMany({ where: { reportProgramId, period }, select: { id: true } })).map((b) => b.id);
 }
 
 /** What a purge would remove, for the confirmation dialog. */
-export async function purgePreview(reportProgramId: string): Promise<PurgeSummary> {
-  const ids = await batchIds(reportProgramId);
+export async function purgePreview(reportProgramId: string, period: DataPeriod): Promise<PurgeSummary> {
+  const ids = await batchIds(reportProgramId, period);
   const created = { createdBatchId: { in: ids } };
   const [linesRemoved, linesKept, reviews, disputes] = await Promise.all([
     prisma.complianceLine.count({ where: created }),
@@ -31,9 +32,9 @@ export async function purgePreview(reportProgramId: string): Promise<PurgeSummar
   return { imports: ids.length, linesRemoved, linesKept, reviews, disputes };
 }
 
-export async function purgeReportProgramImports(reportProgramId: string): Promise<PurgeSummary> {
-  const summary = await purgePreview(reportProgramId);
-  const ids = await batchIds(reportProgramId);
+export async function purgeReportProgramImports(reportProgramId: string, period: DataPeriod): Promise<PurgeSummary> {
+  const summary = await purgePreview(reportProgramId, period);
+  const ids = await batchIds(reportProgramId, period);
   await prisma.$transaction(
     async (tx) => {
       const created = { createdBatchId: { in: ids } };
@@ -59,7 +60,10 @@ export async function purgeReportProgramImports(reportProgramId: string): Promis
 
       // PO records that no longer have any lines
       if (pos.length) await tx.poRecord.deleteMany({ where: { id: { in: pos }, lines: { none: {} } } });
-      await tx.reportProgram.update({ where: { id: reportProgramId }, data: { status: "NOT_STARTED" } });
+      // The other period's imports are independent; the program has no data only once both are gone
+      if (!(await tx.importBatch.count({ where: { reportProgramId } }))) {
+        await tx.reportProgram.update({ where: { id: reportProgramId }, data: { status: "NOT_STARTED" } });
+      }
     },
     { timeout: 300_000, maxWait: 30_000 },
   );

@@ -7,10 +7,10 @@ import { catalogConfig } from "./catalog-config";
 
 const { programs, aliases } = catalogConfig();
 
-async function load(file: string, programCode: string, fallbackFiscalMonth = 202410): Promise<ImportPreview> {
+async function load(file: string, programCode: string, fallbackFiscalMonth = 202410, period?: "FILL_ON_TIME" | "OTHER"): Promise<ImportPreview> {
   const wb = await parseWorkbook(readFileSync(path.join(__dirname, "fixtures", file)));
   const program = programs.find((p) => p.code === programCode)!;
-  return transformWorkbook(wb, { fileName: file, program, aliases, fallbackFiscalMonth });
+  return transformWorkbook(wb, { fileName: file, program, aliases, fallbackFiscalMonth, period });
 }
 
 const metric = (p: ImportPreview, code: string) => p.metrics.find((m) => m.code === code)!;
@@ -138,5 +138,32 @@ describe("summary-only exports", () => {
     expect(line).toMatchObject({ metricCode: "ASNT_MISSING_ASN", fiscalMonth: 202604, isCompliant: false, offsetAmount: 1000, po: null, sourceSheet: "Summary" });
     expect(metric(p, "ASNT_MISSING_ASN").offset).toBe(1000);
     expect(p.warnings.some((w) => w.startsWith("Summary-only export"))).toBe(true);
+  });
+});
+
+describe("compliance period imports", () => {
+  it("takes Fill Rate and On Time in the On-Time & Fill Rate import", async () => {
+    const p = await load("rdc-all-results_ALL_RESULTS.xlsx", "US_RDC", 202410, "FILL_ON_TIME");
+    expect(p.lines.some((l) => l.updateOnly)).toBe(false);
+    expect(p.fiscalMonths).toEqual({ 202405: 10 });
+    expect(p.metrics.some((m) => m.outOfPeriod)).toBe(false);
+  });
+
+  it("makes the other period's sheets update-only", async () => {
+    const p = await load("rdc-all-results_ALL_RESULTS.xlsx", "US_RDC", 202410, "OTHER");
+    expect(p.lines.every((l) => l.updateOnly)).toBe(true);
+    expect(metric(p, "FILL_RATE").outOfPeriod).toBe(true);
+    // Update-only lines don't count toward the import's fiscal months
+    expect(p.fiscalMonths).toEqual({});
+    expect(p.warnings.some((w) => w.startsWith("Fill Rate belongs to the On-Time & Fill Rate import"))).toBe(true);
+
+    const asn = await load("dfc-late-asn_NON_COMPLIANT.xlsx", "US_DFC", 202410, "FILL_ON_TIME");
+    expect(asn.lines.length).toBeGreaterThan(0);
+    expect(asn.lines.every((l) => l.updateOnly)).toBe(true);
+  });
+
+  it("imports everything when no period is given (backfill)", async () => {
+    const p = await load("rdc-all-results_ALL_RESULTS.xlsx", "US_RDC");
+    expect(p.lines.some((l) => l.updateOnly)).toBe(false);
   });
 });

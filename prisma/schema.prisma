@@ -228,6 +228,8 @@ model ImportBatch {
   fileName        String
   sha256          String
   exportKind      ExportKind
+  /// Which of the report's compliance periods the file was imported for (see DataPeriod)
+  period          DataPeriod       @default(OTHER)
   /// "upload" or "backfill"
   source          String           @default("upload")
   /// Month the file was received (report period or archive folder); null for imports before it was recorded
@@ -516,9 +518,9 @@ enum ShipmentMode {
   LTL_TL
 }
 
-/// The two compliance periods a report's shipments are counted in: Fill Rate and On Time are
-/// reported two months behind the other metrics (see the date ranges on ComplianceReport).
-enum ShipmentPeriod {
+/// The two compliance periods a report covers: Fill Rate and On Time are reported two months
+/// behind the other metrics. Each has its own SPM import, date range and shipment counts.
+enum DataPeriod {
   FILL_ON_TIME
   OTHER
 }
@@ -531,7 +533,7 @@ model ShipmentCount {
   report      ComplianceReport @relation(fields: [reportId], references: [id], onDelete: Cascade)
   programId   String
   program     Program          @relation(fields: [programId], references: [id], onDelete: Cascade)
-  period      ShipmentPeriod   @default(OTHER)
+  period      DataPeriod       @default(OTHER)
   mode        ShipmentMode
   count       Int
   updatedById String?

@@ -1,4 +1,4 @@
-import { Prisma, type ShipmentMode, type ShipmentPeriod } from "@prisma/client";
+import { Prisma, type ShipmentMode, type DataPeriod } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { getPeriodField, linesInPeriod } from "@/lib/periods";
 
@@ -14,7 +14,7 @@ export interface ShipmentInput {
   code: string;
   name: string;
   /** Entered counts per compliance period; the two periods together make the report's totals */
-  counts: Record<ShipmentPeriod, Record<ShipmentMode, number | null>>;
+  counts: Record<DataPeriod, Record<ShipmentMode, number | null>>;
   /** Values derived from the SPM data, when it carries enough to suggest them. They come from the
    * On Time data, so they are for the On-Time & Fill Rate period. */
   suggested: Partial<Record<ShipmentMode, number>>;

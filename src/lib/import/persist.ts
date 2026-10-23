@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { Prisma, type PrismaClient } from "@prisma/client";
+import { Prisma, type DataPeriod, type PrismaClient } from "@prisma/client";
 import { ImportError, parseWorkbook } from "./parse";
 import { detectProgram, SUMMARY_SHEET, transformWorkbook, type ConfigAlias, type ConfigProgram, type ImportPreview, type MappedLine } from "./transform";
 
@@ -42,6 +42,8 @@ export interface BuildPreviewArgs {
   expectedFiscalMonth?: number;
   /** When set, the file must belong to this program */
   programId?: string;
+  /** The report's compliance period the file is for (see TransformOptions.period) */
+  period?: DataPeriod;
 }
 
 export async function buildPreview(db: Db, args: BuildPreviewArgs): Promise<ImportPreview> {
@@ -56,6 +58,7 @@ export async function buildPreview(db: Db, args: BuildPreviewArgs): Promise<Impo
     aliases: config.aliases,
     fallbackFiscalMonth: args.fallbackFiscalMonth,
     expectedFiscalMonth: args.expectedFiscalMonth,
+    period: args.period,
   });
   if (args.programId && detected && detected.id !== args.programId) {
     preview.warnings.unshift(`This file looks like a ${detected.name} export, not ${program.name}.`);
@@ -86,12 +89,16 @@ export interface PersistArgs {
   importedById?: string | null;
   /** Month the file was received (report period or archive folder); defaults to each line's fiscal month */
   receivedMonth?: number | null;
+  /** The report's compliance period the file was imported for */
+  period?: DataPeriod;
 }
 
 export interface PersistResult {
   batchId: string;
   created: number;
   updated: number;
+  /** Update-only lines (the other period's sheets) that matched nothing, so were not added */
+  skipped: number;
 }
 
 /** Writes one file's lines in a single transaction. Re-importing updates lines by business key. */
@@ -106,6 +113,7 @@ export async function persistImport(db: Db, args: PersistArgs): Promise<PersistR
           fileName: args.fileName,
           sha256: args.sha256,
           exportKind: preview.exportKind,
+          period: args.period ?? "OTHER",
           source: args.source,
           rowCount: preview.lines.length,
           receivedMonth: args.receivedMonth ?? null,
@@ -118,7 +126,15 @@ export async function persistImport(db: Db, args: PersistArgs): Promise<PersistR
         await tx.spmSummaryRow.createMany({ data: preview.summary.map((s) => ({ ...s, batchId: batch.id })) });
       }
 
-      const lines = await reconcileSummaryLines(tx, preview.lines);
+      const reconciled = await reconcileSummaryLines(tx, preview.lines);
+      const existing = await tx.complianceLine.findMany({
+        where: { OR: groupKeys(reconciled).map(([metricId, keys]) => ({ metricId, lineKey: { in: keys } })) },
+        select: { id: true, metricId: true, lineKey: true },
+      });
+      const existingIds = new Map(existing.map((l) => [`${l.metricId}|${l.lineKey}`, l.id]));
+      // Sheets for the report's other period only refresh lines that are already there
+      const lines = reconciled.filter((l) => !l.updateOnly || existingIds.has(`${l.metricId}|${l.lineKey}`));
+      const skipped = reconciled.length - lines.length;
 
       // PO records: create missing ones, then touch lastSeenAt on all
       const poInfo = new Map<string, NonNullable<MappedLine["po"]>>();
@@ -132,11 +148,6 @@ export async function persistImport(db: Db, args: PersistArgs): Promise<PersistR
         (await tx.poRecord.findMany({ where: { poNumber: { in: poNumbers } }, select: { id: true, poNumber: true } })).map((p) => [p.poNumber, p.id]),
       );
 
-      const existing = await tx.complianceLine.findMany({
-        where: { OR: groupKeys(lines).map(([metricId, keys]) => ({ metricId, lineKey: { in: keys } })) },
-        select: { id: true, metricId: true, lineKey: true },
-      });
-      const existingIds = new Map(existing.map((l) => [`${l.metricId}|${l.lineKey}`, l.id]));
 
       const toCreate: Prisma.ComplianceLineCreateManyInput[] = [];
       let updated = 0;
@@ -182,7 +193,7 @@ export async function persistImport(db: Db, args: PersistArgs): Promise<PersistR
       if (args.reportProgramId) {
         await tx.reportProgram.update({ where: { id: args.reportProgramId }, data: { status: "IMPORTED" } });
       }
-      return { batchId: batch.id, created: toCreate.length, updated };
+      return { batchId: batch.id, created: toCreate.length, updated, skipped };
     },
     { timeout: 300_000, maxWait: 30_000 },
   );
@@ -194,7 +205,7 @@ export async function persistImport(db: Db, args: PersistArgs): Promise<PersistR
  */
 async function reconcileSummaryLines(tx: Prisma.TransactionClient, lines: MappedLine[]): Promise<MappedLine[]> {
   const pairs = (summary: boolean) => [
-    ...new Map(lines.filter((l) => (l.sourceSheet === SUMMARY_SHEET) === summary).map((l) => [`${l.metricId}|${l.fiscalMonth}`, { metricId: l.metricId, fiscalMonth: l.fiscalMonth }])).values(),
+    ...new Map(lines.filter((l) => !l.updateOnly && (l.sourceSheet === SUMMARY_SHEET) === summary).map((l) => [`${l.metricId}|${l.fiscalMonth}`, { metricId: l.metricId, fiscalMonth: l.fiscalMonth }])).values(),
   ];
   const detail = pairs(false);
   if (detail.length) {

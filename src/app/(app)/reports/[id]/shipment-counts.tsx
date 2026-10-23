@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import type { ShipmentMode, ShipmentPeriod } from "@prisma/client";
+import type { ShipmentMode, DataPeriod } from "@prisma/client";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -17,7 +17,7 @@ const MODES: { mode: ShipmentMode; label: string }[] = [
 ];
 
 /** Program → compliance period → mode → typed value */
-type Draft = Record<string, Record<ShipmentPeriod, Record<ShipmentMode, string>>>;
+type Draft = Record<string, Record<DataPeriod, Record<ShipmentMode, string>>>;
 type RangeKey = keyof ShipmentRanges;
 type RangeDraft = Record<RangeKey, { from: string; to: string }>;
 
@@ -40,14 +40,14 @@ export function ShipmentCounts({ reportId, inputs, ranges, canEdit }: { reportId
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
 
-  const value = (pid: string, period: ShipmentPeriod, mode: ShipmentMode) => {
+  const value = (pid: string, period: DataPeriod, mode: ShipmentMode) => {
     const v = draft[pid][period][mode].trim();
     return v === "" ? null : Number(v);
   };
   const cells = inputs.flatMap((i) => PERIODS.flatMap((period) => MODES.map(({ mode }) => ({ programId: i.programId, period, mode, count: value(i.programId, period, mode) }))));
   const invalid = cells.some(({ count }) => count !== null && (!Number.isInteger(count) || count < 0));
   /** Sum over programs (all when `codes` is omitted), periods and modes */
-  const sum = (opts: { programId?: string; codes?: string[]; period?: ShipmentPeriod; mode?: ShipmentMode }) =>
+  const sum = (opts: { programId?: string; codes?: string[]; period?: DataPeriod; mode?: ShipmentMode }) =>
     cells
       .filter((c) => (!opts.programId || c.programId === opts.programId) && (!opts.period || c.period === opts.period) && (!opts.mode || c.mode === opts.mode))
       .filter((c) => !opts.codes || opts.codes.includes(inputs.find((i) => i.programId === c.programId)!.code))
@@ -78,7 +78,7 @@ export function ShipmentCounts({ reportId, inputs, ranges, canEdit }: { reportId
     setSaved(false);
   }
 
-  function set(pid: string, period: ShipmentPeriod, mode: ShipmentMode, v: string) {
+  function set(pid: string, period: DataPeriod, mode: ShipmentMode, v: string) {
     setDraft({ ...draft, [pid]: { ...draft[pid], [period]: { ...draft[pid][period], [mode]: v } } });
     setSaved(false);
   }

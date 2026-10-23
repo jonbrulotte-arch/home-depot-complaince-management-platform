@@ -7,20 +7,24 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { apiFetch } from "@/lib/client-api";
-import { formatCurrency } from "@/lib/utils";
+import { cn, formatCurrency } from "@/lib/utils";
+import type { DataPeriod } from "@prisma/client";
 
 interface Preview {
   programCode: string;
   exportKind: string;
   lineCount: number;
+  /** Lines from the other period's sheets, which only update existing lines */
+  updateOnlyCount: number;
   fiscalMonths: Record<string, number>;
-  metrics: { metricId: string; name: string; sheet: string; total: number; nonCompliant: number; offset: number; unmappedHeaders: string[] }[];
+  metrics: { metricId: string; name: string; sheet: string; total: number; nonCompliant: number; offset: number; unmappedHeaders: string[]; outOfPeriod?: boolean }[];
   emptySheets: string[];
   warnings: string[];
   sample: { metricCode: string; fiscalMonth: number; poNumber: string | null; offset: number; sheet: string; row: number }[];
 }
 
-export function ImportPanel({ reportId, programId, programName }: { reportId: string; programId: string; programName: string }) {
+/** Imports an SPM export into one compliance period (On-Time & Fill Rate, or All other data) of a program. */
+export function ImportPanel({ reportId, programId, programName, period, periodLabel }: { reportId: string; programId: string; programName: string; period: DataPeriod; periodLabel: string }) {
   const router = useRouter();
   const input = useRef<HTMLInputElement>(null);
   const [file, setFile] = useState<File | null>(null);
@@ -39,6 +43,7 @@ export function ImportPanel({ reportId, programId, programName }: { reportId: st
     try {
       const form = new FormData();
       form.set("file", f);
+      form.set("period", period);
       const res = await apiFetch<{ preview: Preview }>(url, { form });
       setPreview(res.preview);
     } catch (e) {
@@ -56,6 +61,7 @@ export function ImportPanel({ reportId, programId, programName }: { reportId: st
     try {
       const form = new FormData();
       form.set("file", file);
+      form.set("period", period);
       form.set("confirm", "1");
       await apiFetch(url, { form });
       close();
@@ -84,7 +90,9 @@ export function ImportPanel({ reportId, programId, programName }: { reportId: st
       <Dialog open={Boolean(file && (preview || error))} onOpenChange={(o) => !o && close()}>
         <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Import into {programName}</DialogTitle>
+            <DialogTitle>
+              Import {periodLabel} into {programName}
+            </DialogTitle>
             <DialogDescription>{file?.name}</DialogDescription>
           </DialogHeader>
 
@@ -115,8 +123,11 @@ export function ImportPanel({ reportId, programId, programName }: { reportId: st
                   </thead>
                   <tbody>
                     {preview.metrics.map((m) => (
-                      <tr key={m.metricId} className="border-t border-gray-200">
-                        <td className="px-4 py-2 text-gray-900">{m.name}</td>
+                      <tr key={m.metricId} className={cn("border-t border-gray-200", m.outOfPeriod && "bg-gray-50 text-gray-500")}>
+                        <td className="px-4 py-2 text-gray-900">
+                          {m.name}
+                          {m.outOfPeriod && <div className="text-xs text-gray-500">Other period: only updates lines already imported</div>}
+                        </td>
                         <td className="px-4 py-2 text-gray-700">{m.total}</td>
                         <td className="px-4 py-2 text-gray-700">{m.nonCompliant}</td>
                         <td className="px-4 py-2 text-gray-700">{formatCurrency(m.offset)}</td>
@@ -152,7 +163,9 @@ export function ImportPanel({ reportId, programId, programName }: { reportId: st
           <DialogFooter>
             <Button variant="outline" onClick={close}>Cancel</Button>
             {preview && (
-              <Button onClick={confirm} disabled={busy || preview.lineCount === 0}>{busy ? "Importing…" : `Import ${preview.lineCount} lines`}</Button>
+              <Button onClick={confirm} disabled={busy || preview.lineCount + preview.updateOnlyCount === 0}>
+                {busy ? "Importing…" : preview.lineCount ? `Import ${preview.lineCount} lines` : "Update existing lines"}
+              </Button>
             )}
           </DialogFooter>
         </DialogContent>

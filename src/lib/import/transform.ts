@@ -1,5 +1,7 @@
 import { createHash } from "node:crypto";
 import { isFiscalMonth } from "@/lib/fiscal";
+import { periodLabel, periodOfMetric } from "@/lib/shipment-ranges";
+import type { DataPeriod } from "@prisma/client";
 import { FULL_POPULATION_METRICS } from "./catalog";
 import type { ParsedRow, ParsedSheet, ParsedWorkbook } from "./parse";
 import { normalizeHeader, toBoolean, toDate, toJsonValue, toNumber, toText, type CellPrimitive } from "./values";
@@ -77,6 +79,8 @@ export interface MappedLine {
   raw: Record<string, string | number | boolean | null>;
   sourceSheet: string;
   sourceRow: number;
+  /** From a sheet that belongs to the report's other compliance period: it may update an existing line but never adds one */
+  updateOnly?: boolean;
 }
 
 export interface SummaryRowData {
@@ -107,6 +111,8 @@ export interface MetricPreview {
   nonCompliant: number;
   offset: number;
   unmappedHeaders: string[];
+  /** The metric belongs to the other compliance period than the one being imported */
+  outOfPeriod?: boolean;
 }
 
 export interface ImportPreview {
@@ -376,6 +382,8 @@ export interface TransformOptions {
   fallbackFiscalMonth: number;
   /** When importing into a report, warn if line fiscal months differ */
   expectedFiscalMonth?: number;
+  /** The report's compliance period this file is for; sheets of the other period become update-only */
+  period?: DataPeriod;
 }
 
 /** `sourceSheet` of lines built from THD's Summary totals in a summary-only export (no PO detail) */
@@ -412,11 +420,12 @@ export function transformWorkbook(workbook: ParsedWorkbook, opts: TransformOptio
     if (skipped) {
       warnings.push(`Sheet "${sheet.name}": ignored ${skipped} sparse row(s) that look like hand-added subtotals or notes.`);
     }
+    const outOfPeriod = opts.period !== undefined && periodOfMetric(metric.code) !== opts.period;
     const aliasMap = resolveAliases(opts.aliases, program.id, metric.id);
     const unmappedHeaders = sheet.headers.filter((h) => h && !aliasMap.has(normalizeHeader(h.replace(/ \(\d+\)$/, ""))));
     const preview: MetricPreview = {
       metricId: metric.id, code: metric.code, name: metric.name, sheet: sheet.name,
-      total: 0, nonCompliant: 0, offset: 0, unmappedHeaders,
+      total: 0, nonCompliant: 0, offset: 0, unmappedHeaders, ...(outOfPeriod ? { outOfPeriod } : {}),
     };
     if (!sheet.headers.some((h) => aliasMap.get(normalizeHeader(h)) === "poNumber")) {
       warnings.push(`Sheet "${sheet.name}" has no PO Number column; lines will not link to PO records.`);
@@ -454,14 +463,18 @@ export function transformWorkbook(workbook: ParsedWorkbook, opts: TransformOptio
         raw: mapped.raw,
         sourceSheet: sheet.name,
         sourceRow: row.rowNumber,
+        ...(outOfPeriod ? { updateOnly: true } : {}),
       });
-      fiscalMonths[fiscalMonth] = (fiscalMonths[fiscalMonth] ?? 0) + 1;
+      if (!outOfPeriod) fiscalMonths[fiscalMonth] = (fiscalMonths[fiscalMonth] ?? 0) + 1;
       preview.total += 1;
       if (!isCompliant) preview.nonCompliant += 1;
       preview.offset += mapped.offset;
     }
     preview.offset = Math.round(preview.offset * 100) / 100;
     metrics.push(preview);
+    if (outOfPeriod) {
+      warnings.push(`${metric.name} belongs to the ${periodLabel(periodOfMetric(metric.code))} import: its lines only update ones already imported, and no new lines are added.`);
+    }
   }
 
   // SPM's summary download (…_SUM_…) has THD's totals but no PO lines. Each metric with offsets
@@ -475,6 +488,7 @@ export function transformWorkbook(workbook: ParsedWorkbook, opts: TransformOptio
       const metric = program.metrics.find((m) => m.id === s.metricId);
       if (s.mVendor !== null || !metric || !s.offsetsPreDispute) continue;
       const offset = Math.round(s.offsetsPreDispute * 100) / 100;
+      const outOfPeriod = opts.period !== undefined && periodOfMetric(metric.code) !== opts.period;
       lines.push({
         metricId: metric.id,
         metricCode: metric.code,
@@ -494,9 +508,10 @@ export function transformWorkbook(workbook: ParsedWorkbook, opts: TransformOptio
         },
         sourceSheet: SUMMARY_SHEET,
         sourceRow: 0,
+        ...(outOfPeriod ? { updateOnly: true } : {}),
       });
-      fiscalMonths[fiscalMonth] = (fiscalMonths[fiscalMonth] ?? 0) + 1;
-      metrics.push({ metricId: metric.id, code: metric.code, name: metric.name, sheet: SUMMARY_SHEET, total: 1, nonCompliant: 1, offset, unmappedHeaders: [] });
+      if (!outOfPeriod) fiscalMonths[fiscalMonth] = (fiscalMonths[fiscalMonth] ?? 0) + 1;
+      metrics.push({ metricId: metric.id, code: metric.code, name: metric.name, sheet: SUMMARY_SHEET, total: 1, nonCompliant: 1, offset, unmappedHeaders: [], ...(outOfPeriod ? { outOfPeriod } : {}) });
     }
     warnings.push(
       "Summary-only export: it has THD's totals but no PO lines. Each metric with offsets is recorded as one line without a PO; importing the detail export for the same month replaces it.",
@@ -508,7 +523,7 @@ export function transformWorkbook(workbook: ParsedWorkbook, opts: TransformOptio
   }
   if (opts.expectedFiscalMonth) {
     const other = Object.keys(fiscalMonths).map(Number).filter((fm) => fm !== opts.expectedFiscalMonth);
-    if (other.length) warnings.push(`File contains lines for fiscal month(s) ${other.join(", ")}, not only the report period ${opts.expectedFiscalMonth}.`);
+    if (other.length) warnings.push(`File contains lines for fiscal month(s) ${other.join(", ")}; this import expects fiscal month ${opts.expectedFiscalMonth}.`);
   }
   if (shiftedRows) {
     warnings.push(`${shiftedRows} row(s) had the offset under "Department #" (THD export column shift); the offset was read from that column.`);

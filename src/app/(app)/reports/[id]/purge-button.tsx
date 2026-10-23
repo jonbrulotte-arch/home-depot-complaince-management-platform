@@ -7,15 +7,16 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { apiFetch } from "@/lib/client-api";
 import type { PurgeSummary } from "@/lib/purge";
+import type { DataPeriod } from "@prisma/client";
 
-/** Deletes a program's imports in this report and the lines they created, after a confirmation. */
-export function PurgeButton({ reportId, programId, programName }: { reportId: string; programId: string; programName: string }) {
+/** Deletes a program's imports for one compliance period of this report and the lines they created, after a confirmation. */
+export function PurgeButton({ reportId, programId, programName, period, periodLabel }: { reportId: string; programId: string; programName: string; period: DataPeriod; periodLabel: string }) {
   const router = useRouter();
   const [summary, setSummary] = useState<PurgeSummary | null>(null);
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const url = `/api/reports/${reportId}/programs/${programId}/purge`;
+  const url = `/api/reports/${reportId}/programs/${programId}/purge?period=${period}`;
 
   async function start() {
     setOpen(true);
@@ -53,7 +54,9 @@ export function PurgeButton({ reportId, programId, programName }: { reportId: st
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Purge {programName} data?</DialogTitle>
-            <DialogDescription>Removes this program&apos;s SPM imports from the report so you can import again. This cannot be undone.</DialogDescription>
+            <DialogDescription>
+              Removes the {periodLabel} imports for this program so you can import again. The other period&apos;s import is not touched. This cannot be undone.
+            </DialogDescription>
           </DialogHeader>
           {summary && (
             <ul className="space-y-1.5 text-sm text-gray-700">
