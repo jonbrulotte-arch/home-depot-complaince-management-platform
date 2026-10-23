@@ -1,12 +1,12 @@
 import "dotenv/config";
 import { prisma } from "../src/lib/prisma";
 import { fiscalLabel } from "../src/lib/fiscal";
-import { createHistoricalReport, deleteHistoricalReports, planHistoricalReports, RECENT_MONTHS_EXCLUDED } from "../src/lib/historical";
+import { createHistoricalReport, deleteHistoricalReports, planHistoricalReports } from "../src/lib/historical";
 
 // Usage: npm run historical-reports [-- --dry-run] [--from 202307] [--to 202603] [--rebuild]
 // --rebuild replaces existing historical reports (e.g. after changing how reports are grouped).
 // Creates a published, auto-reviewed report and scorecard for each month of imported data that
-// has no report yet. By default the newest two months are left for the normal workflow.
+// has no report yet. By default the current and previous month are left for the normal workflow.
 export async function runHistoricalReports(args: string[]) {
   const arg = (name: string) => {
     const i = args.indexOf(name);
@@ -22,7 +22,7 @@ export async function runHistoricalReports(args: string[]) {
     console.log("No imported data yet. Run the backfill first.");
     return;
   }
-  console.log(`Months up to ${fiscalLabel(plan.to!)} (newest data: ${fiscalLabel(plan.latest)}; the latest ${RECENT_MONTHS_EXCLUDED} are left for the normal workflow unless --to is given).`);
+  console.log(`Months up to ${fiscalLabel(plan.to!)} (newest data: ${fiscalLabel(plan.latest)}; the current and previous month are left for the normal workflow unless --to is given).`);
   if (plan.existing.length) console.log(`Skipping ${plan.existing.length} month(s) that already have a report: ${plan.existing.map(fiscalLabel).join(", ")}`);
   if (!plan.months.length) {
     console.log("Nothing to create.");

@@ -59,7 +59,7 @@ export function HistoricalDialog() {
             <DialogTitle>Create historical reports</DialogTitle>
             <DialogDescription>
               For each month of imported data without a report, create a report and publish its scorecard. Violations are accepted as THD reported them;
-              dispute results come from THD&apos;s exports. The newest two months are left for the normal workflow.
+              dispute results come from THD&apos;s exports. The current and previous month are left for the normal workflow.
             </DialogDescription>
           </DialogHeader>
 

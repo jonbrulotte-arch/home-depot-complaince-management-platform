@@ -1,5 +1,5 @@
 import type { Prisma, PrismaClient } from "@prisma/client";
-import { fiscalLabel, shiftFiscalMonth } from "@/lib/fiscal";
+import { calendarToFiscal, fiscalLabel, shiftFiscalMonth } from "@/lib/fiscal";
 import { isApprovedDecision, isDeniedDecision } from "@/lib/disputes";
 import { buildScorecard } from "@/lib/scorecard";
 import { getShipmentInputs } from "@/lib/shipments";
@@ -9,8 +9,17 @@ import { getPeriodField, linesInPeriod, type PeriodField } from "@/lib/periods";
 // so their scorecards exist. Violations are accepted as THD reported them; dispute results come
 // from the exports (per-line Approve/Deny values and THD's summary post-dispute totals).
 
-/** Months this close to the newest data may still be in THD's dispute window, so are left for the normal workflow. */
-export const RECENT_MONTHS_EXCLUDED = 2;
+/**
+ * The current month and the one before it may still be in THD's dispute window, so they are left
+ * for the normal workflow. Counted from today, not from the newest data: an archive that ends a
+ * few months back is all historical.
+ */
+const RECENT_MONTHS_EXCLUDED = 2;
+
+/** The newest month historical reports cover by default: the month before the recent ones. */
+export function defaultHistoricalCutoff(now = new Date()): number {
+  return shiftFiscalMonth(calendarToFiscal(now.getUTCFullYear(), now.getUTCMonth()), -RECENT_MONTHS_EXCLUDED);
+}
 const HISTORICAL_NOTE = "Historical import: accepted as reported by THD; not reviewed in this platform.";
 
 export interface HistoricalMonth {
@@ -27,7 +36,7 @@ export interface HistoricalPlan {
   to: number | null;
 }
 
-/** Months with imported data and no report yet, up to `to` (default: all but the newest two months). */
+/** Months with imported data and no report yet, up to `to` (default: all but the current and previous month). */
 export async function planHistoricalReports(
   db: PrismaClient,
   opts: { from?: number; to?: number; rebuild?: boolean } = {},
@@ -36,7 +45,7 @@ export async function planHistoricalReports(
   const max = await db.complianceLine.aggregate({ _max: { fiscalMonth: true, receivedMonth: true } });
   const latest = max._max[field];
   if (!latest) return { months: [], existing: [], latest: null, to: null };
-  const to = opts.to ?? shiftFiscalMonth(latest, -RECENT_MONTHS_EXCLUDED);
+  const to = opts.to ?? defaultHistoricalCutoff();
   const where = linesInPeriod(field, { gte: opts.from ?? 0, lte: to });
 
   const [rawGroups, metrics, programs, reported] = await Promise.all([
