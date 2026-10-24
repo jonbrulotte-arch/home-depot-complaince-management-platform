@@ -1,0 +1,605 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ─── Users & RBAC ──────────────────────────────────────────────
+
+model Role {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  description String?
+  /// Permission keys from src/lib/permissions.ts
+  permissions String[]
+  system      Boolean  @default(false) // seeded roles cannot be deleted
+  users       User[]
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model User {
+  id           String    @id @default(cuid())
+  name         String
+  email        String    @unique
+  passwordHash String
+  active       Boolean   @default(true)
+  roleId       String
+  role         Role      @relation(fields: [roleId], references: [id])
+  lastLoginAt  DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  reportsCreated      ComplianceReport[]
+  imports             ImportBatch[]
+  reviews             LineReview[]
+  auditLogs           AuditLog[]
+  disputeEvents       DisputeEvent[]
+  attachments         DisputeAttachment[]
+  shipmentCounts      ShipmentCount[]
+  scorecardsGenerated Scorecard[]         @relation("ScorecardGeneratedBy")
+  scorecardsPublished Scorecard[]         @relation("ScorecardPublishedBy")
+  scorecardFeedback   ScorecardFeedback[]
+}
+
+model AuditLog {
+  id       String   @id @default(cuid())
+  userId   String?
+  user     User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  action   String
+  entity   String
+  entityId String?
+  details  Json?
+  at       DateTime @default(now())
+
+  @@index([entity, entityId])
+  @@index([at])
+}
+
+// ─── Program configuration ─────────────────────────────────────
+
+model Program {
+  id             String          @id @default(cuid())
+  /// US_DS | US_RDC | US_DFC | US_TRANS | DQC | INVOICE_TIMELINESS
+  code           String          @unique
+  name           String
+  /// SPM export filename prefix, e.g. "US_DFC"
+  filePrefix     String?
+  sortOrder      Int             @default(0)
+  active         Boolean         @default(true)
+  metrics        Metric[]
+  aliases        ColumnAlias[]
+  reportPrograms ReportProgram[]
+  shipmentCounts ShipmentCount[]
+}
+
+model Metric {
+  id         String   @id @default(cuid())
+  programId  String
+  program    Program  @relation(fields: [programId], references: [id], onDelete: Cascade)
+  /// e.g. FILL_RATE, ON_TIME, ASNT_MISSING_ASN
+  code       String
+  name       String
+  /// SPM sheet names that hold this metric (matched case-insensitively)
+  sheetNames String[]
+  sortOrder  Int      @default(0)
+  active     Boolean  @default(true)
+
+  rules       MetricRule[]
+  aliases     ColumnAlias[]
+  reasonCodes DisputeReasonCode[]
+  lines       ComplianceLine[]
+  summaryRows SpmSummaryRow[]
+
+  @@unique([programId, code])
+}
+
+enum OffsetType {
+  NONE
+  FLAT // fixed $ per violation
+  PCT_VALUE // % of COGS / gross value of the late or unshipped units
+}
+
+/// Threshold and fine schedule; the rule in force for a period is the latest effectiveFrom <= period.
+model MetricRule {
+  id            String     @id @default(cuid())
+  metricId      String
+  metric        Metric     @relation(fields: [metricId], references: [id], onDelete: Cascade)
+  /// Fiscal month (YYYYMM) the rule applies from
+  effectiveFrom Int
+  /// Goal as a percentage, e.g. 98.5
+  thresholdPct  Decimal    @db.Decimal(6, 3)
+  offsetType    OffsetType
+  /// $ for FLAT, % for PCT_VALUE
+  offsetAmount  Decimal    @db.Decimal(12, 2)
+  notes         String?
+
+  @@unique([metricId, effectiveFrom])
+}
+
+/// Maps a source header (normalized) to a canonical ComplianceLine field.
+/// Scope: metric-specific > program-specific > global.
+model ColumnAlias {
+  id             String   @id @default(cuid())
+  programId      String?
+  program        Program? @relation(fields: [programId], references: [id], onDelete: Cascade)
+  metricId       String?
+  metric         Metric?  @relation(fields: [metricId], references: [id], onDelete: Cascade)
+  /// Normalized header: lower-case, single-spaced
+  sourceHeader   String
+  canonicalField String
+
+  @@unique([programId, metricId, sourceHeader])
+}
+
+model DisputeReasonCode {
+  id           String    @id @default(cuid())
+  metricId     String
+  metric       Metric    @relation(fields: [metricId], references: [id], onDelete: Cascade)
+  code         String
+  whenToUse    String?
+  requiredDocs String?
+  docDetails   String?
+  active       Boolean   @default(true)
+  disputes     Dispute[]
+
+  @@unique([metricId, code])
+}
+
+// ─── Reporting workflow ────────────────────────────────────────
+
+model CompliancePeriod {
+  id           String             @id @default(cuid())
+  /// THD fiscal month YYYYMM (month 01 = February)
+  fiscalMonth  Int                @unique
+  label        String
+  /// SPM dispute window for this period's performance (defaults from THD's calendar rule)
+  disputeOpen  DateTime?
+  disputeClose DateTime?
+  reports      ComplianceReport[]
+}
+
+enum ReportStatus {
+  DRAFT // created, importing data
+  IN_REVIEW // analysts triaging non-compliant lines
+  DISPUTES // disputes being prepared / submitted
+  SCORECARD // scorecard generated, awaiting publish
+  PUBLISHED
+}
+
+model ComplianceReport {
+  id             String              @id @default(cuid())
+  periodId       String
+  period         CompliancePeriod    @relation(fields: [periodId], references: [id])
+  status         ReportStatus        @default(DRAFT)
+  title          String
+  notes          String?
+  /// Created from the historical SPM archive: lines auto-accepted, dispute results from THD's exports
+  historical     Boolean             @default(false)
+  /// Date ranges the shipment counts cover. THD reports Fill Rate and On Time two months behind
+  /// the other metrics, so they cover an earlier range.
+  fillOnTimeFrom DateTime?           @db.Date
+  fillOnTimeTo   DateTime?           @db.Date
+  otherFrom      DateTime?           @db.Date
+  otherTo        DateTime?           @db.Date
+  createdById    String?
+  createdBy      User?               @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @updatedAt
+  programs       ReportProgram[]
+  scorecard      Scorecard?
+  shipments      ShipmentCount[]
+  feedback       ScorecardFeedback[]
+
+  @@index([periodId])
+}
+
+enum ReportProgramStatus {
+  NOT_STARTED
+  IMPORTED
+  REVIEWED
+}
+
+model ReportProgram {
+  id        String              @id @default(cuid())
+  reportId  String
+  report    ComplianceReport    @relation(fields: [reportId], references: [id], onDelete: Cascade)
+  programId String
+  program   Program             @relation(fields: [programId], references: [id])
+  status    ReportProgramStatus @default(NOT_STARTED)
+  batches   ImportBatch[]
+
+  @@unique([reportId, programId])
+}
+
+// ─── Imported data ─────────────────────────────────────────────
+
+enum ExportKind {
+  ALL_RESULTS
+  NON_COMPLIANT
+  UNKNOWN
+}
+
+model ImportBatch {
+  id              String           @id @default(cuid())
+  reportProgramId String?
+  reportProgram   ReportProgram?   @relation(fields: [reportProgramId], references: [id], onDelete: SetNull)
+  programId       String
+  fileName        String
+  sha256          String
+  exportKind      ExportKind
+  /// Which of the report's compliance periods the file was imported for (see DataPeriod)
+  period          DataPeriod       @default(OTHER)
+  /// "upload" or "backfill"
+  source          String           @default("upload")
+  /// Month the file was received (report period or archive folder); null for imports before it was recorded
+  receivedMonth   Int?
+  rowCount        Int
+  createdCount    Int              @default(0)
+  updatedCount    Int              @default(0)
+  warnings        Json?
+  importedById    String?
+  importedBy      User?            @relation(fields: [importedById], references: [id], onDelete: SetNull)
+  importedAt      DateTime         @default(now())
+  lines           ComplianceLine[]
+  summaryRows     SpmSummaryRow[]
+
+  @@index([sha256])
+  @@index([reportProgramId])
+}
+
+/// THD's own rollup from the SPM "Summary" sheet, kept to reconcile against our line totals.
+model SpmSummaryRow {
+  id                 String      @id @default(cuid())
+  batchId            String
+  batch              ImportBatch @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  metricId           String?
+  metric             Metric?     @relation(fields: [metricId], references: [id], onDelete: SetNull)
+  metricLabel        String
+  /// null for the P-Vendor totals block, else the M-Vendor block it came from
+  mVendor            String?
+  programStatus      String?
+  totalLines         Int?
+  compliantLines     Int?
+  nonCompliantLines  Int?
+  offsetsPreDispute  Decimal?    @db.Decimal(12, 2)
+  offsetsPostDispute Decimal?    @db.Decimal(12, 2)
+  disputedLines      Int?
+  approvedLines      Int?
+  deniedLines        Int?
+  thresholdPct       Decimal?    @db.Decimal(6, 3)
+  preDisputePerfPct  Decimal?    @db.Decimal(6, 3)
+  postDisputePerfPct Decimal?    @db.Decimal(6, 3)
+}
+
+/// One use of a PO number. THD reuses PO numbers, so a record is the number plus the PO create date
+/// from the exports (`instanceKey`, see src/lib/po.ts); lines without a date join the nearest use.
+model PoRecord {
+  id           String           @id @default(cuid())
+  poNumber     String
+  /// "poNumber|YYYY-MM-DD" (PO create date), or "poNumber|" when no export gave the date
+  instanceKey  String           @unique
+  pVendor      String?
+  mVendor      String?
+  mVendorName  String?
+  dept         String?
+  dcNumber     String?
+  poCreateDate DateTime?
+  firstSeenAt  DateTime         @default(now())
+  lastSeenAt   DateTime         @default(now())
+  lines        ComplianceLine[]
+
+  @@index([poNumber])
+}
+
+model ComplianceLine {
+  id             String      @id @default(cuid())
+  /// Business key (metric|fiscalMonth|identifiers|occurrence) so re-imports update instead of duplicating
+  lineKey        String
+  metricId       String
+  metric         Metric      @relation(fields: [metricId], references: [id])
+  batchId        String
+  batch          ImportBatch @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  /// The import that first created the line (batchId is the latest one to write it). Purging a
+  /// report's imports deletes only the lines they created. Null when unknown (older imports that
+  /// also updated existing lines), so those lines are kept.
+  createdBatchId String?
+  poRecordId     String?
+  poRecord       PoRecord?   @relation(fields: [poRecordId], references: [id])
+  fiscalMonth    Int
+  /// Month the line was first received: the report it was imported into, or the archive folder
+  /// it came from. Reports group by this or by fiscalMonth (SiteSettings.reportPeriodBasis).
+  receivedMonth  Int
+  isCompliant    Boolean
+  offsetAmount   Decimal     @default(0) @db.Decimal(12, 2)
+
+  // Canonical fields (null when the export does not carry them)
+  poNumber              String?
+  dcNumber              String?
+  sku                   String?
+  vendorSku             String?
+  skuDescription        String?
+  customerOrder         String?
+  omsId                 String?
+  trackingNumber        String?
+  orderedQty            Decimal?  @db.Decimal(12, 2)
+  receivedQty           Decimal?  @db.Decimal(12, 2)
+  fillRatePct           Decimal?  @db.Decimal(7, 3)
+  poCreateDate          DateTime?
+  expectedArrivalDate   DateTime?
+  estShipDate           DateTime?
+  estDeliveryDate       DateTime?
+  actualShipDate        DateTime?
+  rtsSent               DateTime?
+  pickupRequestDate     DateTime?
+  trailerCheckIn        DateTime?
+  asnTimestamp          DateTime?
+  asnReceivedAt         DateTime?
+  closedDate            DateTime?
+  cancelDate            DateTime?
+  bolNumber             String?
+  tmsId                 String?
+  shipmentNumber        String?
+  docTraceId            String?
+  carrierUsed           String?
+  carrierPro            String?
+  rgCarriers            String?
+  originState           String?
+  destinationState      String?
+  freightTerms          String?
+  invoiceNumber         String?
+  offsetType            String?
+  reason                String?
+  lateReason            String?
+  businessDaysLate      Decimal?  @db.Decimal(8, 2)
+  /// Invoice Timeliness: THD lists POs whose goods were received but not yet invoiced
+  goodsReceiptDate      DateTime?
+  firstReportedDate     DateTime?
+  lastReportedDate      DateTime?
+  weeksOnReport         Decimal?  @db.Decimal(8, 2)
+  locationType          String?
+  rescheduled           Boolean?
+  spmStatus             String?
+  spmDisputeReason      String?
+  spmSupplierComment    String?
+  spmDecision           String?
+  spmDecisionDetail     String?
+  spmCoordinatorComment String?
+
+  /// Every source column, original header -> value
+  raw         Json
+  sourceSheet String
+  sourceRow   Int
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  review   LineReview?
+  dispute  Dispute?
+  feedback ScorecardFeedback[]
+
+  @@unique([metricId, lineKey])
+  @@index([poNumber])
+  @@index([fiscalMonth, metricId])
+  @@index([receivedMonth, metricId])
+  @@index([createdBatchId])
+  @@index([docTraceId])
+  @@index([tmsId])
+  @@index([carrierPro])
+  @@index([sku])
+}
+
+enum Disposition {
+  PENDING
+  ACCEPTED // valid violation, no dispute
+  DISPUTABLE
+  NOT_DISPUTABLE
+  NEEDS_RESEARCH
+  RESOLVED // not a real violation (e.g. cancelled by the customer); counts as compliant on the scorecard
+}
+
+enum TeamInfluence {
+  WAREHOUSE_SITE_0
+  WAREHOUSE_SITE_3
+  WAREHOUSE // before the warehouse was split by site; no longer offered
+  CUSTOMER_SERVICE
+  CS_WAREHOUSE
+  EDI
+  ECOMM
+  CARRIER
+  THD
+  OTHER
+}
+
+model LineReview {
+  id            String         @id @default(cuid())
+  lineId        String         @unique
+  line          ComplianceLine @relation(fields: [lineId], references: [id], onDelete: Cascade)
+  disposition   Disposition    @default(PENDING)
+  teamInfluence TeamInfluence?
+  reasonCodeId  String?
+  rootCause     String?
+  notes         String?
+  /// Extra research inputs, e.g. WMS waved date, POD received, criteria checks
+  extraFields   Json?
+  reviewerId    String?
+  reviewer      User?          @relation(fields: [reviewerId], references: [id], onDelete: SetNull)
+  reviewedAt    DateTime?
+  updatedAt     DateTime       @updatedAt
+}
+
+// ─── Disputes ──────────────────────────────────────────────────
+
+enum DisputeStatus {
+  PREPARING // gathering documents
+  READY // documents complete, ready to submit in SPM
+  SUBMITTED // submitted in SPM, awaiting THD decision
+  APPROVED
+  PARTIAL // partially approved
+  DENIED
+  WITHDRAWN // decided not to pursue
+}
+
+/// One dispute per non-compliant line, created from a "Disputable" review decision.
+model Dispute {
+  id              String              @id @default(cuid())
+  lineId          String              @unique
+  line            ComplianceLine      @relation(fields: [lineId], references: [id], onDelete: Cascade)
+  status          DisputeStatus       @default(PREPARING)
+  reasonCodeId    String?
+  reasonCode      DisputeReasonCode?  @relation(fields: [reasonCodeId], references: [id], onDelete: SetNull)
+  amountDisputed  Decimal             @db.Decimal(12, 2)
+  amountRecovered Decimal?            @db.Decimal(12, 2)
+  dueDate         DateTime?
+  /// [{ label, done }] built from the reason code's required documents
+  checklist       Json
+  /// Comment text to paste into the SPM dispute form
+  supplierComment String?
+  submittedAt     DateTime?
+  spmReference    String?
+  decidedAt       DateTime?
+  /// THD decision / review code, e.g. A1, D2
+  decisionCode    String?
+  decisionNotes   String?
+  /// Latest Approve/Deny value seen in an SPM export, not yet recorded as the outcome
+  spmDecisionSeen String?
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+  events          DisputeEvent[]
+  attachments     DisputeAttachment[]
+
+  @@index([status])
+}
+
+enum DisputeEventType {
+  CREATED
+  NOTE
+  STATUS
+  ATTACHMENT
+  SPM_UPDATE
+}
+
+model DisputeEvent {
+  id         String           @id @default(cuid())
+  disputeId  String
+  dispute    Dispute          @relation(fields: [disputeId], references: [id], onDelete: Cascade)
+  type       DisputeEventType
+  body       String?
+  fromStatus DisputeStatus?
+  toStatus   DisputeStatus?
+  userId     String?
+  user       User?            @relation(fields: [userId], references: [id], onDelete: SetNull)
+  at         DateTime         @default(now())
+
+  @@index([disputeId, at])
+}
+
+/// Supporting documents (POD, BOL, emails, EDI screenshots), stored in the database.
+model DisputeAttachment {
+  id           String   @id @default(cuid())
+  disputeId    String
+  dispute      Dispute  @relation(fields: [disputeId], references: [id], onDelete: Cascade)
+  fileName     String
+  contentType  String
+  size         Int
+  data         Bytes
+  uploadedById String?
+  uploadedBy   User?    @relation(fields: [uploadedById], references: [id], onDelete: SetNull)
+  uploadedAt   DateTime @default(now())
+
+  @@index([disputeId])
+}
+
+// ─── Scorecards ────────────────────────────────────────────────
+
+/// Frozen snapshot of a report's results, so a published scorecard never changes under readers.
+model Scorecard {
+  id            String           @id @default(cuid())
+  reportId      String           @unique
+  report        ComplianceReport @relation(fields: [reportId], references: [id], onDelete: Cascade)
+  /// ScorecardData from src/lib/scorecard.ts
+  data          Json
+  version       Int              @default(1)
+  generatedAt   DateTime         @default(now())
+  generatedById String?
+  generatedBy   User?            @relation("ScorecardGeneratedBy", fields: [generatedById], references: [id], onDelete: SetNull)
+  publishedAt   DateTime?
+  publishedById String?
+  publishedBy   User?            @relation("ScorecardPublishedBy", fields: [publishedById], references: [id], onDelete: SetNull)
+  /// Unguessable token for the public link (/s/<token>); made when first shared, works while published
+  shareToken    String?          @unique
+
+  @@index([publishedAt])
+}
+
+/// Contextual feedback on a violation of a published scorecard, e.g. from the warehouse team
+model ScorecardFeedback {
+  id        String           @id @default(cuid())
+  reportId  String
+  report    ComplianceReport @relation(fields: [reportId], references: [id], onDelete: Cascade)
+  lineId    String
+  line      ComplianceLine   @relation(fields: [lineId], references: [id], onDelete: Cascade)
+  authorId  String?
+  author    User?            @relation(fields: [authorId], references: [id], onDelete: SetNull)
+  body      String
+  createdAt DateTime         @default(now())
+  updatedAt DateTime         @updatedAt
+
+  @@index([reportId, lineId])
+}
+
+enum ShipmentMode {
+  SMALL_PARCEL
+  LTL_TL
+}
+
+/// The two compliance periods a report covers: Fill Rate and On Time are reported two months
+/// behind the other metrics. Each has its own SPM import, date range and shipment counts.
+enum DataPeriod {
+  FILL_ON_TIME
+  OTHER
+}
+
+/// Shipments in the period by program and mode, entered by the user (SPM exports do not carry
+/// the mode for RDC/DFC). Feeds the scorecard's shipment breakdown.
+model ShipmentCount {
+  id          String           @id @default(cuid())
+  reportId    String
+  report      ComplianceReport @relation(fields: [reportId], references: [id], onDelete: Cascade)
+  programId   String
+  program     Program          @relation(fields: [programId], references: [id], onDelete: Cascade)
+  period      DataPeriod       @default(OTHER)
+  mode        ShipmentMode
+  count       Int
+  updatedById String?
+  updatedBy   User?            @relation(fields: [updatedById], references: [id], onDelete: SetNull)
+  updatedAt   DateTime         @updatedAt
+
+  @@unique([reportId, programId, period, mode])
+}
+
+// ─── Site settings ─────────────────────────────────────────────
+
+/// Single row (id "site") of platform-wide settings.
+model SiteSettings {
+  id                   String      @id @default("site")
+  /// When off, the default Sympl CM branding is shown
+  brandingEnabled      Boolean     @default(false)
+  siteName             String?
+  logo                 Bytes?
+  logoContentType      String?
+  /// Which month groups lines into reports
+  reportPeriodBasis    PeriodBasis @default(RECEIVED_MONTH)
+  /// Token for the public dashboard (/d/<token>); null while it is turned off
+  publicDashboardToken String?     @unique
+  updatedAt            DateTime    @updatedAt
+  updatedById          String?
+}
+
+enum PeriodBasis {
+  /// The month the data was received (the monthly report it arrived in)
+  RECEIVED_MONTH
+  /// THD's fiscal month on each line
+  FISCAL_MONTH
+}
