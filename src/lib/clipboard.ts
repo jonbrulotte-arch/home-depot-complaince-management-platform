@@ -39,21 +39,3 @@ export async function copyText(text: string): Promise<boolean> {
   area.setAttribute("readonly", "");
   return copySelectionOf(area);
 }
-
-/** Copies formatted HTML (pastes as a formatted email) with a plain-text alternative. */
-export async function copyHtml(html: string, text: string): Promise<boolean> {
-  if (window.isSecureContext && navigator.clipboard && typeof ClipboardItem !== "undefined") {
-    try {
-      await navigator.clipboard.write([
-        new ClipboardItem({ "text/html": new Blob([html], { type: "text/html" }), "text/plain": new Blob([text], { type: "text/plain" }) }),
-      ]);
-      return true;
-    } catch {
-      // fall through to the selection copy
-    }
-  }
-  const box = offscreen(document.createElement("div"));
-  box.contentEditable = "true";
-  box.innerHTML = html;
-  return copySelectionOf(box);
-}

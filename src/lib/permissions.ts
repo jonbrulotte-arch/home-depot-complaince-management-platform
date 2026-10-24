@@ -9,7 +9,7 @@ export const PERMISSIONS = {
   "disputes.manage": "Manage disputes",
   "feedback.view": "View published scorecards and their violation feedback",
   "feedback.submit": "Give feedback on scorecard violations",
-  "summarizer.use": "Build scorecard summaries to email the team",
+  "summarizer.use": "Build scorecard summaries and export them as PDF",
   "admin.users": "Manage users",
   "admin.rbac": "Manage roles and permissions",
   "admin.programs": "Manage programs, metrics, thresholds and column mappings",

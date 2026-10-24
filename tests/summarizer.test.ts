@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { ScorecardData, ScorecardViolation } from "@/lib/scorecard";
-import { buildSummary, defaultSubject, parseReportIds, summaryEmail, type SummaryInput } from "@/lib/summarizer";
+import { buildSummary, parseReportIds, periodsLabel, type SummaryInput } from "@/lib/summarizer";
 
 const violation = (program: string, metric: string, poNumber: string, offset: number, teamInfluence: string | null): ScorecardViolation => ({
   program, metric, poNumber, dcNumber: null, offset, disposition: "ACCEPTED", teamInfluence, disputeStatus: null, reasonCode: null, recovered: null, notes: null,
@@ -47,29 +47,14 @@ describe("summarizer", () => {
       { team: "Not assigned", violations: 1, offset: 250, awaiting: 0 },
     ]);
     expect(s.totals).toEqual({ violations: 4, preOffset: 1750, recovered: 250, postOffset: 1500, awaiting: 0, awaitingDisputes: 0 });
-    expect(defaultSubject(s)).toBe("THD Compliance Summary: May 2026 & Jun 2026");
+    expect(periodsLabel(s)).toBe("May 2026 & Jun 2026");
   });
 
-  it("writes the email with full links and escapes what people typed", () => {
-    const s = buildSummary([june]);
-    const { html, text } = summaryEmail(s, { origin: "http://10.0.10.106:8014", dashboardPath: "/d/dash" }, "Hi <team>\nSee below");
-    expect(html).toContain('href="http://10.0.10.106:8014/s/token-r6"');
-    expect(html).toContain('href="http://10.0.10.106:8014/d/dash"');
-    expect(html).toContain("Hi &lt;team&gt;<br>See below");
-
-    expect(text).toContain("Compliance dashboard: http://10.0.10.106:8014/d/dash");
-    expect(text).toContain("US DFC · Missing ASN (1 violation, $1,000.00)");
-    expect(text).toContain("  - PO 333: $250.00, Not assigned");
-    // One period: only the overview has a Period column
-    expect(html.match(/>Period<\/th>/g)).toHaveLength(1);
-  });
-
-  it("leaves out the dashboard when it is off and says when there are no violations", () => {
+  it("has no groups or teams when the reports have no violations", () => {
     const s = buildSummary([input("r1", 202601, "Feb 2026", [])]);
-    const { html, text } = summaryEmail(s, { origin: "https://x", dashboardPath: null });
-    expect(html).not.toContain("/d/");
-    expect(text).toContain("No violations.");
+    expect(s.groups).toEqual([]);
     expect(s.teams).toEqual([]);
+    expect(periodsLabel(s)).toBe("Feb 2026");
   });
 });
 
@@ -97,8 +82,5 @@ describe("disputes awaiting THD's decision", () => {
     expect(s.reports[0]).toMatchObject({ awaiting: 1200, awaitingDisputes: 2 });
     expect(s.totals).toMatchObject({ awaiting: 1200, awaitingDisputes: 2 });
     expect(s.teams.find((t) => t.team === "EDI")?.awaiting).toBe(200);
-    const { text } = summaryEmail(s, { origin: "https://x", dashboardPath: null });
-    expect(text).toContain("$1,200.00 submitted and awaiting THD's decision (2 disputes)");
-    expect(text).toContain("  - PO 666: $250.00, EDI, $200.00 awaiting THD decision");
   });
 });

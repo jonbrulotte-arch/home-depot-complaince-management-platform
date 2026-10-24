@@ -8,13 +8,12 @@ import { cn, formatCurrency } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { ReportPicker } from "./report-picker";
-import { SummaryEmail } from "./summary-email";
 
 const th = "px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider";
 const td = "px-4 py-2.5 text-sm";
 
 export default async function SummarizerPage({ searchParams }: { searchParams: Promise<{ r?: string | string[] }> }) {
-  const user = await requirePagePermission("summarizer.use");
+  await requirePagePermission("summarizer.use");
   const { r } = await searchParams;
   const requested = parseReportIds(r);
   const [published, { summary, dashboardPath }] = await Promise.all([recentPublishedReports(500), loadSummary(requested)]);
@@ -23,7 +22,7 @@ export default async function SummarizerPage({ searchParams }: { searchParams: P
     <div className="p-6 max-w-7xl mx-auto space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-gray-900">Summarizer</h1>
-        <p className="text-sm text-gray-500 mt-1">Pick one or more published compliance reports to summarize their violations for the team, then copy the summary into an email.</p>
+        <p className="text-sm text-gray-500 mt-1">Pick one or more published compliance reports to summarize their violations for the team, then export the summary as a PDF.</p>
       </div>
 
       <Card>
@@ -38,37 +37,7 @@ export default async function SummarizerPage({ searchParams }: { searchParams: P
 
       {requested.length > 0 && !summary && <p className="text-sm text-gray-500">None of the chosen reports is published any more. Pick reports above.</p>}
 
-      {summary && (
-        <>
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle>Email</CardTitle>
-              <CardDescription>
-                Links go to the public scorecard pages{dashboardPath ? " and the public dashboard" : ""}, so people without an account can open them.
-                {!dashboardPath && (
-                  <>
-                    {" "}The public dashboard is off, so the email leaves it out
-                    {user.permissions.has("admin.settings") ? (
-                      <>
-                        {" "}(turn it on in{" "}
-                        <Link href="/admin/settings" className="text-blue-600 hover:underline">
-                          Settings
-                        </Link>
-                        )
-                      </>
-                    ) : null}
-                    .
-                  </>
-                )}
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <SummaryEmail key={summary.reports.map((s) => s.reportId).join(",")} summary={summary} dashboardPath={dashboardPath} />
-            </CardContent>
-          </Card>
-          <SummaryView summary={summary} dashboardPath={dashboardPath} />
-        </>
-      )}
+      {summary && <SummaryView summary={summary} dashboardPath={dashboardPath} />}
     </div>
   );
 }
@@ -136,7 +105,7 @@ function SummaryView({ summary, dashboardPath }: { summary: Summary; dashboardPa
                   <Link href={`/scorecards/${r.reportId}`} className="text-blue-600 hover:underline">
                     Open
                   </Link>
-                  <a href={r.scorecardPath} target="_blank" rel="noreferrer" className="ml-3 inline-flex items-center gap-1 text-gray-500 hover:text-gray-700" title="The public scorecard page the email links to">
+                  <a href={r.scorecardPath} target="_blank" rel="noreferrer" className="ml-3 inline-flex items-center gap-1 text-gray-500 hover:text-gray-700" title="The public scorecard page, for people without an account">
                     Public <ExternalLink className="h-3.5 w-3.5" />
                   </a>
                 </td>
