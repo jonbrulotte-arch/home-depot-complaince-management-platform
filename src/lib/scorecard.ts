@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { getPeriodField, linesInPeriod, periodOf, type PeriodField } from "@/lib/periods";
 import { fiscalLabel, shiftFiscalMonth } from "@/lib/fiscal";
 import { getMetricStats } from "@/lib/reports";
+import { getLineCounts } from "@/lib/line-counts";
 import { meetsGoal } from "@/lib/scorecard-rules";
 import { getShipmentInputs, type ShipmentInput } from "@/lib/shipments";
 import { reportShipmentRanges, SHIPMENT_RANGES, type ShipmentRanges } from "@/lib/shipment-ranges";
@@ -128,7 +129,7 @@ export async function buildScorecard(reportId: string): Promise<ScorecardData> {
   const inReport = { ...linesInPeriod(field, fiscalMonth), metric: { programId: { in: programIds } } };
 
   const [stats, lines, received, shipmentInputs] = await Promise.all([
-    getMetricStats(programIds, fiscalMonth),
+    getLineCounts(reportId).then((lineCounts) => getMetricStats(programIds, fiscalMonth, lineCounts)),
     prisma.complianceLine.findMany({
       where: { ...inReport, isCompliant: false },
       include: { metric: { include: { program: true } }, review: true, dispute: { include: { reasonCode: { select: { code: true } } } } },

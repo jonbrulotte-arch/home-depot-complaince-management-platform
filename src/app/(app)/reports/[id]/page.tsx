@@ -13,6 +13,9 @@ import { ImportPanel } from "./import-panel";
 import { PurgeButton } from "./purge-button";
 import { ReportActions } from "./report-actions";
 import { ShipmentCounts } from "./shipment-counts";
+import { LineCountInput } from "./line-count-input";
+import { getLineCounts } from "@/lib/line-counts";
+import { lineCountKey } from "@/lib/scorecard-rules";
 import { getShipmentInputs } from "@/lib/shipments";
 import { FILL_ON_TIME_LAG_MONTHS, formatDateRange, periodLabel, periodOfMetric, reportShipmentRanges, SHIPMENT_RANGES } from "@/lib/shipment-ranges";
 import { fiscalLabel, shiftFiscalMonth } from "@/lib/fiscal";
@@ -47,7 +50,8 @@ export default async function ReportPage({ params }: { params: Promise<{ id: str
 
   const fiscalMonth = report.period.fiscalMonth;
   const basis = await getPeriodBasis();
-  const [stats, shipmentInputs] = await Promise.all([getMetricStats(report.programs.map((p) => p.programId), fiscalMonth), getShipmentInputs(id)]);
+  const lineCounts = await getLineCounts(id);
+  const [stats, shipmentInputs] = await Promise.all([getMetricStats(report.programs.map((p) => p.programId), fiscalMonth, lineCounts), getShipmentInputs(id)]);
   const totalNc = stats.reduce((s, m) => s + m.nonCompliant, 0);
   const totalReviewed = stats.reduce((s, m) => s + m.reviewed, 0);
   const totalOffset = stats.reduce((s, m) => s + m.offset, 0);
@@ -186,6 +190,14 @@ export default async function ReportPage({ params }: { params: Promise<{ id: str
                           Download the {rp.program.name} {slot.period === "OTHER" ? "export" : "Fill Rate & On Time export"} for {fiscalLabel(dataMonth(slot.period))} from SPM and import it here.
                         </p>
                       )}
+                      <LineCountInput
+                        reportId={id}
+                        programId={rp.programId}
+                        period={slot.period}
+                        initial={lineCounts[lineCountKey(rp.programId, slot.period)] ?? null}
+                        usedFor={programStats.filter((m) => periodOfMetric(m.code) === slot.period && m.linesSource !== "DATA").map((m) => m.name)}
+                        canEdit={user.permissions.has("reports.import") && report.status !== "PUBLISHED"}
+                      />
                     </div>
                   );
                 })}
@@ -218,6 +230,7 @@ export default async function ReportPage({ params }: { params: Promise<{ id: str
                           ) : (
                             <Badge variant={m.meetsThreshold ? "success" : "destructive"}>{formatPct(m.compliancePct, 2)}</Badge>
                           )}
+                          {m.linesSource === "ENTERED" && <div className="mt-0.5 text-xs text-gray-400">from lines entered</div>}
                         </td>
                         <td className="px-4 py-3 text-gray-500">{m.thresholdPct == null ? "—" : `≥ ${m.thresholdPct}%`}</td>
                         <td className="px-4 py-3 text-gray-900">{m.offset ? formatCurrency(m.offset) : "—"}</td>

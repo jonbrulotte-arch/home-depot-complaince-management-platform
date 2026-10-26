@@ -37,6 +37,7 @@ export const TABLE_ORDER = [
   "DisputeAttachment",
   "Scorecard",
   "ShipmentCount",
+  "LineCount",
   "ScorecardFeedback",
   "SiteSettings",
 ] as const;

@@ -39,6 +39,7 @@ model User {
   disputeEvents       DisputeEvent[]
   attachments         DisputeAttachment[]
   shipmentCounts      ShipmentCount[]
+  lineCounts          LineCount[]
   scorecardsGenerated Scorecard[]         @relation("ScorecardGeneratedBy")
   scorecardsPublished Scorecard[]         @relation("ScorecardPublishedBy")
   scorecardFeedback   ScorecardFeedback[]
@@ -73,6 +74,7 @@ model Program {
   aliases        ColumnAlias[]
   reportPrograms ReportProgram[]
   shipmentCounts ShipmentCount[]
+  lineCounts     LineCount[]
 }
 
 model Metric {
@@ -191,6 +193,7 @@ model ComplianceReport {
   programs       ReportProgram[]
   scorecard      Scorecard?
   shipments      ShipmentCount[]
+  lineCounts     LineCount[]
   feedback       ScorecardFeedback[]
 
   @@index([periodId])
@@ -577,6 +580,23 @@ model ShipmentCount {
   updatedAt   DateTime         @updatedAt
 
   @@unique([reportId, programId, period, mode])
+}
+
+/// Lines in a program's compliance period, entered on the report. Used as the denominator for
+/// compliance percentages where the SPM export gives none (it lists only violations).
+model LineCount {
+  id          String           @id @default(cuid())
+  reportId    String
+  report      ComplianceReport @relation(fields: [reportId], references: [id], onDelete: Cascade)
+  programId   String
+  program     Program          @relation(fields: [programId], references: [id], onDelete: Cascade)
+  period      DataPeriod
+  count       Int
+  updatedById String?
+  updatedBy   User?            @relation(fields: [updatedById], references: [id], onDelete: SetNull)
+  updatedAt   DateTime         @updatedAt
+
+  @@unique([reportId, programId, period])
 }
 
 // ─── Site settings ─────────────────────────────────────────────

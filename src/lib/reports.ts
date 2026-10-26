@@ -1,7 +1,8 @@
 import type { MetricRule, Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { getPeriodField, linesInPeriod } from "@/lib/periods";
-import { dropShipFillRatePct, pctOffsetFallsAway } from "@/lib/scorecard-rules";
+import { dropShipFillRatePct, enteredLinesPct, lineCountKey, pctOffsetFallsAway } from "@/lib/scorecard-rules";
+import { periodOfMetric } from "@/lib/shipment-ranges";
 
 /** The rule in force for a fiscal month: the latest one effective on or before it. */
 export function ruleFor<T extends Pick<MetricRule, "effectiveFrom">>(rules: T[], fiscalMonth: number): T | null {
@@ -17,8 +18,10 @@ export interface MetricStat {
   nonCompliant: number;
   reviewed: number;
   offset: number;
-  /** Null when only non-compliant lines were imported, so no denominator is known */
+  /** Null when only non-compliant lines were imported and no line count was entered */
   compliancePct: number | null;
+  /** Where the line total behind the percentage comes from: the export, or the count entered on the report */
+  linesSource: "DATA" | "ENTERED" | null;
   thresholdPct: number | null;
   offsetType: "NONE" | "FLAT" | "PCT_VALUE" | null;
   meetsThreshold: boolean | null;
@@ -40,8 +43,12 @@ export function isDecided(disposition: string | null | undefined): boolean {
 
 const decimal = (v: Prisma.Decimal | null | undefined) => (v == null ? 0 : Number(v));
 
-/** Per-metric totals for the given programs in one report period (see src/lib/periods.ts). */
-export async function getMetricStats(programIds: string[], fiscalMonth: number): Promise<MetricStat[]> {
+/**
+ * Per-metric totals for the given programs in one report period (see src/lib/periods.ts).
+ * `lineCounts` are the report's entered lines per program and compliance period (`lineCountKey`),
+ * the denominator for metrics whose export lists only violations.
+ */
+export async function getMetricStats(programIds: string[], fiscalMonth: number, lineCounts: Record<string, number> = {}): Promise<MetricStat[]> {
   const field = await getPeriodField();
   const metrics = await prisma.metric.findMany({
     where: { programId: { in: programIds }, active: true },
@@ -105,6 +112,12 @@ export async function getMetricStats(programIds: string[], fiscalMonth: number):
           ? Math.min(100, ((received + shortfall(resolvedLines)) / ordered) * 100)
           : ((compliant + resolvedLines.length) / (compliant + nc)) * 100;
     }
+    // No denominator in the export: use the lines entered on the report for this compliance period
+    const enteredLines = compliancePct === null ? (lineCounts[lineCountKey(m.programId, periodOfMetric(m.code))] ?? 0) : 0;
+    if (enteredLines > 0) {
+      compliancePct = enteredLinesPct(enteredLines, nc, resolvedLines.length);
+      thdPct = enteredLinesPct(enteredLines, nc, 0);
+    }
     const rule = ruleFor(m.rules, fiscalMonth);
     const thresholdPct = rule ? Number(rule.thresholdPct) : null;
 
@@ -116,7 +129,9 @@ export async function getMetricStats(programIds: string[], fiscalMonth: number):
     // An approved dispute turns the line compliant, which recalculates the metric
     const cleared = [...resolvedLines, ...approvedLines.filter((d) => d.line.review?.disposition !== "RESOLVED").map((d) => d.line)];
     let postDisputePct: number | null = null;
-    if (dropShipFillRate) {
+    if (enteredLines > 0) {
+      postDisputePct = enteredLinesPct(enteredLines, nc, cleared.length);
+    } else if (dropShipFillRate) {
       postDisputePct = dropShipFillRatePct(shipped, nc, cleared.length);
     } else if (compliancePct !== null) {
       if (m.code === "FILL_RATE" && ordered > 0) {
@@ -138,11 +153,12 @@ export async function getMetricStats(programIds: string[], fiscalMonth: number):
       programId: m.programId,
       code: m.code,
       name: m.name,
-      total: dropShipFillRate ? shipped + nc : compliant + nc,
+      total: enteredLines > 0 ? enteredLines : dropShipFillRate ? shipped + nc : compliant + nc,
       nonCompliant: nc,
       reviewed: nonCompliant.filter((l) => l.metricId === m.id && isDecided(l.review?.disposition)).length,
       offset: Math.round(offset * 100) / 100,
       compliancePct,
+      linesSource: enteredLines > 0 ? "ENTERED" : compliancePct === null ? null : "DATA",
       thresholdPct,
       offsetType: rule?.offsetType ?? null,
       meetsThreshold: compliancePct == null || thresholdPct == null ? null : compliancePct >= thresholdPct,

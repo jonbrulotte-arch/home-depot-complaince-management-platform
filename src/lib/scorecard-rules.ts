@@ -18,6 +18,19 @@ export function dropShipFillRatePct(shipped: number, cancelled: number, filled: 
   return shipped > 0 ? Math.min(100, ((shipped + filled) / closed) * 100) : null;
 }
 
+/** Key for a program's compliance period in the entered line counts */
+export const lineCountKey = (programId: string, period: string) => `${programId}|${period}`;
+
+/**
+ * Compliance from a line count entered on the report, for metrics whose export lists only
+ * violations: lines that aren't violations, plus the violations `cleared` (Cancelled / Resolved,
+ * approved disputes), over all lines.
+ */
+export function enteredLinesPct(lines: number, violations: number, cleared: number): number | null {
+  if (lines <= 0) return null;
+  return Math.max(0, Math.min(100, ((lines - violations + cleared) / lines) * 100));
+}
+
 /**
  * Whether a percentage-of-value offset falls away after disputes. THD only charges it below the
  * threshold, so it falls away when disputes and resolutions lift the rate to the threshold. When

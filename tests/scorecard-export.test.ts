@@ -1,7 +1,7 @@
 import ExcelJS from "exceljs";
 import { describe, expect, it } from "vitest";
 import { scorecardWorkbook } from "@/lib/scorecard-export";
-import { dropShipFillRatePct, feedbackText, meetsGoal, pctOffsetFallsAway, rootCauseAndNotes, shipmentRows } from "@/lib/scorecard-rules";
+import { dropShipFillRatePct, enteredLinesPct, feedbackText, lineCountKey, meetsGoal, pctOffsetFallsAway, rootCauseAndNotes, shipmentRows } from "@/lib/scorecard-rules";
 import { scorecardPdf } from "@/lib/scorecard-pdf";
 import type { ScorecardData } from "@/lib/scorecard";
 
@@ -179,5 +179,17 @@ describe("US Drop Ship Fill Rate", () => {
     expect(pctOffsetFallsAway(97.9, 98.6, 98.5)).toBe(true);
     expect(pctOffsetFallsAway(97.9, 98.2, 98.5)).toBe(false);
     expect(pctOffsetFallsAway(null, null, 98.5)).toBe(false);
+  });
+});
+
+describe("compliance from entered line counts", () => {
+  it("is lines that aren't violations, plus cleared ones, over all lines", () => {
+    // 200 lines, 4 violations, 1 of them resolved
+    expect(enteredLinesPct(200, 4, 0)).toBe(98);
+    expect(enteredLinesPct(200, 4, 1)).toBe(98.5);
+    // A count lower than the violations can't go below 0%
+    expect(enteredLinesPct(3, 4, 0)).toBe(0);
+    expect(enteredLinesPct(0, 4, 0)).toBeNull();
+    expect(lineCountKey("prog1", "OTHER")).toBe("prog1|OTHER");
   });
 });
