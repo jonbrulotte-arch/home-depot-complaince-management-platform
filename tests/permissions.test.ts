@@ -8,6 +8,11 @@ describe("roles and landing pages", () => {
     expect([...role("Warehouse")].sort()).toEqual(["feedback.submit", "feedback.view"]);
   });
 
+  it("has a read-only Finance role for PO Lookup, Scorecard Feedback and the Summarizer", () => {
+    expect([...role("Finance")].sort()).toEqual(["feedback.view", "summarizer.use", "view.polookup"]);
+    expect(role("Finance").has("feedback.submit")).toBe(false);
+  });
+
   it("lets Analysts use the Summarizer but not Viewers or the Warehouse", () => {
     expect(role("Analyst").has("summarizer.use")).toBe(true);
     expect(role("Viewer").has("summarizer.use")).toBe(false);
@@ -18,6 +23,7 @@ describe("roles and landing pages", () => {
     expect(homePath(role("Admin"))).toBe("/dashboard");
     expect(homePath(role("Viewer"))).toBe("/dashboard");
     expect(homePath(role("Warehouse"))).toBe("/feedback");
+    expect(homePath(role("Finance"))).toBe("/feedback");
     expect(homePath(new Set<Permission>(["view.polookup"]))).toBe("/po-lookup");
     expect(homePath(new Set<Permission>())).toBe("/no-access");
   });

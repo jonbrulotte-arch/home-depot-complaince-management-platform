@@ -14,7 +14,7 @@ import { ComplianceBadge, DispositionBadge } from "@/components/shared/status-ba
 const MAX_RESULTS = 200;
 
 export default async function PoLookupPage({ searchParams }: { searchParams: Promise<{ q?: string }> }) {
-  await requirePagePermission("view.polookup");
+  const user = await requirePagePermission("view.polookup");
   const q = (await searchParams).q?.trim().slice(0, 100) ?? "";
 
   let lines: Prisma.ComplianceLineGetPayload<{ include: { metric: { include: { program: true } }; review: true; poRecord: true } }>[] = [];
@@ -163,7 +163,13 @@ export default async function PoLookupPage({ searchParams }: { searchParams: Pro
 
       {!q && (
         <p className="text-sm text-gray-400">
-          Tip: PO numbers match by prefix, so a partial PO shows every PO that starts with it. <Link href="/reports" className="text-blue-600 hover:underline">Reports</Link> show each month&apos;s violations.
+          Tip: PO numbers match by prefix, so a partial PO shows every PO that starts with it.
+          {user.permissions.has("reports.view") && (
+            <>
+              {" "}
+              <Link href="/reports" className="text-blue-600 hover:underline">Reports</Link> show each month&apos;s violations.
+            </>
+          )}
         </p>
       )}
     </div>

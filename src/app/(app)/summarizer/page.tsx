@@ -13,7 +13,7 @@ const th = "px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase trac
 const td = "px-4 py-2.5 text-sm";
 
 export default async function SummarizerPage({ searchParams }: { searchParams: Promise<{ r?: string | string[] }> }) {
-  await requirePagePermission("summarizer.use");
+  const user = await requirePagePermission("summarizer.use");
   const { r } = await searchParams;
   const requested = parseReportIds(r);
   const [published, { summary, dashboardPath }] = await Promise.all([recentPublishedReports(500), loadSummary(requested)]);
@@ -37,12 +37,12 @@ export default async function SummarizerPage({ searchParams }: { searchParams: P
 
       {requested.length > 0 && !summary && <p className="text-sm text-gray-500">None of the chosen reports is published any more. Pick reports above.</p>}
 
-      {summary && <SummaryView summary={summary} dashboardPath={dashboardPath} />}
+      {summary && <SummaryView summary={summary} dashboardPath={dashboardPath} canOpenScorecards={user.permissions.has("view.dashboard")} />}
     </div>
   );
 }
 
-function SummaryView({ summary, dashboardPath }: { summary: Summary; dashboardPath: string | null }) {
+function SummaryView({ summary, dashboardPath, canOpenScorecards }: { summary: Summary; dashboardPath: string | null; canOpenScorecards: boolean }) {
   const multi = summary.reports.length > 1;
   const stats: [string, string, string?][] = [
     ["Violations", String(summary.totals.violations)],
@@ -102,10 +102,12 @@ function SummaryView({ summary, dashboardPath }: { summary: Summary; dashboardPa
                   {r.awaitingDisputes ? `${formatCurrency(r.awaiting)} (${r.awaitingDisputes})` : "—"}
                 </td>
                 <td className={td}>
-                  <Link href={`/scorecards/${r.reportId}`} className="text-blue-600 hover:underline">
-                    Open
-                  </Link>
-                  <a href={r.scorecardPath} target="_blank" rel="noreferrer" className="ml-3 inline-flex items-center gap-1 text-gray-500 hover:text-gray-700" title="The public scorecard page, for people without an account">
+                  {canOpenScorecards && (
+                    <Link href={`/scorecards/${r.reportId}`} className="mr-3 text-blue-600 hover:underline">
+                      Open
+                    </Link>
+                  )}
+                  <a href={r.scorecardPath} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-gray-500 hover:text-gray-700" title="The public scorecard page, for people without an account">
                     Public <ExternalLink className="h-3.5 w-3.5" />
                   </a>
                 </td>

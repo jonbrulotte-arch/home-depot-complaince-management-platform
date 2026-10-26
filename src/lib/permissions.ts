@@ -47,6 +47,11 @@ export const DEFAULT_ROLES: { name: string; description: string; permissions: Pe
     description: "Warehouse team: reviews published scorecards and gives feedback on violations",
     permissions: ["feedback.view", "feedback.submit"],
   },
+  {
+    name: "Finance",
+    description: "Finance team: read-only PO Lookup, Scorecard Feedback and Summarizer",
+    permissions: ["view.polookup", "feedback.view", "summarizer.use"],
+  },
 ];
 
 /** Landing pages in order of preference; a user starts on the first one their role allows. */
