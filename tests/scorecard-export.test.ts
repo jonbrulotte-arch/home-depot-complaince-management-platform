@@ -1,7 +1,7 @@
 import ExcelJS from "exceljs";
 import { describe, expect, it } from "vitest";
 import { scorecardWorkbook } from "@/lib/scorecard-export";
-import { feedbackText, meetsGoal, rootCauseAndNotes, shipmentRows } from "@/lib/scorecard-rules";
+import { dropShipFillRatePct, feedbackText, meetsGoal, pctOffsetFallsAway, rootCauseAndNotes, shipmentRows } from "@/lib/scorecard-rules";
 import { scorecardPdf } from "@/lib/scorecard-pdf";
 import type { ScorecardData } from "@/lib/scorecard";
 
@@ -160,5 +160,24 @@ describe("feedback text", () => {
       ]),
     ).toBe("Dock Lead, Oct 20, 2026: Carrier missed the pickup window.\nFormer user, Oct 21, 2026: Rebooked for the next day");
     expect(feedbackText(undefined)).toBe("");
+  });
+});
+
+describe("US Drop Ship Fill Rate", () => {
+  // Sep 2026 export: the Fill Rate sheet lists 14 cancelled lines; the On Time sheet the 1,167 shipped
+  it("is shipped lines plus non-violations over lines closed, as THD defines it", () => {
+    expect(dropShipFillRatePct(1167, 14, 0)!.toFixed(2)).toBe("98.81");
+    // 13 of the cancellations reviewed as Cancelled / Resolved
+    expect(dropShipFillRatePct(1167, 14, 13)!.toFixed(2)).toBe("99.92");
+    expect(dropShipFillRatePct(0, 14, 0)).toBeNull();
+  });
+
+  it("keeps an offset THD charged while its own rate met the goal, and drops one disputes cleared", () => {
+    // THD at 98.81% against 98.5%: the $14.50 stands until disputed
+    expect(pctOffsetFallsAway(98.81, 99.92, 98.5)).toBe(false);
+    // THD below the goal, lifted over it by resolutions and disputes
+    expect(pctOffsetFallsAway(97.9, 98.6, 98.5)).toBe(true);
+    expect(pctOffsetFallsAway(97.9, 98.2, 98.5)).toBe(false);
+    expect(pctOffsetFallsAway(null, null, 98.5)).toBe(false);
   });
 });

@@ -101,6 +101,7 @@ Options: `--branch <name>` switches branch (e.g. `main` once merged), `--force` 
   - hand-added subtotal rows
   - the "RESULT DATA EMPTY" placeholder sheets
   - Fill Rate given as a percent (older exports, `100`) or a fraction (newer, `1`); lines are judged by ordered vs received quantity whenever the export has it
+  - US Drop Ship's Fill Rate sheet lists only cancelled lines, even in ALL_RESULTS exports, so the Fill Rate is calculated as THD defines it: (lines shipped, from the On Time sheet, + cancellations that aren't violations) ÷ lines closed. A percentage offset THD charged while its own rate already met the goal stays owed until it is disputed.
   - Invoice Timeliness (`US_INVOICE_TIMELINESS_RECORDS_…`, one "All LOC" sheet): THD lists POs whose goods were received but not invoiced, so every row is a violation (no offset). Weeks on report, location type, goods receipt and the first/latest report dates are kept as fields.
   - summary-only downloads (`…_SUM_…`): THD's totals with no PO lines. Each metric with offsets becomes one line without a PO, and the detail export for the same month replaces it.
 - **Offsets are checked against THD's Summary sheet.** Any difference is shown as a warning.

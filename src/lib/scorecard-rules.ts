@@ -7,6 +7,27 @@ import { SHIPMENT_RANGES } from "@/lib/shipment-ranges";
  * exported), a per-violation metric meets it when no violation stands; a percentage-of-value
  * metric is only known to miss it when THD charged an offset, since THD charges below the goal.
  */
+/**
+ * US Drop Ship Fill Rate as THD defines it: (lines ship confirmed + lines that aren't violations)
+ * ÷ lines closed. THD's Drop Ship Fill Rate sheet lists only the cancelled lines, so the shipped
+ * lines come from the program's On Time sheet. `filled` counts the cancelled lines that don't count
+ * against the supplier (Cancelled / Resolved, approved disputes).
+ */
+export function dropShipFillRatePct(shipped: number, cancelled: number, filled: number): number | null {
+  const closed = shipped + cancelled;
+  return shipped > 0 ? Math.min(100, ((shipped + filled) / closed) * 100) : null;
+}
+
+/**
+ * Whether a percentage-of-value offset falls away after disputes. THD only charges it below the
+ * threshold, so it falls away when disputes and resolutions lift the rate to the threshold. When
+ * THD's own rate already met it, the charge stands until it is disputed.
+ */
+export function pctOffsetFallsAway(thdPct: number | null, postDisputePct: number | null, thresholdPct: number | null): boolean {
+  if (postDisputePct === null || thresholdPct === null || postDisputePct < thresholdPct) return false;
+  return thdPct === null || thdPct < thresholdPct;
+}
+
 export function meetsGoal(
   m: Pick<MetricStat, "thresholdPct" | "postDisputePct" | "offsetType" | "nonCompliant" | "approved" | "postDisputeOffset"> & { resolved?: number },
 ): boolean | null {

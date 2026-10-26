@@ -1,6 +1,7 @@
 import type { MetricRule, Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { getPeriodField, linesInPeriod } from "@/lib/periods";
+import { dropShipFillRatePct, pctOffsetFallsAway } from "@/lib/scorecard-rules";
 
 /** The rule in force for a fiscal month: the latest one effective on or before it. */
 export function ruleFor<T extends Pick<MetricRule, "effectiveFrom">>(rules: T[], fiscalMonth: number): T | null {
@@ -44,7 +45,7 @@ export async function getMetricStats(programIds: string[], fiscalMonth: number):
   const field = await getPeriodField();
   const metrics = await prisma.metric.findMany({
     where: { programId: { in: programIds }, active: true },
-    include: { rules: true },
+    include: { rules: true, program: { select: { code: true } } },
     orderBy: [{ program: { sortOrder: "asc" } }, { sortOrder: "asc" }],
   });
   const where = { ...linesInPeriod(field, fiscalMonth), metricId: { in: metrics.map((m) => m.id) } };
@@ -82,10 +83,23 @@ export async function getMetricStats(programIds: string[], fiscalMonth: number):
     const resolvedLines = lines.filter((l) => l.review?.disposition === "RESOLVED");
     const shortfall = (ls: typeof lines) => ls.reduce((sum, l) => sum + Math.max(0, decimal(l.orderedQty) - decimal(l.receivedQty)), 0);
 
+    // US Drop Ship's Fill Rate sheet holds only cancelled lines; the shipped lines are its On Time lines
+    const dropShipFillRate = m.code === "FILL_RATE" && m.program.code === "US_DS";
+    const shipped = dropShipFillRate
+      ? groups.filter((g) => metrics.some((o) => o.id === g.metricId && o.programId === m.programId && o.code === "ON_TIME")).reduce((sum, g) => sum + g._count._all, 0) + compliant
+      : 0;
+
     // A percentage needs compliant lines as a denominator; violation-only exports have none.
     // Fill Rate is measured in units when quantities are present, as THD does.
     let compliancePct: number | null = null;
-    if (compliant > 0) {
+    // THD's own figure, before Cancelled / Resolved decisions: decides whether its offset stands
+    let thdPct: number | null = null;
+    if (dropShipFillRate) {
+      compliancePct = dropShipFillRatePct(shipped, nc, resolvedLines.length);
+      thdPct = dropShipFillRatePct(shipped, nc, 0);
+    } else if (compliant > 0) {
+      thdPct =
+        m.code === "FILL_RATE" && ordered > 0 ? Math.min(100, (received / ordered) * 100) : (compliant / (compliant + nc)) * 100;
       compliancePct =
         m.code === "FILL_RATE" && ordered > 0
           ? Math.min(100, ((received + shortfall(resolvedLines)) / ordered) * 100)
@@ -102,7 +116,9 @@ export async function getMetricStats(programIds: string[], fiscalMonth: number):
     // An approved dispute turns the line compliant, which recalculates the metric
     const cleared = [...resolvedLines, ...approvedLines.filter((d) => d.line.review?.disposition !== "RESOLVED").map((d) => d.line)];
     let postDisputePct: number | null = null;
-    if (compliancePct !== null) {
+    if (dropShipFillRate) {
+      postDisputePct = dropShipFillRatePct(shipped, nc, cleared.length);
+    } else if (compliancePct !== null) {
       if (m.code === "FILL_RATE" && ordered > 0) {
         postDisputePct = Math.min(100, ((received + shortfall(cleared)) / ordered) * 100);
       } else {
@@ -110,11 +126,11 @@ export async function getMetricStats(programIds: string[], fiscalMonth: number):
       }
     }
     // Percentage-based offsets are only assessed below the threshold, so they fall away entirely
-    // when the recalculated performance meets it. Offsets THD charged on resolved lines are
-    // shown pre-dispute but not owed.
+    // when the recalculated performance meets it (see pctOffsetFallsAway). Offsets THD charged on
+    // resolved lines are shown pre-dispute but not owed.
     const resolvedOffset = resolvedLines.filter((l) => !(l.dispute && ["APPROVED", "PARTIAL"].includes(l.dispute.status))).reduce((sum, l) => sum + decimal(l.offsetAmount), 0);
     let postDisputeOffset = Math.max(0, offset - recovered - resolvedOffset);
-    if (rule?.offsetType === "PCT_VALUE" && postDisputePct !== null && thresholdPct !== null && postDisputePct >= thresholdPct) {
+    if (rule?.offsetType === "PCT_VALUE" && pctOffsetFallsAway(thdPct, postDisputePct, thresholdPct)) {
       postDisputeOffset = 0;
     }
     return {
@@ -122,7 +138,7 @@ export async function getMetricStats(programIds: string[], fiscalMonth: number):
       programId: m.programId,
       code: m.code,
       name: m.name,
-      total: compliant + nc,
+      total: dropShipFillRate ? shipped + nc : compliant + nc,
       nonCompliant: nc,
       reviewed: nonCompliant.filter((l) => l.metricId === m.id && isDecided(l.review?.disposition)).length,
       offset: Math.round(offset * 100) / 100,
