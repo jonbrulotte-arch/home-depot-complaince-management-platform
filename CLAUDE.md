@@ -59,6 +59,10 @@ This platform MUST match the look, feel and UX patterns of the existing **SymplP
 - **Backups** (`src/lib/backup.ts`) cover the models in `TABLE_ORDER`; add every new model there (a test enforces it).
 - Permissions are keys in `src/lib/permissions.ts`, stored on `Role.permissions` and re-read per request (`src/lib/auth-guard.ts`).
 
+## Design documentation
+
+`docs/technical-design.md` is the Technical Design Document. Update it when the architecture, data model, calculation rules, security or deployment change.
+
 ## Important: Next.js 16
 
 @AGENTS.md

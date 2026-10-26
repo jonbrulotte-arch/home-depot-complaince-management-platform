@@ -49,6 +49,12 @@ Monthly compliance analysis for our Home Depot programs. Import the raw SPM expo
 
 
 
+## Documentation
+
+- **Help & Docs** in the app (`/help`): the user guide.
+- [`docs/technical-design.md`](docs/technical-design.md): the Technical Design Document (architecture, data model, flows, calculation rules, security, deployment and operations).
+- [`docs/design-system.md`](docs/design-system.md): the Sympl UI design system.
+
 ## Setup
 
 Requires Node 20+ and PostgreSQL.
