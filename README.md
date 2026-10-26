@@ -41,6 +41,7 @@ Monthly compliance analysis for our Home Depot programs. Import the raw SPM expo
 - **Dashboard**: 12-month pre-dispute offsets by program, and open work. A chart shows the 12-month total for every month since the data begins (not only the last year), with columns for how much it rose or fell from the month before; months in the first year, with less than 12 months of data behind them, are shaded. Hover or use the arrow keys for each month's figures, or switch to the table.
   Recent reports lists published reports only, the most recent report month at the top.
 - **Public dashboard** (Admin › Settings › Public dashboard, off by default): a sign-in-free copy of the dashboard at `/d/<token>` with the 12-month offsets, the chart, the latest scorecard and every published scorecard, each linking to its public scorecard page. Internal work in progress (reports under review, lines not yet reviewed) is left out. *New link* replaces the address (the old one stops working) and *Turn off* takes the page down.
+- **Help & Docs** (sidebar, everyone): step-by-step guides for each part of the platform, the monthly workflow, how results are calculated, troubleshooting and a glossary. Topics follow the reader's role (with **Show all topics**) and can be searched.
 - **Admin**:
   - Users
   - Roles & Access (role × permission matrix; built-in Admin, Analyst, Viewer, Warehouse and Finance roles)

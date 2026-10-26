@@ -20,6 +20,7 @@ import {
   ChevronRight,
   MessageSquare,
   FileText,
+  LifeBuoy,
 } from "lucide-react";
 import { cn, getInitials } from "@/lib/utils";
 import type { Permission } from "@/lib/permissions";
@@ -37,6 +38,9 @@ const navItems: NavItem[] = [
   { href: "/feedback", label: "Scorecard Feedback", icon: MessageSquare, permission: "feedback.view" },
   { href: "/summarizer", label: "Summarizer", icon: FileText, permission: "summarizer.use" },
 ];
+
+/** Open to everyone, below the other sections */
+const helpItem = { href: "/help", label: "Help & Docs", icon: LifeBuoy };
 
 const adminNavItems: NavItem[] = [
   { href: "/admin/users", label: "Users", icon: Users, permission: "admin.users" },
@@ -56,7 +60,7 @@ export function Sidebar({ user, permissions, branding }: { user: { name: string;
   const visibleNav = navItems.filter((i) => granted.has(i.permission));
   const visibleAdmin = adminNavItems.filter((i) => granted.has(i.permission));
 
-  const renderItem = ({ href, label, icon: Icon }: NavItem) => (
+  const renderItem = ({ href, label, icon: Icon }: Pick<NavItem, "href" | "label" | "icon">) => (
     <Link
       key={href}
       href={href}
@@ -87,6 +91,7 @@ export function Sidebar({ user, permissions, branding }: { user: { name: string;
             {visibleAdmin.map(renderItem)}
           </>
         )}
+        <div className="pt-4">{renderItem(helpItem)}</div>
       </nav>
 
       <div className="border-t border-gray-700 p-3">
