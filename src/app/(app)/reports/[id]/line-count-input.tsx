@@ -49,7 +49,7 @@ export function LineCountInput({
     : "Not needed now: the export has every line for this period's metrics.";
 
   return (
-    <div className="flex flex-wrap items-center gap-2 border-t border-gray-200 pt-3">
+    <div className="flex flex-wrap items-center gap-2">
       <label htmlFor={`lines-${programId}-${period}`} className="text-sm font-medium text-gray-700">
         Lines
       </label>

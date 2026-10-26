@@ -40,6 +40,7 @@ model User {
   attachments         DisputeAttachment[]
   shipmentCounts      ShipmentCount[]
   lineCounts          LineCount[]
+  packages            ChargebackPackage[]
   scorecardsGenerated Scorecard[]         @relation("ScorecardGeneratedBy")
   scorecardsPublished Scorecard[]         @relation("ScorecardPublishedBy")
   scorecardFeedback   ScorecardFeedback[]
@@ -62,19 +63,20 @@ model AuditLog {
 // ─── Program configuration ─────────────────────────────────────
 
 model Program {
-  id             String          @id @default(cuid())
+  id             String              @id @default(cuid())
   /// US_DS | US_RDC | US_DFC | US_TRANS | DQC | INVOICE_TIMELINESS
-  code           String          @unique
+  code           String              @unique
   name           String
   /// SPM export filename prefix, e.g. "US_DFC"
   filePrefix     String?
-  sortOrder      Int             @default(0)
-  active         Boolean         @default(true)
+  sortOrder      Int                 @default(0)
+  active         Boolean             @default(true)
   metrics        Metric[]
   aliases        ColumnAlias[]
   reportPrograms ReportProgram[]
   shipmentCounts ShipmentCount[]
   lineCounts     LineCount[]
+  packages       ChargebackPackage[]
 }
 
 model Metric {
@@ -194,6 +196,7 @@ model ComplianceReport {
   scorecard      Scorecard?
   shipments      ShipmentCount[]
   lineCounts     LineCount[]
+  packages       ChargebackPackage[]
   feedback       ScorecardFeedback[]
 
   @@index([periodId])
@@ -597,6 +600,24 @@ model LineCount {
   updatedAt   DateTime         @updatedAt
 
   @@unique([reportId, programId, period])
+}
+
+/// The Package ID THD gives the chargebacks for one program's compliance period in a report,
+/// entered by hand. Finance finds it on the remittance and looks the package up in PO Lookup.
+model ChargebackPackage {
+  id          String           @id @default(cuid())
+  reportId    String
+  report      ComplianceReport @relation(fields: [reportId], references: [id], onDelete: Cascade)
+  programId   String
+  program     Program          @relation(fields: [programId], references: [id], onDelete: Cascade)
+  period      DataPeriod
+  packageId   String
+  updatedById String?
+  updatedBy   User?            @relation(fields: [updatedById], references: [id], onDelete: SetNull)
+  updatedAt   DateTime         @updatedAt
+
+  @@unique([reportId, programId, period])
+  @@index([packageId])
 }
 
 // ─── Site settings ─────────────────────────────────────────────

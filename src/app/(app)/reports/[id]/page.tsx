@@ -14,6 +14,8 @@ import { PurgeButton } from "./purge-button";
 import { ReportActions } from "./report-actions";
 import { ShipmentCounts } from "./shipment-counts";
 import { LineCountInput } from "./line-count-input";
+import { PackageIdInput } from "./package-id-input";
+import { getPackageIds } from "@/lib/packages";
 import { getLineCounts } from "@/lib/line-counts";
 import { lineCountKey, PASS_FAIL_PROGRAMS } from "@/lib/scorecard-rules";
 import { getShipmentInputs } from "@/lib/shipments";
@@ -50,7 +52,7 @@ export default async function ReportPage({ params }: { params: Promise<{ id: str
 
   const fiscalMonth = report.period.fiscalMonth;
   const basis = await getPeriodBasis();
-  const lineCounts = await getLineCounts(id);
+  const [lineCounts, packageIds] = await Promise.all([getLineCounts(id), getPackageIds(id)]);
   const [stats, shipmentInputs] = await Promise.all([getMetricStats(report.programs.map((p) => p.programId), fiscalMonth, lineCounts), getShipmentInputs(id)]);
   const totalNc = stats.reduce((s, m) => s + m.nonCompliant, 0);
   const totalReviewed = stats.reduce((s, m) => s + m.reviewed, 0);
@@ -190,16 +192,27 @@ export default async function ReportPage({ params }: { params: Promise<{ id: str
                           Download the {rp.program.name} {slot.period === "OTHER" ? "export" : "Fill Rate & On Time export"} for {fiscalLabel(dataMonth(slot.period))} from SPM and import it here.
                         </p>
                       )}
-                      {!PASS_FAIL_PROGRAMS.has(rp.program.code) && (
-                        <LineCountInput
+                      <div className="space-y-2 border-t border-gray-200 pt-3">
+                        <PackageIdInput
                           reportId={id}
                           programId={rp.programId}
                           period={slot.period}
-                          initial={lineCounts[lineCountKey(rp.programId, slot.period)] ?? null}
-                          usedFor={programStats.filter((m) => periodOfMetric(m.code) === slot.period && m.linesSource !== "DATA").map((m) => m.name)}
-                          canEdit={user.permissions.has("reports.import") && report.status !== "PUBLISHED"}
+                          initial={packageIds[lineCountKey(rp.programId, slot.period)] ?? null}
+                          offset={programStats.filter((m) => periodOfMetric(m.code) === slot.period).reduce((s, m) => s + m.offset, 0)}
+                          canEdit={user.permissions.has("reports.import")}
+                          canOpen={user.permissions.has("view.polookup")}
                         />
-                      )}
+                        {!PASS_FAIL_PROGRAMS.has(rp.program.code) && (
+                          <LineCountInput
+                            reportId={id}
+                            programId={rp.programId}
+                            period={slot.period}
+                            initial={lineCounts[lineCountKey(rp.programId, slot.period)] ?? null}
+                            usedFor={programStats.filter((m) => periodOfMetric(m.code) === slot.period && m.linesSource !== "DATA").map((m) => m.name)}
+                            canEdit={user.permissions.has("reports.import") && report.status !== "PUBLISHED"}
+                          />
+                        )}
+                      </div>
                     </div>
                   );
                 })}

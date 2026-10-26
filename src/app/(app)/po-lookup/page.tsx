@@ -1,9 +1,10 @@
 import Link from "next/link";
-import { Search } from "lucide-react";
+import { Package, Search } from "lucide-react";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { requirePagePermission } from "@/lib/auth-guard";
 import { fiscalLabel } from "@/lib/fiscal";
+import { findPackageIds } from "@/lib/packages";
 import { formatCurrency, formatUtcDate, formatUtcDateTime } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -18,6 +19,8 @@ export default async function PoLookupPage({ searchParams }: { searchParams: Pro
   const q = (await searchParams).q?.trim().slice(0, 100) ?? "";
 
   let lines: Prisma.ComplianceLineGetPayload<{ include: { metric: { include: { program: true } }; review: true; poRecord: true } }>[] = [];
+  // Chargeback packages whose Package ID starts with the search
+  const packages = q ? await findPackageIds(q) : [];
   if (q) {
     // Exact match on any shipment identifier; PO numbers also match by prefix
     lines = await prisma.complianceLine.findMany({
@@ -56,7 +59,7 @@ export default async function PoLookupPage({ searchParams }: { searchParams: Pro
       <div>
         <h1 className="text-2xl font-bold text-gray-900">PO Lookup</h1>
         <p className="text-sm text-gray-500 mt-1">
-          Every imported compliance line, compliant or not, by PO number, SKU, tracking #, PRO #, BOL #, TMS shipment ID or ASN doc trace ID.
+          Every imported compliance line, compliant or not, by PO number, SKU, tracking #, PRO #, BOL #, TMS shipment ID or ASN doc trace ID, and chargeback packages by Package ID.
         </p>
       </div>
 
@@ -68,7 +71,27 @@ export default async function PoLookupPage({ searchParams }: { searchParams: Pro
         </Button>
       </form>
 
-      {q && lines.length === 0 && <p className="text-sm text-gray-500">No compliance records match &quot;{q}&quot;.</p>}
+      {packages.length > 0 && (
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle>Chargeback packages</CardTitle>
+          </CardHeader>
+          <CardContent className="flex flex-wrap gap-2">
+            {packages.map((id) => (
+              <Link
+                key={id}
+                href={`/po-lookup/package/${encodeURIComponent(id)}`}
+                className="inline-flex items-center gap-1.5 rounded-md border border-gray-200 px-3 py-1.5 text-sm font-medium text-blue-600 hover:bg-gray-50"
+              >
+                <Package className="h-4 w-4" />
+                Package {id}
+              </Link>
+            ))}
+          </CardContent>
+        </Card>
+      )}
+
+      {q && lines.length === 0 && packages.length === 0 && <p className="text-sm text-gray-500">No compliance records or packages match &quot;{q}&quot;.</p>}
       {truncated && (
         <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">Showing the first {MAX_RESULTS} lines. Refine the search to see more.</p>
       )}

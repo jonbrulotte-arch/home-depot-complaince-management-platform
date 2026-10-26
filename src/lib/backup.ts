@@ -38,6 +38,7 @@ export const TABLE_ORDER = [
   "Scorecard",
   "ShipmentCount",
   "LineCount",
+  "ChargebackPackage",
   "ScorecardFeedback",
   "SiteSettings",
 ] as const;
