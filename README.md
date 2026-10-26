@@ -87,7 +87,7 @@ From the app folder on the server (the one with `.env`):
 ./scripts/deploy.sh
 ```
 
-It backs up the database (`backups/…-pre-deploy.json.gz`, newest 10 kept), pulls the checked-out branch, runs `npm ci`, applies migrations, builds, restarts the `thd-compliance` service and waits for the site on port 8014. If the build or the restart fails, it puts the previous code back and restarts that; migrations are not undone, but the pre-deploy backup can be restored from Admin › Backup & Restore. It stops without changing anything if files on the server were edited.
+It backs up the database (`backups/…-pre-deploy.json.gz`, newest 10 kept), pulls the checked-out branch, runs `npm ci`, applies migrations, builds, restarts the `thd-compliance` service and waits for the site on port 8014. If the build or the restart fails, it puts the previous code back and restarts that; migrations are not undone, but the pre-deploy backup can be restored from Admin › Backup & Restore. It stops without changing anything if files on the server were edited. Only one deploy runs at a time; a lock left by a deploy that was stopped partway (a closed terminal or `kill -9`) is noticed and cleared on the next run, and Ctrl+C or a dropped SSH session cleans up after itself.
 
 Options: `--branch <name>` switches branch (e.g. `main` once merged), `--force` rebuilds with no new commits, `--skip-backup`, `--no-restart`. `SERVICE_NAME`, `PORT` and `BACKUP_KEEP` override the defaults.
 

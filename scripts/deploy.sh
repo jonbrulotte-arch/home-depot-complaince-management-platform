@@ -42,10 +42,41 @@ step() { printf '\n\033[1;34m==> %s\033[0m\n' "$*"; }
 warn() { printf '\033[1;33m%s\033[0m\n' "$*" >&2; }
 fail() { printf '\033[1;31m%s\033[0m\n' "$*" >&2; exit 1; }
 
-# Only one deploy at a time
+# Only one deploy at a time. The lock holds the deploy's process ID, so a lock left behind by a
+# deploy that was killed (closed terminal, kill -9) is noticed and cleared on the next run.
 LOCK="$APP_DIR/.deploy.lock"
-mkdir "$LOCK" 2>/dev/null || fail "Another deploy is running (remove $LOCK if it is not)."
-trap 'rmdir "$LOCK" 2>/dev/null || true' EXIT
+RUNNING=""
+other_deploy_running() {
+  local pid own_group group
+  if [[ -f "$LOCK/pid" ]]; then
+    pid="$(cat "$LOCK/pid")"
+    if [[ -n "$pid" && "$pid" != "$$" ]] && kill -0 "$pid" 2>/dev/null; then RUNNING="$pid"; return 0; fi
+    return 1
+  fi
+  # Locks from older versions of this script have no process ID: look for another deploy instead
+  # (bash running this script), skipping this one's own subshells, which share its process group
+  own_group="$(ps -o pgid= -p $$ | tr -d ' ')"
+  for pid in $(pgrep -f '^(\S*/)?bash \S*scripts/deploy\.sh( |$)' || true); do
+    group="$(ps -o pgid= -p "$pid" 2>/dev/null | tr -d ' ')"
+    # Gone already (such as the subshell that ran pgrep), or one of this deploy's own
+    [[ -z "$group" || "$group" == "$own_group" ]] && continue
+    RUNNING="$pid"
+    return 0
+  done
+  return 1
+}
+if ! mkdir "$LOCK" 2>/dev/null; then
+  if other_deploy_running; then
+    fail "Another deploy is running (process $RUNNING). Wait for it to finish."
+  fi
+  warn "Clearing a lock left by a deploy that was stopped before it finished."
+  rm -rf "$LOCK"
+  mkdir "$LOCK" || fail "Could not create $LOCK."
+fi
+echo "$$" > "$LOCK/pid"
+trap 'rm -rf "$LOCK"' EXIT
+# Ctrl+C, a closed SSH session or kill still runs the cleanup above
+trap 'exit 130' INT TERM HUP
 
 step "Checking $APP_DIR"
 command -v git >/dev/null || fail "git is not installed."
