@@ -18,6 +18,15 @@ export function dropShipFillRatePct(shipped: number, cancelled: number, filled: 
   return shipped > 0 ? Math.min(100, ((shipped + filled) / closed) * 100) : null;
 }
 
+/**
+ * Programs scored pass/fail rather than against a line count (no Lines box on the report): 100%
+ * compliant unless a violation stands, and no percentage while one does.
+ */
+export const PASS_FAIL_PROGRAMS = new Set(["DQC", "INVOICE_TIMELINESS"]);
+
+/** Pass/fail compliance: 100% once every violation is cleared, otherwise no percentage */
+export const passFailPct = (violations: number, cleared: number): number | null => (violations - cleared <= 0 ? 100 : null);
+
 /** Key for a program's compliance period in the entered line counts */
 export const lineCountKey = (programId: string, period: string) => `${programId}|${period}`;
 

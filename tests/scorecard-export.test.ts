@@ -1,7 +1,7 @@
 import ExcelJS from "exceljs";
 import { describe, expect, it } from "vitest";
 import { scorecardWorkbook } from "@/lib/scorecard-export";
-import { dropShipFillRatePct, enteredLinesPct, feedbackText, lineCountKey, meetsGoal, pctOffsetFallsAway, rootCauseAndNotes, shipmentRows } from "@/lib/scorecard-rules";
+import { dropShipFillRatePct, enteredLinesPct, feedbackText, lineCountKey, meetsGoal, PASS_FAIL_PROGRAMS, passFailPct, pctOffsetFallsAway, rootCauseAndNotes, shipmentRows } from "@/lib/scorecard-rules";
 import { scorecardPdf } from "@/lib/scorecard-pdf";
 import type { ScorecardData } from "@/lib/scorecard";
 
@@ -191,5 +191,17 @@ describe("compliance from entered line counts", () => {
     expect(enteredLinesPct(3, 4, 0)).toBe(0);
     expect(enteredLinesPct(0, 4, 0)).toBeNull();
     expect(lineCountKey("prog1", "OTHER")).toBe("prog1|OTHER");
+  });
+});
+
+describe("pass/fail programs", () => {
+  it("are 100% compliant unless a violation stands", () => {
+    expect([...PASS_FAIL_PROGRAMS].sort()).toEqual(["DQC", "INVOICE_TIMELINESS"]);
+    expect(passFailPct(0, 0)).toBe(100);
+    expect(passFailPct(2, 2)).toBe(100);
+    expect(passFailPct(2, 1)).toBeNull();
+    // With a violation standing there is no percentage, and the goal is missed
+    expect(meetsGoal({ thresholdPct: 100, postDisputePct: null, offsetType: "NONE", nonCompliant: 2, approved: 0, postDisputeOffset: 0, resolved: 1 })).toBe(false);
+    expect(meetsGoal({ thresholdPct: 100, postDisputePct: 100, offsetType: "NONE", nonCompliant: 2, approved: 1, postDisputeOffset: 0, resolved: 1 })).toBe(true);
   });
 });

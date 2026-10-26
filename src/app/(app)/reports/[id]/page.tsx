@@ -15,7 +15,7 @@ import { ReportActions } from "./report-actions";
 import { ShipmentCounts } from "./shipment-counts";
 import { LineCountInput } from "./line-count-input";
 import { getLineCounts } from "@/lib/line-counts";
-import { lineCountKey } from "@/lib/scorecard-rules";
+import { lineCountKey, PASS_FAIL_PROGRAMS } from "@/lib/scorecard-rules";
 import { getShipmentInputs } from "@/lib/shipments";
 import { FILL_ON_TIME_LAG_MONTHS, formatDateRange, periodLabel, periodOfMetric, reportShipmentRanges, SHIPMENT_RANGES } from "@/lib/shipment-ranges";
 import { fiscalLabel, shiftFiscalMonth } from "@/lib/fiscal";
@@ -190,14 +190,16 @@ export default async function ReportPage({ params }: { params: Promise<{ id: str
                           Download the {rp.program.name} {slot.period === "OTHER" ? "export" : "Fill Rate & On Time export"} for {fiscalLabel(dataMonth(slot.period))} from SPM and import it here.
                         </p>
                       )}
-                      <LineCountInput
-                        reportId={id}
-                        programId={rp.programId}
-                        period={slot.period}
-                        initial={lineCounts[lineCountKey(rp.programId, slot.period)] ?? null}
-                        usedFor={programStats.filter((m) => periodOfMetric(m.code) === slot.period && m.linesSource !== "DATA").map((m) => m.name)}
-                        canEdit={user.permissions.has("reports.import") && report.status !== "PUBLISHED"}
-                      />
+                      {!PASS_FAIL_PROGRAMS.has(rp.program.code) && (
+                        <LineCountInput
+                          reportId={id}
+                          programId={rp.programId}
+                          period={slot.period}
+                          initial={lineCounts[lineCountKey(rp.programId, slot.period)] ?? null}
+                          usedFor={programStats.filter((m) => periodOfMetric(m.code) === slot.period && m.linesSource !== "DATA").map((m) => m.name)}
+                          canEdit={user.permissions.has("reports.import") && report.status !== "PUBLISHED"}
+                        />
+                      )}
                     </div>
                   );
                 })}

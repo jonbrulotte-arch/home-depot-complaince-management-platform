@@ -5,6 +5,7 @@ import { requireApiPermission } from "@/lib/auth-guard";
 import { badRequest, notFound, parseJson, type IdParams } from "@/lib/api";
 import { audit } from "@/lib/audit";
 import { periodOfMetric } from "@/lib/shipment-ranges";
+import { PASS_FAIL_PROGRAMS } from "@/lib/scorecard-rules";
 
 const schema = z.object({
   programId: z.string().trim().min(1),
@@ -29,6 +30,7 @@ export async function PUT(req: Request, { params }: IdParams) {
   if (report.status === "PUBLISHED") return badRequest("Unpublish the scorecard before changing line counts");
   const program = report.programs[0]?.program;
   if (!program) return badRequest("That program is not in this report");
+  if (PASS_FAIL_PROGRAMS.has(program.code)) return badRequest(`${program.name} is scored pass/fail and takes no line count`);
   if (!program.metrics.some((m) => periodOfMetric(m.code) === period)) return badRequest(`${program.name} has no metrics in that compliance period`);
 
   if (count === null) {

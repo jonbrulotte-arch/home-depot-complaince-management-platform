@@ -1,7 +1,7 @@
 import type { MetricRule, Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { getPeriodField, linesInPeriod } from "@/lib/periods";
-import { dropShipFillRatePct, enteredLinesPct, lineCountKey, pctOffsetFallsAway } from "@/lib/scorecard-rules";
+import { dropShipFillRatePct, enteredLinesPct, lineCountKey, PASS_FAIL_PROGRAMS, passFailPct, pctOffsetFallsAway } from "@/lib/scorecard-rules";
 import { periodOfMetric } from "@/lib/shipment-ranges";
 
 /** The rule in force for a fiscal month: the latest one effective on or before it. */
@@ -90,6 +90,8 @@ export async function getMetricStats(programIds: string[], fiscalMonth: number, 
     const resolvedLines = lines.filter((l) => l.review?.disposition === "RESOLVED");
     const shortfall = (ls: typeof lines) => ls.reduce((sum, l) => sum + Math.max(0, decimal(l.orderedQty) - decimal(l.receivedQty)), 0);
 
+    // Data Quality and Invoice Timeliness are pass/fail, not measured against a line count
+    const passFail = PASS_FAIL_PROGRAMS.has(m.program.code);
     // US Drop Ship's Fill Rate sheet holds only cancelled lines; the shipped lines are its On Time lines
     const dropShipFillRate = m.code === "FILL_RATE" && m.program.code === "US_DS";
     const shipped = dropShipFillRate
@@ -101,7 +103,10 @@ export async function getMetricStats(programIds: string[], fiscalMonth: number, 
     let compliancePct: number | null = null;
     // THD's own figure, before Cancelled / Resolved decisions: decides whether its offset stands
     let thdPct: number | null = null;
-    if (dropShipFillRate) {
+    if (passFail) {
+      compliancePct = passFailPct(nc, resolvedLines.length);
+      thdPct = passFailPct(nc, 0);
+    } else if (dropShipFillRate) {
       compliancePct = dropShipFillRatePct(shipped, nc, resolvedLines.length);
       thdPct = dropShipFillRatePct(shipped, nc, 0);
     } else if (compliant > 0) {
@@ -113,7 +118,7 @@ export async function getMetricStats(programIds: string[], fiscalMonth: number, 
           : ((compliant + resolvedLines.length) / (compliant + nc)) * 100;
     }
     // No denominator in the export: use the lines entered on the report for this compliance period
-    const enteredLines = compliancePct === null ? (lineCounts[lineCountKey(m.programId, periodOfMetric(m.code))] ?? 0) : 0;
+    const enteredLines = compliancePct === null && !passFail ? (lineCounts[lineCountKey(m.programId, periodOfMetric(m.code))] ?? 0) : 0;
     if (enteredLines > 0) {
       compliancePct = enteredLinesPct(enteredLines, nc, resolvedLines.length);
       thdPct = enteredLinesPct(enteredLines, nc, 0);
@@ -129,7 +134,9 @@ export async function getMetricStats(programIds: string[], fiscalMonth: number, 
     // An approved dispute turns the line compliant, which recalculates the metric
     const cleared = [...resolvedLines, ...approvedLines.filter((d) => d.line.review?.disposition !== "RESOLVED").map((d) => d.line)];
     let postDisputePct: number | null = null;
-    if (enteredLines > 0) {
+    if (passFail) {
+      postDisputePct = passFailPct(nc, cleared.length);
+    } else if (enteredLines > 0) {
       postDisputePct = enteredLinesPct(enteredLines, nc, cleared.length);
     } else if (dropShipFillRate) {
       postDisputePct = dropShipFillRatePct(shipped, nc, cleared.length);
@@ -158,7 +165,7 @@ export async function getMetricStats(programIds: string[], fiscalMonth: number, 
       reviewed: nonCompliant.filter((l) => l.metricId === m.id && isDecided(l.review?.disposition)).length,
       offset: Math.round(offset * 100) / 100,
       compliancePct,
-      linesSource: enteredLines > 0 ? "ENTERED" : compliancePct === null ? null : "DATA",
+      linesSource: passFail ? null : enteredLines > 0 ? "ENTERED" : compliancePct === null ? null : "DATA",
       thresholdPct,
       offsetType: rule?.offsetType ?? null,
       meetsThreshold: compliancePct == null || thresholdPct == null ? null : compliancePct >= thresholdPct,
