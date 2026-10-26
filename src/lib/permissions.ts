@@ -15,7 +15,8 @@ export const PERMISSIONS = {
   "admin.programs": "Manage programs, metrics, thresholds and column mappings",
   "admin.backup": "Backup and restore",
   "admin.settings": "Manage site settings and branding",
-  "admin.audit": "View the audit log",
+  "admin.audit": "View the App Log (every event in the platform)",
+  "admin.analytics": "View scorecard analytics (hits, sessions and viewers)",
 } as const;
 
 export type Permission = keyof typeof PERMISSIONS;

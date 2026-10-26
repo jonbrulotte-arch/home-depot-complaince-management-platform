@@ -56,6 +56,7 @@ This platform MUST match the look, feel and UX patterns of the existing **SymplP
 - **Help & Docs** (`/help`, every signed-in user): topics are data in `src/lib/help-content.ts` (`HELP_TOPICS`, `**bold**` in strings), shown by role through `anyOf` permissions (`?all=1` shows every topic) and searchable. Update the matching topic when a screen, label or calculation changes.
 - **Copying in the browser**: use `copyText` (`src/lib/clipboard.ts`); the server is reached over plain http, where `navigator.clipboard` doesn't exist.
 - **Branding**: never hard-code the site name. Use `getBranding()` (`src/lib/branding.ts`, server) and `BrandMark` for the logo and name; `src/lib/brand.ts` holds the database-free constants. Pages that show branding before sign-in call `connection()` so they render per request.
+- **App Log and View Analytics**: every event goes through `audit()` (`src/lib/audit.ts`). Give a new action a label and category in `src/lib/app-log.ts` (a test enforces it). Views and downloads of published scorecards are `ScorecardHit` rows, recorded only through `recordScorecardHit` (`src/lib/scorecard-hits.ts`) from route handlers. Pages report views with `ScorecardHitBeacon`; `/admin/analytics` shows them.
 - **Backups** (`src/lib/backup.ts`) cover the models in `TABLE_ORDER`; add every new model there (a test enforces it).
 - Permissions are keys in `src/lib/permissions.ts`, stored on `Role.permissions` and re-read per request (`src/lib/auth-guard.ts`).
 

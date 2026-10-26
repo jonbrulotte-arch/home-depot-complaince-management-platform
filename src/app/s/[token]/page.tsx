@@ -9,6 +9,7 @@ import { formatDate } from "@/lib/utils";
 import { BrandMark } from "@/components/layout/brand-mark";
 import { Button } from "@/components/ui/button";
 import { ScorecardView } from "@/components/scorecard/scorecard-view";
+import { ScorecardHitBeacon } from "@/components/scorecard/scorecard-hit-beacon";
 
 // Public, read-only view of a published scorecard. Anyone with the link can open it; no sign-in.
 export const metadata: Metadata = { robots: { index: false, follow: false } };
@@ -46,6 +47,7 @@ export default async function SharedScorecardPage({ params }: { params: Promise<
           Published {formatDate(found.scorecard.publishedAt!)} · version {found.scorecard.version}
         </p>
         <ScorecardView data={await withFeedback(found.scorecard.reportId, found.data)} />
+        <ScorecardHitBeacon token={token} />
       </main>
     </div>
   );

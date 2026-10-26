@@ -12,6 +12,7 @@ import { ScorecardToolbar } from "@/components/scorecard/scorecard-toolbar";
 import { ScorecardShareBar } from "@/components/scorecard/scorecard-share-bar";
 import { ensureShareToken } from "@/lib/scorecard-share";
 import { withFeedback } from "@/lib/feedback";
+import { ScorecardHitBeacon } from "@/components/scorecard/scorecard-hit-beacon";
 
 export default async function ReportScorecardPage({ params }: { params: Promise<{ id: string }> }) {
   const user = await requirePagePermission("reports.view");
@@ -53,6 +54,7 @@ export default async function ReportScorecardPage({ params }: { params: Promise<
       </div>
       <ScorecardShareBar sharePath={shareToken ? `/s/${shareToken}` : null} feedbackHref={canFeedback ? `/feedback/${id}` : null} feedbackCount={feedbackCount} />
       <ScorecardView data={data} />
+      {scorecard?.publishedAt && <ScorecardHitBeacon reportId={id} />}
     </div>
   );
 }

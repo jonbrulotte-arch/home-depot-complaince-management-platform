@@ -21,6 +21,8 @@ import {
   MessageSquare,
   FileText,
   LifeBuoy,
+  BarChart3,
+  ScrollText,
 } from "lucide-react";
 import { cn, getInitials } from "@/lib/utils";
 import type { Permission } from "@/lib/permissions";
@@ -47,6 +49,8 @@ const adminNavItems: NavItem[] = [
   { href: "/admin/rbac", label: "Roles & Access", icon: ShieldCheck, permission: "admin.rbac" },
   { href: "/admin/programs", label: "Programs & Rules", icon: SlidersHorizontal, permission: "admin.programs" },
   { href: "/admin/backup", label: "Backup & Restore", icon: DatabaseBackup, permission: "admin.backup" },
+  { href: "/admin/analytics", label: "View Analytics", icon: BarChart3, permission: "admin.analytics" },
+  { href: "/admin/app-log", label: "App Log", icon: ScrollText, permission: "admin.audit" },
   { href: "/admin/settings", label: "Settings", icon: Settings, permission: "admin.settings" },
 ];
 

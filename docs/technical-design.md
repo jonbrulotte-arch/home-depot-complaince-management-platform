@@ -174,6 +174,8 @@ erDiagram
   ComplianceReport ||--o{ ChargebackPackage : "per program, period"
   Role ||--o{ User : has
   User ||--o{ AuditLog : writes
+  Scorecard ||--o{ ScorecardHit : "views, downloads"
+  User ||--o{ ScorecardHit : "when signed in"
 ```
 
 | Model | Purpose and key fields |
@@ -195,7 +197,8 @@ erDiagram
 | `ScorecardFeedback` | A comment on a published violation, keyed by report and line. |
 | `ShipmentCount`, `LineCount`, `ChargebackPackage` | Manual inputs per report, program and compliance period: shipments by mode, line totals (§6.4), the chargeback Package ID (§5.8). |
 | `SiteSettings` | Single row (`id = "site"`): branding and logo, `reportPeriodBasis`, `publicDashboardToken`. |
-| `User`, `Role`, `AuditLog` | Accounts (bcrypt hash, active flag), roles with permission lists, audit trail of changes. |
+| `User`, `Role`, `AuditLog` | Accounts (bcrypt hash, active flag), roles with permission lists, and the App Log: every event in the platform (§9.5). |
+| `ScorecardHit` | One view or download of a published scorecard (§5.10): channel (`APP` or `PUBLIC` link), kind (`VIEW`, `PDF`, `EXCEL`), version, browser session, user when signed in, IP and user agent. |
 
 ### 4.2 Identity rules
 
@@ -315,6 +318,12 @@ PO Lookup searches lines by PO prefix and exact shipment identifiers, grouped by
 
 `historical.ts` (also `npm run historical-reports` and the **Historical reports** dialog) creates a published, auto-reviewed report for each archived month without one, leaving the current and previous month to the normal workflow. Violations are accepted as THD reported them; per-line Approve/Deny values become decided disputes; THD's Summary post-dispute totals are used where they reconcile, marked "per THD". `--rebuild` regenerates them after a rule or setting change.
 
+### 5.10 View Analytics and App Log
+
+**View Analytics** (`/admin/analytics`, permission `admin.analytics`) counts hits on published scorecards, per scorecard. A page view is reported by a small client beacon (`ScorecardHitBeacon` → `POST /api/scorecard-hits`) on the in-app scorecard pages and the public `/s/<token>` page, so link previews and prefetches that never run the page are not counted; downloads are recorded by the PDF and Excel routes. `recordScorecardHit` (`src/lib/scorecard-hits.ts`) skips automated user agents, ignores a repeat view of the same scorecard in the same session within 10 seconds, and keeps the browser session in an `httpOnly` cookie (`cm_vs`) that expires after 30 minutes without a hit, so a **unique session** is one visit. Signed-in users are recorded by id, including when they open the public link. `src/lib/view-analytics.ts` aggregates per scorecard (hits, views, downloads, distinct sessions and users, public-link hits), per day, and per signed-in user, for a chosen window.
+
+The **App Log** (`/admin/app-log`, permission `admin.audit`) lists `AuditLog` newest first, with search, user, category and date filters, 50 per page, and a CSV export of the filtered entries (`src/lib/app-log.ts` holds the labels, categories, filters and links). A test fails if code logs an action that has no label.
+
 ---
 
 ## 6. Calculation rules
@@ -369,7 +378,8 @@ All route handlers check the session and then a permission (`requireApiPermissio
 | Feedback | `POST /api/feedback`, `DELETE /api/feedback/[id]` | `feedback.submit` |
 | Summarizer | `GET /api/summarizer/pdf?r=…` | `summarizer.use` |
 | PO Lookup | `GET /api/po-lookup/package/[packageId]/export` | `view.polookup` |
-| Admin | `/api/admin/users`, `/roles`, `/aliases`, `/metrics/[id]` (+ `/rules`, `/reason-codes`), `/rules/[id]`, `/reason-codes/[id]`, `/settings/{branding,report-periods,public-dashboard}`, `/backups` (+ `/[name]`, `/restore`) | the matching `admin.*` permission |
+| Admin | `/api/admin/users`, `/roles`, `/aliases`, `/metrics/[id]` (+ `/rules`, `/reason-codes`), `/rules/[id]`, `/reason-codes/[id]`, `/settings/{branding,report-periods,public-dashboard}`, `/backups` (+ `/[name]`, `/restore`), `GET /app-log/export` | the matching `admin.*` permission |
+| Analytics | `POST /api/scorecard-hits` (a view: `reportId` when signed in, or a public `token`) | signed in, or token only |
 | Other | `/api/auth/[...nextauth]`, `GET /api/branding/logo` | — |
 
 ---
@@ -409,7 +419,7 @@ Public scorecards and the public dashboard are reachable by anyone who has the l
 
 ### 9.5 Audit
 
-Changes through the API write `AuditLog` rows (user, action, entity, id, details): reviews, disputes, report moves, imports and purges, settings, users and roles, line counts, Package IDs, backups.
+Every event writes an `AuditLog` row (user, action, entity, id, details), shown in Admin › App Log: sign-ins, failed sign-ins (with the email typed, the reason and the IP address) and sign-outs (NextAuth `authorize` and `events.signOut`); reviews, disputes and their notes and files, report moves, imports and purges; scorecard generation and every scorecard, package, Summarizer and App Log download, including anonymous public-link downloads; settings, users and roles, line counts, Package IDs and backups. Scorecard page views are recorded separately as `ScorecardHit` rows (§5.10). The CSV export prefixes cells that start with `=`, `+`, `-` or `@` so spreadsheet programs don't run typed text as formulas. Both tables are kept indefinitely and are included in backups.
 
 ### 9.6 Deployment boundary
 
@@ -525,6 +535,7 @@ Migrations are generated with `prisma migrate diff` and reviewed by hand; data c
 | No password reset by e-mail | Admins set passwords. |
 | Public links | Anyone with a link can view; there is no expiry other than unpublishing or replacing the dashboard link. |
 | Snapshot schema evolution | New snapshot fields must stay optional so older scorecards render. |
+| Log growth | `AuditLog` and `ScorecardHit` grow without a retention limit; at this platform's volume that is small, but a purge of entries older than a set age may be wanted later. |
 | Help content drift | Help is data in the repo and must be updated with UI or rule changes (noted in `CLAUDE.md`). |
 
 Possible next steps: TLS in front of the app; scheduled off-server backups; importing line and shipment counts from TMS/WMS; reading Package IDs from THD's remittance file; e-mail notifications for dispute deadlines.

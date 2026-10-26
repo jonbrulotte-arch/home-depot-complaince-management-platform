@@ -44,6 +44,7 @@ model User {
   scorecardsGenerated Scorecard[]         @relation("ScorecardGeneratedBy")
   scorecardsPublished Scorecard[]         @relation("ScorecardPublishedBy")
   scorecardFeedback   ScorecardFeedback[]
+  scorecardHits       ScorecardHit[]
 }
 
 model AuditLog {
@@ -535,6 +536,7 @@ model Scorecard {
   publishedBy   User?            @relation("ScorecardPublishedBy", fields: [publishedById], references: [id], onDelete: SetNull)
   /// Unguessable token for the public link (/s/<token>); made when first shared, works while published
   shareToken    String?          @unique
+  hits          ScorecardHit[]
 
   @@index([publishedAt])
 }
@@ -553,6 +555,40 @@ model ScorecardFeedback {
   updatedAt DateTime         @updatedAt
 
   @@index([reportId, lineId])
+}
+
+enum HitChannel {
+  /// Opened in the app by a signed-in user
+  APP
+  /// Opened through the public link (/s/<token>), signed in or not
+  PUBLIC
+}
+
+enum HitKind {
+  VIEW
+  PDF
+  EXCEL
+}
+
+/// One view or download of a published scorecard, for Admin › View Analytics
+model ScorecardHit {
+  id          String     @id @default(cuid())
+  scorecardId String
+  scorecard   Scorecard  @relation(fields: [scorecardId], references: [id], onDelete: Cascade)
+  /// Scorecard version shown
+  version     Int
+  channel     HitChannel
+  kind        HitKind
+  /// Browser session (cookie, ends after 30 minutes without a hit)
+  sessionId   String
+  userId      String?
+  user        User?      @relation(fields: [userId], references: [id], onDelete: SetNull)
+  ip          String?
+  userAgent   String?
+  at          DateTime   @default(now())
+
+  @@index([scorecardId, at])
+  @@index([userId])
 }
 
 enum ShipmentMode {

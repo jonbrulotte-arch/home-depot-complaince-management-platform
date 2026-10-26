@@ -294,8 +294,8 @@ export const HELP_TOPICS: HelpTopic[] = [
   {
     id: "administration",
     title: "Administration",
-    summary: "Users, roles, programs and rules, settings, backups and historical reports.",
-    anyOf: ["admin.users", "admin.rbac", "admin.programs", "admin.settings", "admin.backup"],
+    summary: "Users, roles, programs and rules, settings, backups, View Analytics, the App Log and historical reports.",
+    anyOf: ["admin.users", "admin.rbac", "admin.programs", "admin.settings", "admin.backup", "admin.analytics", "admin.audit"],
     blocks: [
       {
         terms: [
@@ -304,6 +304,8 @@ export const HELP_TOPICS: HelpTopic[] = [
           ["Programs & Rules", "Each program's metrics, goals and offset rules (with the fiscal month they take effect, so past months keep their rules), dispute reason codes with required documents, the SPM sheet names, and **Column mappings** from THD's column names to the platform's fields."],
           ["Settings", "**Custom Branding** (site name and logo), **Report periods** (month received or THD fiscal month) and the **Public dashboard**."],
           ["Backup & Restore", "**Back up now** saves everything, attachments included, on the server; download any backup, or restore one (type RESTORE to confirm; a safety backup is taken first)."],
+          ["View Analytics", "Hits on each published scorecard, in the app and through its public link: **Hits** (views plus PDF and Excel downloads), **Unique sessions** (a session is one browser's visit and ends after 30 minutes without activity), **Signed-in users**, and **Public-link hits**. Open a scorecard for hits per day, the signed-in users who opened it, and the latest hits. Choose the period at the top right."],
+          ["App Log", "Every event in the platform, newest first: sign-ins, **failed sign-ins** (with the email typed and the reason), report work, imports, reviews, disputes, scorecards, feedback, exports, and changes to users, roles, configuration and backups. Filter by search text, user, category and dates; **Show all** opens an event's full details; **Export CSV** downloads what the filters show."],
         ],
       },
       { h: "Historical reports" },
