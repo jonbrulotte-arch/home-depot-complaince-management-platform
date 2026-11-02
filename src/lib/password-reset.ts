@@ -50,6 +50,16 @@ export function mayRequestReset(args: { lastForUser: Date | null; recentFromIp: 
   return "ok";
 }
 
+/** Makes a new link for a user (voiding their earlier unused ones) and returns its token. */
+export async function createReset(userId: string, requestedIp: string | null): Promise<string> {
+  const { token, tokenHash, expiresAt } = newResetToken();
+  await prisma.$transaction([
+    prisma.passwordReset.updateMany({ where: { userId, usedAt: null }, data: { expiresAt: new Date() } }),
+    prisma.passwordReset.create({ data: { userId, tokenHash, expiresAt, requestedIp } }),
+  ]);
+  return token;
+}
+
 /** Emails a reset link; returns the reason when it couldn't be sent. */
 export async function emailReset(args: { to: string; name: string; link: string }): Promise<{ emailed: boolean; reason?: string }> {
   const { config } = mailConfig();

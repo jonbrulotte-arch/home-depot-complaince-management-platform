@@ -2,14 +2,17 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { KeyRound, Plus, UserCheck, UserX } from "lucide-react";
+import { Copy, KeyRound, Mail, Plus, UserCheck, UserX } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { apiFetch } from "@/lib/client-api";
+import { copyText } from "@/lib/clipboard";
+import { PASSWORD_MIN } from "@/lib/password-rules";
+import { RESET_MINUTES_LABEL } from "@/lib/password-reset-rules";
 import { cn, formatDateTime } from "@/lib/utils";
 import { InviteButton, PendingInvites, type InviteRow } from "./invites";
 import { useTimeZone } from "@/components/time-zone";
@@ -88,7 +91,7 @@ export function UsersManager({ users, roles, meId, invites }: { users: UserRow[]
                 <td className="px-4 py-3 text-gray-500">{formatDateTime(u.lastLoginAt, tz)}</td>
                 <td className="px-4 py-3">
                   <div className="flex justify-end gap-1">
-                    <button onClick={() => setResetFor(u)} className="p-1.5 rounded-md text-gray-400 hover:bg-gray-100 hover:text-gray-700" title="Set password">
+                    <button onClick={() => setResetFor(u)} className="p-1.5 rounded-md text-gray-400 hover:bg-gray-100 hover:text-gray-700" title="Reset password">
                       <KeyRound className="h-4 w-4" />
                     </button>
                     {u.id !== meId && (
@@ -175,18 +178,42 @@ function AddUserDialog({ open, onClose, roles }: { open: boolean; onClose: () =>
 }
 
 function PasswordDialog({ user, onClose }: { user: UserRow | null; onClose: () => void }) {
+  const [mode, setMode] = useState<"email" | "temporary">("email");
   const [password, setPassword] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [sent, setSent] = useState<{ emailed: boolean; reason: string | null; link: string | null } | null>(null);
+  const [copied, setCopied] = useState(false);
 
-  async function save() {
+  function close() {
+    setMode("email");
+    setPassword("");
+    setError(null);
+    setSent(null);
+    setCopied(false);
+    onClose();
+  }
+
+  async function sendEmail() {
+    if (!user) return;
+    setSaving(true);
+    setError(null);
+    try {
+      setSent(await apiFetch<{ emailed: boolean; reason: string | null; link: string | null }>(`/api/admin/users/${user.id}/password-reset`, { body: {} }));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not send the email");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function setTemporary() {
     if (!user) return;
     setSaving(true);
     setError(null);
     try {
       await apiFetch(`/api/admin/users/${user.id}`, { method: "PATCH", body: { password } });
-      setPassword("");
-      onClose();
+      close();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not set the password");
     } finally {
@@ -194,18 +221,66 @@ function PasswordDialog({ user, onClose }: { user: UserRow | null; onClose: () =
     }
   }
 
+  const errorBox = error && <div className="rounded-lg bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700">{error}</div>;
+
   return (
-    <Dialog open={Boolean(user)} onOpenChange={(o) => !o && onClose()}>
+    <Dialog open={Boolean(user)} onOpenChange={(o) => !o && close()}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Set password for {user?.name}</DialogTitle>
+          <DialogTitle>Reset password for {user?.name}</DialogTitle>
+          <DialogDescription>
+            {sent
+              ? sent.emailed
+                ? `A reset link was emailed to ${user?.email}. It works once and expires in ${RESET_MINUTES_LABEL}.`
+                : `The email couldn't be sent (${sent.reason ?? "unknown reason"}). Send ${user?.email} this link yourself. It works once, expires in ${RESET_MINUTES_LABEL}, and won't be shown again.`
+              : mode === "email"
+                ? `Email ${user?.email} a link to choose a new password. It works once and expires in ${RESET_MINUTES_LABEL}; their current password keeps working until they use it.`
+                : "Set a temporary password and give it to them in person or by phone. Their current password stops working at once."}
+          </DialogDescription>
         </DialogHeader>
-        <Input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="At least 8 characters" />
-        {error && <div className="rounded-lg bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700">{error}</div>}
-        <DialogFooter>
-          <Button variant="outline" onClick={onClose}>Cancel</Button>
-          <Button onClick={save} disabled={saving || password.length < 8}>{saving ? "Saving…" : "Set password"}</Button>
-        </DialogFooter>
+        {sent ? (
+          <>
+            {sent.link && (
+              <div className="flex gap-2">
+                <Input readOnly value={sent.link} onFocus={(e) => e.target.select()} aria-label="Password reset link" />
+                <Button variant="outline" onClick={async () => setCopied(await copyText(sent.link!))}>
+                  <Copy className="h-4 w-4 mr-1.5" />
+                  {copied ? "Copied" : "Copy"}
+                </Button>
+              </div>
+            )}
+            <DialogFooter>
+              <Button onClick={close}>Done</Button>
+            </DialogFooter>
+          </>
+        ) : mode === "email" ? (
+          <>
+            {!user?.active && <p className="text-sm text-gray-700">This account is inactive. Reactivate it before sending a reset email.</p>}
+            {errorBox}
+            <button type="button" onClick={() => { setMode("temporary"); setError(null); }} className="justify-self-start text-sm font-medium text-blue-600 hover:underline">
+              Set a temporary password instead
+            </button>
+            <DialogFooter>
+              <Button variant="outline" onClick={close}>Cancel</Button>
+              <Button onClick={sendEmail} disabled={saving || !user?.active}>
+                <Mail className="h-4 w-4 mr-1.5" />
+                {saving ? "Sending…" : "Send reset email"}
+              </Button>
+            </DialogFooter>
+          </>
+        ) : (
+          <>
+            <Input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder={`At least ${PASSWORD_MIN} characters`} autoComplete="new-password" />
+            {errorBox}
+            <button type="button" onClick={() => { setMode("email"); setError(null); }} className="justify-self-start text-sm font-medium text-blue-600 hover:underline">
+              Send a reset email instead
+            </button>
+            <DialogFooter>
+              <Button variant="outline" onClick={close}>Cancel</Button>
+              <Button onClick={setTemporary} disabled={saving || password.length < PASSWORD_MIN}>{saving ? "Saving…" : "Set password"}</Button>
+            </DialogFooter>
+          </>
+        )}
       </DialogContent>
     </Dialog>
   );

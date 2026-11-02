@@ -40,6 +40,7 @@ export const ACTION_LABELS: Record<string, string> = {
   "issue.export": "Exported the Issue Log",
   "user.create": "Added a user",
   "user.invite": "Invited a user",
+  "user.passwordResetSend": "Sent a user a password reset email",
   "user.inviteResend": "Resent an invitation",
   "user.inviteRevoke": "Revoked an invitation",
   "user.inviteAccept": "Accepted an invitation",

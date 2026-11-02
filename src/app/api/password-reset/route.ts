@@ -5,7 +5,7 @@ import { parseJson } from "@/lib/api";
 import { audit } from "@/lib/audit";
 import { clientIp } from "@/lib/client-ip";
 import { appOrigin } from "@/lib/invites";
-import { RESET_IP_WINDOW_MINUTES, emailReset, mayRequestReset, newResetToken } from "@/lib/password-reset";
+import { RESET_IP_WINDOW_MINUTES, createReset, emailReset, mayRequestReset } from "@/lib/password-reset";
 
 const schema = z.object({ email: z.string().trim().toLowerCase().email("is not a valid email").max(200) });
 
@@ -37,12 +37,8 @@ export async function POST(req: Request) {
     return done;
   }
 
-  const { token, tokenHash, expiresAt } = newResetToken();
   // A new link voids any earlier unused one
-  await prisma.$transaction([
-    prisma.passwordReset.updateMany({ where: { userId: user.id, usedAt: null }, data: { expiresAt: new Date() } }),
-    prisma.passwordReset.create({ data: { userId: user.id, tokenHash, expiresAt, requestedIp: ip } }),
-  ]);
+  const token = await createReset(user.id, ip);
   const result = await emailReset({ to: user.email, name: user.name, link: `${appOrigin(req)}/reset-password/${token}` });
   await audit(user.id, "auth.passwordResetRequest", "User", user.id, { email, sent: result.emailed, ...(result.reason ? { reason: result.reason } : {}), ip });
   return done;
