@@ -122,7 +122,7 @@ export default async function IssueLogPage({ searchParams }: { searchParams: Pro
                           {ISSUE_STATUSES[i.status].label}
                         </Badge>
                       </td>
-                      <td className={cn(td, i.hdTicket ? "text-gray-700" : "text-gray-400")}>{i.hdTicket ?? "—"}</td>
+                      <td className={cn(td, "whitespace-nowrap", i.hdTicket ? "text-gray-700" : "text-gray-400")}>{i.hdTicket ?? "—"}</td>
                       <td className={cn(td, "text-gray-700")}>{i.createdBy?.name ?? "—"}</td>
                     </tr>
                   ))}

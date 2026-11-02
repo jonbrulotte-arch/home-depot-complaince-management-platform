@@ -62,7 +62,7 @@ export function IssueAttachments({ issueId, attachments, canEdit }: { issueId: s
                   {a.fileName}
                 </a>
                 <span className="text-xs text-gray-400">
-                  {(a.size / 1024).toFixed(0)} KB · {formatDateTime(a.createdAt)}
+                  {a.size < 1024 ? "under 1 KB" : `${(a.size / 1024).toFixed(0)} KB`} · {formatDateTime(a.createdAt)}
                   {a.uploadedBy ? ` · ${a.uploadedBy}` : ""}
                 </span>
               </div>
