@@ -37,6 +37,13 @@ export const ACTION_LABELS: Record<string, string> = {
   "issue.detach": "Removed a file from an issue",
   "issue.export": "Exported the Issue Log",
   "user.create": "Added a user",
+  "user.invite": "Invited a user",
+  "user.inviteResend": "Resent an invitation",
+  "user.inviteRevoke": "Revoked an invitation",
+  "user.inviteAccept": "Accepted an invitation",
+  "account.update": "Changed their name",
+  "account.password": "Changed their password",
+  "account.passwordFailed": "Wrong current password",
   "user.update": "Changed a user",
   "role.create": "Added a role",
   "role.update": "Changed a role",
@@ -51,6 +58,7 @@ export const ACTION_LABELS: Record<string, string> = {
   "settings.branding": "Changed the branding",
   "settings.publicDashboard": "Changed the public dashboard link",
   "settings.reportPeriods": "Changed the report period basis",
+  "email.test": "Sent a test email",
   "backup.create": "Took a backup",
   "backup.download": "Downloaded a backup",
   "backup.delete": "Deleted a backup",
@@ -65,8 +73,8 @@ export const LOG_CATEGORIES = [
   { key: "scorecards", label: "Scorecards & feedback", prefixes: ["scorecard", "feedback"] },
   { key: "issues", label: "Issue Log", prefixes: ["issue"] },
   { key: "exports", label: "Lookups & exports", prefixes: ["package", "summary", "appLog"] },
-  { key: "access", label: "Users & roles", prefixes: ["user", "role"] },
-  { key: "config", label: "Configuration & settings", prefixes: ["metric", "rule", "alias", "reasonCode", "settings"] },
+  { key: "access", label: "Users & roles", prefixes: ["user", "role", "account"] },
+  { key: "config", label: "Configuration & settings", prefixes: ["metric", "rule", "alias", "reasonCode", "settings", "email"] },
   { key: "backups", label: "Backups", prefixes: ["backup"] },
 ] as const;
 
@@ -142,6 +150,8 @@ export function entryLink(entity: string, entityId: string | null, details: unkn
       return entityId ? `/issues/${entityId}` : "/issues";
     case "ChargebackPackage":
       return entityId ? `/po-lookup/package/${encodeURIComponent(entityId)}` : null;
+    case "UserInvite":
+      return "/admin/users";
     case "User":
       return entityId ? "/admin/users" : null;
     case "Role":

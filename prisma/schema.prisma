@@ -18,6 +18,7 @@ model Role {
   users       User[]
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+  invites     UserInvite[]
 }
 
 model User {
@@ -49,6 +50,7 @@ model User {
   issuesUpdated       Issue[]             @relation("IssueUpdatedBy")
   issueNotes          IssueNote[]
   issueAttachments    IssueAttachment[]
+  invitesSent         UserInvite[]
 }
 
 model AuditLog {
@@ -778,4 +780,27 @@ model IssueAttachment {
   createdAt    DateTime @default(now())
 
   @@index([issueId])
+}
+
+/// An emailed invitation to join the platform: whoever opens the link sets their name and password
+model UserInvite {
+  id          String    @id @default(cuid())
+  email       String
+  name        String?
+  roleId      String
+  role        Role      @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  /// sha256 of the link's token; the token itself is only ever in the email or shown once
+  tokenHash   String    @unique
+  invitedById String?
+  invitedBy   User?     @relation(fields: [invitedById], references: [id], onDelete: SetNull)
+  createdAt   DateTime  @default(now())
+  /// When the latest link was made (a resend replaces the token)
+  sentAt      DateTime  @default(now())
+  /// Whether Microsoft Graph accepted the latest email
+  emailed     Boolean   @default(false)
+  expiresAt   DateTime
+  acceptedAt  DateTime?
+  revokedAt   DateTime?
+
+  @@index([email])
 }

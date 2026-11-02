@@ -114,6 +114,13 @@ export function Sidebar({ user, permissions, branding }: { user: { name: string;
         </div>
         {!collapsed && (
           <div className="mt-3 flex items-center gap-2">
+            <Link
+              href="/account"
+              className={cn("p-1.5 rounded-md hover:text-white hover:bg-gray-800", isActive(pathname, "/account") ? "text-white bg-gray-800" : "text-gray-400")}
+              title="Account settings"
+            >
+              <Settings className="h-4 w-4" />
+            </Link>
             <button
               onClick={() => signOut({ callbackUrl: "/login" })}
               className="p-1.5 rounded-md text-gray-400 hover:text-white hover:bg-gray-800"

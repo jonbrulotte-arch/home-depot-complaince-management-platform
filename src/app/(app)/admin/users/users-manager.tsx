@@ -11,6 +11,7 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { apiFetch } from "@/lib/client-api";
 import { cn, formatDateTime } from "@/lib/utils";
+import { InviteButton, PendingInvites, type InviteRow } from "./invites";
 
 interface UserRow {
   id: string;
@@ -22,7 +23,7 @@ interface UserRow {
   lastLoginAt: string | null;
 }
 
-export function UsersManager({ users, roles, meId }: { users: UserRow[]; roles: { id: string; name: string }[]; meId: string }) {
+export function UsersManager({ users, roles, meId, invites }: { users: UserRow[]; roles: { id: string; name: string }[]; meId: string; invites: InviteRow[] }) {
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
@@ -45,10 +46,13 @@ export function UsersManager({ users, roles, meId }: { users: UserRow[]; roles: 
           <h1 className="text-2xl font-bold text-gray-900">Users</h1>
           <p className="text-sm text-gray-500 mt-1">Who can sign in, and which role they have. Role permissions are set under Roles &amp; Access.</p>
         </div>
-        <Button onClick={() => setAdding(true)}>
-          <Plus className="h-4 w-4 mr-1.5" />
-          Add user
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" onClick={() => setAdding(true)}>
+            <Plus className="h-4 w-4 mr-1.5" />
+            Add user
+          </Button>
+          <InviteButton roles={roles} />
+        </div>
       </div>
       {error && <div className="rounded-lg bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700">{error}</div>}
 
@@ -101,6 +105,8 @@ export function UsersManager({ users, roles, meId }: { users: UserRow[]; roles: 
           </tbody>
         </table>
       </Card>
+
+      <PendingInvites invites={invites} />
 
       <AddUserDialog open={adding} onClose={() => setAdding(false)} roles={roles} />
       <PasswordDialog user={resetFor} onClose={() => setResetFor(null)} />

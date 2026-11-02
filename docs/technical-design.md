@@ -202,6 +202,7 @@ erDiagram
 | `ShipmentCount`, `LineCount`, `ChargebackPackage` | Manual inputs per report, program and compliance period: shipments by mode, line totals (§6.4), the chargeback Package ID (§5.8). |
 | `SiteSettings` | Single row (`id = "site"`): branding and logo, `reportPeriodBasis`, `publicDashboardToken`. |
 | `Issue`, `IssuePo`, `IssueNote`, `IssueAttachment` | The Issue Log (§5.11): an issue (number shown as ISS-0001, date, status, severity, category, program, team, HD Support ticket, what happened, actions, consequences, people, references, resolution, follow-up date), its POs as typed (number and optional create date), its timeline of updates and its files (stored as bytes). |
+| `UserInvite` | An invitation (§9.1): email, optional name, role, sha256 of the link token, who sent it, when, whether Graph accepted the email, expiry, accepted / revoked times. |
 | `User`, `Role`, `AuditLog` | Accounts (bcrypt hash, active flag), roles with permission lists, and the App Log: every event in the platform (§9.5). |
 | `ScorecardHit` | One view or download of a published scorecard (§5.10): channel (`APP` or `PUBLIC` link), kind (`VIEW`, `PDF`, `EXCEL`), version, browser session, user when signed in, IP and user agent. |
 
@@ -394,7 +395,8 @@ All route handlers check the session and then a permission (`requireApiPermissio
 | Feedback | `POST /api/feedback`, `DELETE /api/feedback/[id]` | `feedback.submit` |
 | Summarizer | `GET /api/summarizer/pdf?r=…` | `summarizer.use` |
 | PO Lookup | `GET /api/po-lookup/package/[packageId]/export` | `view.polookup` |
-| Admin | `/api/admin/users`, `/roles`, `/aliases`, `/metrics/[id]` (+ `/rules`, `/reason-codes`), `/rules/[id]`, `/reason-codes/[id]`, `/settings/{branding,report-periods,public-dashboard}`, `/backups` (+ `/[name]`, `/restore`), `GET /app-log/export` | the matching `admin.*` permission |
+| Admin | `/api/admin/users`, `/roles`, `/aliases`, `/metrics/[id]` (+ `/rules`, `/reason-codes`), `/rules/[id]`, `/reason-codes/[id]`, `/settings/{branding,report-periods,public-dashboard}`, `/backups` (+ `/[name]`, `/restore`), `GET /app-log/export`, `POST /settings/email-test`, `POST /invites`, `POST /invites/[id]/resend`, `DELETE /invites/[id]` | the matching `admin.*` permission (invites `admin.users`) |
+| Accounts | `PATCH /api/account`, `POST /api/account/password` (signed in); `POST /api/invite/[token]` (the link is the credential) | as shown |
 | Issue Log | `POST /api/issues`, `PATCH`/`DELETE /api/issues/[id]`, `POST /api/issues/[id]/notes`, `POST /api/issues/[id]/attachments`, `DELETE …/attachments/[attachmentId]` (`issues.manage`; delete also needs to be the issue's author or have `admin.users`); `GET …/attachments/[attachmentId]`, `GET /api/issues/export` (`issues.view`) | as shown |
 | Analytics | `POST /api/scorecard-hits` (a view: `reportId` when signed in, or a public `token`) | signed in, or token only |
 | Other | `/api/auth/[...nextauth]`, `GET /api/branding/logo` | — |
@@ -417,7 +419,12 @@ All route handlers check the session and then a permission (`requireApiPermissio
 
 ### 9.1 Authentication
 
-NextAuth v5 credentials provider: email and password checked against a bcrypt hash; inactive users cannot sign in; `lastLoginAt` is recorded. Sessions are signed JWTs (`AUTH_SECRET`) carrying the user id and role name. Admins set temporary passwords; there is no self-service reset or e-mail.
+NextAuth v5 credentials provider: email and password checked against a bcrypt hash; inactive users cannot sign in; `lastLoginAt` is recorded. Sessions are signed JWTs (`AUTH_SECRET`) carrying the user id and role name.
+
+- **Account settings** (`/account`, every signed-in user): change one's own name (`PATCH /api/account`) and password (`POST /api/account/password`, which requires the current password; a wrong one is logged). Passwords are at least `PASSWORD_MIN` (8) characters, bcrypt cost 12.
+- **Invitations** (`src/lib/invites.ts`): Admin › Users › Invite user creates a `UserInvite` with a 256-bit random token; only its sha256 is stored, so a database copy or backup can't accept an invitation. The link `/invite/<token>` (no sign-in, `noindex`) works once and for `INVITE_DAYS` (7) days; accepting claims the invitation and creates the user in one transaction (a link can't create two accounts) and signs them in. A new invitation for the same address, a resend (which issues a new token) or a revoke stops the old link. If someone with the address already has an account, the invitation is refused.
+- **Email** (`src/lib/mail.ts`): Microsoft Graph `sendMail` from the `MS_GRAPH_SENDER` mailbox, with an app-only token from the client-credentials flow (cached until shortly before expiry). The tenant, client id, client secret and sender come from `.env` and are never stored in the database or shown in the app; Admin › Settings shows whether they are set and the sender, and sends a test. Invitation links use `APP_URL`, else the address the admin used. When email isn't configured or Graph refuses it, the invitation is still created and the admin is shown the link once to send another way.
+- Admins can still add a user with a temporary password and set passwords; there is no self-service "forgot password".
 
 ### 9.2 Authorisation
 
@@ -499,7 +506,7 @@ Migrations are generated with `prisma migrate diff` and reviewed by hand; data c
 |---|---|
 | Lint | `npm run lint` (ESLint with Next.js rules, including `react-hooks/set-state-in-effect`) |
 | Types | `npm run typecheck` (strict TypeScript) |
-| Unit tests | `npm test` (Vitest, 86 tests): import transform against real SPM fixtures (DS, RDC, DFC, US Transportation quirks, summary-only, Fill Rate fractions, Invoice Timeliness), value parsing, catalog, scorecard rules (goals, Drop Ship Fill Rate, entered lines, pass/fail, offsets), shipment ranges, disputes, PO instance keys, permissions and landing pages, backups' table coverage, branding, Summarizer, Package IDs, help topics, App Log labels and filters, View Analytics, Issue Log (PO lists, validation, reused-PO matching, filters) |
+| Unit tests | `npm test` (Vitest, 92 tests): import transform against real SPM fixtures (DS, RDC, DFC, US Transportation quirks, summary-only, Fill Rate fractions, Invoice Timeliness), value parsing, catalog, scorecard rules (goals, Drop Ship Fill Rate, entered lines, pass/fail, offsets), shipment ranges, disputes, PO instance keys, permissions and landing pages, backups' table coverage, branding, Summarizer, Package IDs, help topics, App Log labels and filters, View Analytics, Issue Log (PO lists, validation, reused-PO matching, filters), Microsoft Graph email (token and send calls, errors, escaping), invitation tokens and states |
 | Build | `npm run build` |
 | End to end | Playwright scripts run against a local build during development (imports, review, disputes, scorecards, sharing, feedback, roles, Summarizer, packages, help, analytics, App Log, Issue Log) |
 | Data checks | Backfill reconciled against the workbook's YTD Offset Report (73 of 85 month cells by month received); migrations tested on copies of the archive database |
@@ -515,6 +522,8 @@ Migrations are generated with `prisma migrate diff` and reviewed by hand; data c
 | `AUTH_TRUST_HOST` | `.env` | Required when self-hosted |
 | `SEED_ADMIN_*` | `.env` | First admin, created by the seed |
 | `BACKUP_DIR` | `.env` | Backup folder (default `./backups`) |
+| `MS_GRAPH_TENANT_ID`, `MS_GRAPH_CLIENT_ID`, `MS_GRAPH_CLIENT_SECRET`, `MS_GRAPH_SENDER` | `.env` | Email through Microsoft Graph (Azure AD app registration with Mail.Send application permission) |
+| `APP_URL` | `.env` | Address used in invitation links (default: the address the admin used) |
 | `SERVICE_NAME`, `PORT`, `BACKUP_KEEP` | environment for `deploy.sh` | Deploy settings |
 | Branding, report period basis, public dashboard | Admin › Settings (`SiteSettings`) | Runtime settings |
 | Programs, metrics, rules, reason codes, column mappings | Admin › Programs & Rules | Domain configuration, seeded from `catalog.ts` |
@@ -549,7 +558,7 @@ Migrations are generated with `prisma migrate diff` and reviewed by hand; data c
 | Percentages from entered line counts | One count per program and period serves every metric in that period; THD may count differently per metric. |
 | Single server, single database | No high availability; recovery is from backups. Off-server copies of `BACKUP_DIR` are recommended. |
 | Plain http | See §9.6. |
-| No password reset by e-mail | Admins set passwords. |
+| No self-service password reset | Users change their own password when signed in; a forgotten one is reset by an admin. Email now exists (invitations), so a "forgot password" link could be added. |
 | Public links | Anyone with a link can view; there is no expiry other than unpublishing or replacing the dashboard link. |
 | Snapshot schema evolution | New snapshot fields must stay optional so older scorecards render. |
 | Log growth | `AuditLog` and `ScorecardHit` grow without a retention limit; at this platform's volume that is small, but a purge of entries older than a set age may be wanted later. |

@@ -43,8 +43,10 @@ Monthly compliance analysis for our Home Depot programs. Import the raw SPM expo
   Recent reports lists published reports only, the most recent report month at the top.
 - **Public dashboard** (Admin › Settings › Public dashboard, off by default): a sign-in-free copy of the dashboard at `/d/<token>` with the 12-month offsets, the chart, the latest scorecard and every published scorecard, each linking to its public scorecard page. Internal work in progress (reports under review, lines not yet reviewed) is left out. *New link* replaces the address (the old one stops working) and *Turn off* takes the page down.
 - **Help & Docs** (sidebar, everyone): step-by-step guides for each part of the platform, the monthly workflow, how results are calculated, troubleshooting and a glossary. Topics follow the reader's role (with **Show all topics**) and can be searched.
+- **Account settings** (gear icon at the bottom of the menu, every user): change your own name and password (the current password is required).
+- **Invitations and email:** Admin › Users › **Invite user** emails a one-time link (valid 7 days) with which the person sets their own name and password and is signed in with the role chosen. Pending invitations can be resent (new link) or revoked. Email goes through Microsoft Graph (an Azure AD app registration with the Mail.Send application permission), configured in `.env` (`MS_GRAPH_TENANT_ID`, `MS_GRAPH_CLIENT_ID`, `MS_GRAPH_CLIENT_SECRET`, `MS_GRAPH_SENDER`, and `APP_URL` for the link address); Admin › Settings › Email Configuration shows the status and sender and sends a test email. Without email, the admin gets the link to send themselves.
 - **Admin**:
-  - Users
+  - Users (invite, add, roles, passwords, deactivate)
   - Roles & Access (role × permission matrix; built-in Admin, Analyst, Viewer, Warehouse and Finance roles)
   - Programs & Rules: metrics, threshold/offset rules by effective fiscal month, dispute reason codes, and SPM column mappings
 
