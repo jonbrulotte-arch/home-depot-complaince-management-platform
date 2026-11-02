@@ -23,6 +23,7 @@ import { FILL_ON_TIME_LAG_MONTHS, formatDateRange, periodLabel, periodOfMetric, 
 import { fiscalLabel, shiftFiscalMonth } from "@/lib/fiscal";
 import type { DataPeriod } from "@prisma/client";
 import { getPeriodBasis } from "@/lib/periods";
+import { getTimeZone } from "@/lib/time-zone-server";
 
 const STEPS = [
   { status: "DRAFT", label: "Import data" },
@@ -33,6 +34,7 @@ const STEPS = [
 ] as const;
 
 export default async function ReportPage({ params }: { params: Promise<{ id: string }> }) {
+  const tz = await getTimeZone();
   const user = await requirePagePermission("reports.view");
   const { id } = await params;
   const report = await prisma.complianceReport.findUnique({
@@ -183,7 +185,7 @@ export default async function ReportPage({ params }: { params: Promise<{ id: str
                                 · {b.rowCount} rows ({b.createdCount} new, {b.updatedCount} updated
                                 {b.rowCount > b.createdCount + b.updatedCount && `, ${b.rowCount - b.createdCount - b.updatedCount} not added (other period)`})
                               </span>
-                              <span>· {formatDateTime(b.importedAt)}{b.importedBy ? ` by ${b.importedBy.name}` : ""}</span>
+                              <span>· {formatDateTime(b.importedAt, tz)}{b.importedBy ? ` by ${b.importedBy.name}` : ""}</span>
                             </li>
                           ))}
                         </ul>

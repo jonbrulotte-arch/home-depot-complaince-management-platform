@@ -10,6 +10,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { RangeSelect } from "@/components/analytics/range-select";
 import { StatTiles } from "@/components/analytics/stat-tiles";
 import { HitsChart } from "@/components/analytics/hits-chart";
+import { getTimeZone } from "@/lib/time-zone-server";
 
 const th = "px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap";
 const td = "px-3 py-2 text-sm";
@@ -17,6 +18,7 @@ const n = (v: number) => v.toLocaleString("en-US");
 const KIND = { VIEW: "View", PDF: "PDF download", EXCEL: "Excel download" } as const;
 
 export default async function ScorecardAnalyticsPage({ params, searchParams }: { params: Promise<{ reportId: string }>; searchParams: Promise<{ days?: string }> }) {
+  const tz = await getTimeZone();
   await requirePagePermission("admin.analytics");
   const days = parseRange((await searchParams).days);
   const a = await scorecardAnalytics((await params).reportId, days);
@@ -32,7 +34,7 @@ export default async function ScorecardAnalyticsPage({ params, searchParams }: {
           </Link>
           <h1 className="text-2xl font-bold text-gray-900">{a.month} scorecard</h1>
           <p className="text-sm text-gray-500 mt-1">
-            {a.title} · published {formatDate(a.publishedAt)} · version {a.version}
+            {a.title} · published {formatDate(a.publishedAt, tz)} · version {a.version}
             {!a.stillPublished && " · the report is no longer published"}
           </p>
         </div>
@@ -104,8 +106,8 @@ export default async function ScorecardAnalyticsPage({ params, searchParams }: {
                         {v.publicLink && <div className="text-xs text-gray-500">incl. the public link</div>}
                       </td>
                       <td className={cn(td, "text-gray-700")}>{n(v.downloads)}</td>
-                      <td className={cn(td, "text-gray-700 whitespace-nowrap")}>{formatDateTime(v.firstAt)}</td>
-                      <td className={cn(td, "text-gray-700 whitespace-nowrap")}>{formatDateTime(v.lastAt)}</td>
+                      <td className={cn(td, "text-gray-700 whitespace-nowrap")}>{formatDateTime(v.firstAt, tz)}</td>
+                      <td className={cn(td, "text-gray-700 whitespace-nowrap")}>{formatDateTime(v.lastAt, tz)}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -138,7 +140,7 @@ export default async function ScorecardAnalyticsPage({ params, searchParams }: {
                 <tbody>
                   {a.recent.map((h) => (
                     <tr key={h.id} className="border-t border-gray-200">
-                      <td className={cn(td, "text-gray-700 whitespace-nowrap")}>{formatDateTime(h.at)}</td>
+                      <td className={cn(td, "text-gray-700 whitespace-nowrap")}>{formatDateTime(h.at, tz)}</td>
                       <td className={cn(td, h.user ? "text-gray-900" : "text-gray-500")}>{h.user?.name ?? "Anonymous"}</td>
                       <td className={td}>
                         <Badge variant={h.kind === "VIEW" ? "secondary" : "default"}>{KIND[h.kind]}</Badge>

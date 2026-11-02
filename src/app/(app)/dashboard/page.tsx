@@ -8,8 +8,10 @@ import { offsetOverview, recentPublishedReports } from "@/lib/dashboard";
 import { scorecardData } from "@/lib/scorecard-store";
 import { StatCard } from "@/components/shared/stat-card";
 import { LatestScorecardCard, OffsetsByProgramCard, RecentReportsCard, RollingOffsetsCard } from "@/components/dashboard/dashboard-sections";
+import { getTimeZone } from "@/lib/time-zone-server";
 
 export default async function DashboardPage() {
+  const tz = await getTimeZone();
   const user = await requirePagePermission("view.dashboard");
 
   const [overview, pendingReview, openReports, recent, latestScorecard] = await Promise.all([
@@ -51,7 +53,7 @@ export default async function DashboardPage() {
 
       <RollingOffsetsCard overview={overview} />
       <OffsetsByProgramCard overview={overview} />
-      <RecentReportsCard reports={recent.map((r) => ({ ...r, href: reportHref(r.id) }))} />
+      <RecentReportsCard reports={recent.map((r) => ({ ...r, href: reportHref(r.id) }))} tz={tz} />
     </div>
   );
 }

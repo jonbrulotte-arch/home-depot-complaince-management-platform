@@ -7,6 +7,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { apiFetch } from "@/lib/client-api";
 import { PASSWORD_MIN } from "@/lib/password-rules";
+import { timeZoneLabel } from "@/lib/time-zones";
+import { TimeZoneSelect } from "@/components/time-zone-select";
 
 function Status({ ok, error }: { ok: string | null; error: string | null }) {
   if (error) return <span className="text-sm text-red-700">{error}</span>;
@@ -14,12 +16,31 @@ function Status({ ok, error }: { ok: string | null; error: string | null }) {
   return null;
 }
 
-export function AccountSettings({ name: initialName, email, role }: { name: string; email: string; role: string }) {
+export function AccountSettings({
+  name: initialName,
+  email,
+  role,
+  timeZone: initialTimeZone,
+  shownIn,
+}: {
+  name: string;
+  email: string;
+  role: string;
+  /** The zone the user picked, or null to follow the browser */
+  timeZone: string | null;
+  /** The zone this page was shown in */
+  shownIn: string;
+}) {
   const router = useRouter();
   const [name, setName] = useState(initialName);
   const [savedName, setSavedName] = useState(initialName);
   const [nameBusy, setNameBusy] = useState(false);
   const [nameMsg, setNameMsg] = useState<{ ok: string | null; error: string | null }>({ ok: null, error: null });
+
+  const [timeZone, setTimeZone] = useState(initialTimeZone);
+  const [savedTimeZone, setSavedTimeZone] = useState(initialTimeZone);
+  const [tzBusy, setTzBusy] = useState(false);
+  const [tzMsg, setTzMsg] = useState<{ ok: string | null; error: string | null }>({ ok: null, error: null });
 
   const [current, setCurrent] = useState("");
   const [next, setNext] = useState("");
@@ -39,6 +60,21 @@ export function AccountSettings({ name: initialName, email, role }: { name: stri
       setNameMsg({ ok: null, error: e instanceof Error ? e.message : "Could not save" });
     } finally {
       setNameBusy(false);
+    }
+  }
+
+  async function saveTimeZone() {
+    setTzBusy(true);
+    setTzMsg({ ok: null, error: null });
+    try {
+      await apiFetch("/api/account", { method: "PATCH", body: { timeZone } });
+      setSavedTimeZone(timeZone);
+      setTzMsg({ ok: "Time zone saved.", error: null });
+      router.refresh();
+    } catch (e) {
+      setTzMsg({ ok: null, error: e instanceof Error ? e.message : "Could not save" });
+    } finally {
+      setTzBusy(false);
     }
   }
 
@@ -88,6 +124,30 @@ export function AccountSettings({ name: initialName, email, role }: { name: stri
             <Status {...nameMsg} />
             <Button onClick={saveName} disabled={nameBusy || !name.trim() || name.trim() === savedName}>
               {nameBusy ? "Saving…" : "Save name"}
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle>Time zone</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div>
+            <label htmlFor="account-tz" className="mb-1 block text-sm font-medium text-gray-700">
+              Show times in
+            </label>
+            <TimeZoneSelect id="account-tz" value={timeZone} onChange={setTimeZone} />
+          </div>
+          <p className="text-xs text-gray-500">
+            Times across the platform (when something was logged, updated, imported or decided) are shown in this zone, now {timeZoneLabel(shownIn)}. Automatic follows
+            the computer you&apos;re on. Dates and times from THD&apos;s exports are shown as THD sent them.
+          </p>
+          <div className="flex items-center justify-end gap-3">
+            <Status {...tzMsg} />
+            <Button onClick={saveTimeZone} disabled={tzBusy || timeZone === savedTimeZone}>
+              {tzBusy ? "Saving…" : "Save time zone"}
             </Button>
           </div>
         </CardContent>

@@ -14,6 +14,7 @@ import { apiFetch } from "@/lib/client-api";
 import { copyText } from "@/lib/clipboard";
 import { allowedTransitions, DISPUTE_STATUS_LABELS, MAX_ATTACHMENT_BYTES, type ChecklistItem } from "@/lib/disputes";
 import { cn, formatCurrency, formatDateTime, formatUtcDate, formatUtcDateTime } from "@/lib/utils";
+import { useTimeZone } from "@/components/time-zone";
 
 export interface DisputeView {
   id: string;
@@ -255,6 +256,7 @@ function Step({ n, title, done, children }: { n: number; title: string; done?: b
 }
 
 function DisputeDetail({ dispute, reasonCodes, canEdit }: { dispute: DisputeView; reasonCodes: ReasonCode[]; canEdit: boolean }) {
+  const tz = useTimeZone();
   const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -461,7 +463,7 @@ function DisputeDetail({ dispute, reasonCodes, canEdit }: { dispute: DisputeView
               <li key={a.id} className="flex items-center gap-2 text-sm">
                 <Paperclip className="h-4 w-4 text-gray-400" />
                 <a href={`/api/disputes/${dispute.id}/attachments/${a.id}`} className="text-blue-600 hover:underline">{a.fileName}</a>
-                <span className="text-xs text-gray-400">{(a.size / 1024).toFixed(0)} KB · {formatDateTime(a.uploadedAt)}{a.uploadedBy ? ` · ${a.uploadedBy}` : ""}</span>
+                <span className="text-xs text-gray-400">{(a.size / 1024).toFixed(0)} KB · {formatDateTime(a.uploadedAt, tz)}{a.uploadedBy ? ` · ${a.uploadedBy}` : ""}</span>
                 <a href={`/api/disputes/${dispute.id}/attachments/${a.id}`} className="ml-auto p-1 rounded-md text-gray-400 hover:bg-gray-100 hover:text-gray-700" title="Download">
                   <Download className="h-3.5 w-3.5" />
                 </a>
@@ -592,7 +594,7 @@ function DisputeDetail({ dispute, reasonCodes, canEdit }: { dispute: DisputeView
           {dispute.events.map((e) => (
             <li key={e.id} className="border-l-2 border-gray-200 pl-3">
               <p className="text-xs text-gray-500">
-                {formatDateTime(e.at)}{e.user ? ` · ${e.user}` : ""}
+                {formatDateTime(e.at, tz)}{e.user ? ` · ${e.user}` : ""}
                 {e.type === "STATUS" && e.toStatus && <> · {e.fromStatus ? `${DISPUTE_STATUS_LABELS[e.fromStatus]} → ` : ""}{DISPUTE_STATUS_LABELS[e.toStatus]}</>}
                 {e.type === "SPM_UPDATE" && " · SPM import"}
               </p>

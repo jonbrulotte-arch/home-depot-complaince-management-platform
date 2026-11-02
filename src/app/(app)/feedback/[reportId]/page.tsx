@@ -5,8 +5,10 @@ import { requirePagePermission } from "@/lib/auth-guard";
 import { scorecardFeedback } from "@/lib/feedback";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import { FeedbackWorkspace } from "./feedback-workspace";
+import { getTimeZone } from "@/lib/time-zone-server";
 
 export default async function ScorecardFeedbackPage({ params }: { params: Promise<{ reportId: string }> }) {
+  const tz = await getTimeZone();
   const user = await requirePagePermission("feedback.view");
   const { reportId } = await params;
   const found = await scorecardFeedback(reportId);
@@ -22,7 +24,7 @@ export default async function ScorecardFeedbackPage({ params }: { params: Promis
           </Link>
           <h1 className="text-2xl font-bold text-gray-900">{data.periodLabel} scorecard</h1>
           <p className="text-sm text-gray-500 mt-1">
-            Published {formatDate(found.publishedAt)} · {found.violations.length} violation(s) · {formatCurrency(data.totals.postOffset)} post-dispute offsets
+            Published {formatDate(found.publishedAt, tz)} · {found.violations.length} violation(s) · {formatCurrency(data.totals.postOffset)} post-dispute offsets
           </p>
         </div>
         {user.permissions.has("view.dashboard") && (

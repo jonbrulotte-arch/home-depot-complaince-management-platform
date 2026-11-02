@@ -3,8 +3,10 @@ import { requirePagePermission } from "@/lib/auth-guard";
 import { feedbackScorecards } from "@/lib/feedback";
 import { formatDate } from "@/lib/utils";
 import { Card } from "@/components/ui/card";
+import { getTimeZone } from "@/lib/time-zone-server";
 
 export default async function FeedbackPage() {
+  const tz = await getTimeZone();
   await requirePagePermission("feedback.view");
   const scorecards = await feedbackScorecards();
 
@@ -39,7 +41,7 @@ export default async function FeedbackPage() {
                   {s.violationsWithFeedback} of {s.violations}
                 </td>
                 <td className="px-4 py-3 text-gray-700">{s.feedback || "—"}</td>
-                <td className="px-4 py-3 text-gray-500">{formatDate(s.publishedAt)}</td>
+                <td className="px-4 py-3 text-gray-500">{formatDate(s.publishedAt, tz)}</td>
               </tr>
             ))}
           </tbody>

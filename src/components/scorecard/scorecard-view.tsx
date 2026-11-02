@@ -30,7 +30,7 @@ function Total({ label, value, tone }: { label: string; value: string; tone?: "g
 }
 
 /** Read-only scorecard; renders the same for drafts, published views and printing. */
-export function ScorecardView({ data, showViolations = true }: { data: ScorecardData; showViolations?: boolean }) {
+export function ScorecardView({ data, showViolations = true, tz }: { data: ScorecardData; showViolations?: boolean; /** The viewer's time zone, for feedback dates */ tz?: string }) {
   const teamTotal = data.teamInfluence.reduce((s, t) => s + t.amount, 0);
   return (
     <div className="space-y-6">
@@ -202,7 +202,7 @@ export function ScorecardView({ data, showViolations = true }: { data: Scorecard
                                   {v.feedback.map((f, n) => (
                                     <li key={n} className="text-sm">
                                       <span className="text-xs text-gray-500">
-                                        <span className="font-medium text-gray-700">{f.author ?? "Former user"}</span> · {formatDate(f.createdAt)}
+                                        <span className="font-medium text-gray-700">{f.author ?? "Former user"}</span> · {formatDate(f.createdAt, tz)}
                                       </span>
                                       <p className="text-gray-900 whitespace-pre-wrap break-words">{f.body}</p>
                                     </li>

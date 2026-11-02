@@ -10,6 +10,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Input } from "@/components/ui/input";
 import { apiFetch } from "@/lib/client-api";
 import { formatDateTime } from "@/lib/utils";
+import { useTimeZone } from "@/components/time-zone";
 
 interface BackupRow {
   name: string;
@@ -21,6 +22,7 @@ const size = (bytes: number) => (bytes > 1024 * 1024 ? `${(bytes / 1024 / 1024).
 const labelOf = (name: string) => name.match(/^(?:hd-compliance|sympl-cm)-backup-\d{8}-\d{6}-(.+)\.json\.gz$/)?.[1] ?? null;
 
 export function BackupManager({ backups, dir }: { backups: BackupRow[]; dir: string }) {
+  const tz = useTimeZone();
   const router = useRouter();
   const fileInput = useRef<HTMLInputElement>(null);
   const [label, setLabel] = useState("");
@@ -66,7 +68,7 @@ export function BackupManager({ backups, dir }: { backups: BackupRow[]; dir: str
         router.push("/login");
         return;
       }
-      return `Restored the backup from ${formatDateTime(r.backupCreatedAt)} (${Object.values(r.restored).reduce((s, n) => s + n, 0).toLocaleString()} rows). The previous data was saved as ${r.safetyBackup}.`;
+      return `Restored the backup from ${formatDateTime(r.backupCreatedAt, tz)} (${Object.values(r.restored).reduce((s, n) => s + n, 0).toLocaleString()} rows). The previous data was saved as ${r.safetyBackup}.`;
     });
 
   return (
@@ -128,7 +130,7 @@ export function BackupManager({ backups, dir }: { backups: BackupRow[]; dir: str
                     {b.name}
                     {tag && <Badge variant={tag === "pre-restore" ? "warning" : tag === "scheduled" ? "secondary" : "outline"} className="ml-2">{tag}</Badge>}
                   </td>
-                  <td className="px-4 py-3 text-gray-500">{formatDateTime(b.createdAt)}</td>
+                  <td className="px-4 py-3 text-gray-500">{formatDateTime(b.createdAt, tz)}</td>
                   <td className="px-4 py-3 text-gray-500">{size(b.size)}</td>
                   <td className="px-4 py-3">
                     <div className="flex justify-end gap-1">

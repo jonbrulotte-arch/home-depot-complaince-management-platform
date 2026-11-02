@@ -4,8 +4,10 @@ import { requirePagePermission } from "@/lib/auth-guard";
 import { scorecardData } from "@/lib/scorecard-store";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import { Card } from "@/components/ui/card";
+import { getTimeZone } from "@/lib/time-zone-server";
 
 export default async function ScorecardsPage() {
+  const tz = await getTimeZone();
   await requirePagePermission("view.dashboard");
   const scorecards = await prisma.scorecard.findMany({
     where: { publishedAt: { not: null } },
@@ -46,7 +48,7 @@ export default async function ScorecardsPage() {
                   <td className="px-4 py-3 text-gray-700">{formatCurrency(d.totals.preOffset)}</td>
                   <td className="px-4 py-3 text-green-700">{formatCurrency(d.totals.recovered)}</td>
                   <td className="px-4 py-3 font-medium text-gray-900">{formatCurrency(d.totals.postOffset)}</td>
-                  <td className="px-4 py-3 text-gray-500">{formatDate(s.publishedAt)}</td>
+                  <td className="px-4 py-3 text-gray-500">{formatDate(s.publishedAt, tz)}</td>
                 </tr>
               );
             })}

@@ -14,6 +14,7 @@ import { ComplianceBadge, DispositionBadge, DisputeStatusBadge } from "@/compone
 import { AddIssueNote } from "./issue-notes";
 import { IssueAttachments } from "./issue-attachments";
 import { DeleteIssueButton } from "./delete-issue-button";
+import { getTimeZone } from "@/lib/time-zone-server";
 
 const th = "px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap";
 const td = "px-3 py-2 text-sm align-top";
@@ -28,6 +29,7 @@ function Text({ label, value }: { label: string; value: string | null }) {
 }
 
 export default async function IssuePage({ params }: { params: Promise<{ id: string }> }) {
+  const tz = await getTimeZone();
   const user = await requirePagePermission("issues.view");
   const found = await getIssue((await params).id);
   if (!found) notFound();
@@ -49,7 +51,7 @@ export default async function IssuePage({ params }: { params: Promise<{ id: stri
     ["THD program", issue.program?.name ?? "—"],
     ["Team responsible", issue.team ? TEAM_INFLUENCES[issue.team] : "—"],
     ["Follow-up date", issue.followUpDate ? formatUtcDate(issue.followUpDate) : "—"],
-    ["Resolved", issue.resolvedAt ? formatDateTime(issue.resolvedAt) : "—"],
+    ["Resolved", issue.resolvedAt ? formatDateTime(issue.resolvedAt, tz) : "—"],
   ];
 
   return (
@@ -66,9 +68,9 @@ export default async function IssuePage({ params }: { params: Promise<{ id: stri
             <Badge variant={status.variant}>{status.label}</Badge>
           </div>
           <p className="text-sm text-gray-500 mt-1">
-            Logged {formatDateTime(issue.createdAt)}
+            Logged {formatDateTime(issue.createdAt, tz)}
             {issue.createdBy ? ` by ${issue.createdBy.name}` : ""}
-            {issue.updatedAt.getTime() - issue.createdAt.getTime() > 1000 && ` · updated ${formatDateTime(issue.updatedAt)}${issue.updatedBy ? ` by ${issue.updatedBy.name}` : ""}`}
+            {issue.updatedAt.getTime() - issue.createdAt.getTime() > 1000 && ` · updated ${formatDateTime(issue.updatedAt, tz)}${issue.updatedBy ? ` by ${issue.updatedBy.name}` : ""}`}
           </p>
         </div>
         {canEdit && (
@@ -217,7 +219,7 @@ export default async function IssuePage({ params }: { params: Promise<{ id: stri
                 {issue.notes.map((n) => (
                   <li key={n.id} className="border-l-2 border-gray-200 pl-3">
                     <p className="text-xs text-gray-500">
-                      <span className="font-medium text-gray-700">{n.author?.name ?? "Former user"}</span> · {formatDateTime(n.createdAt)}
+                      <span className="font-medium text-gray-700">{n.author?.name ?? "Former user"}</span> · {formatDateTime(n.createdAt, tz)}
                     </p>
                     <p className="whitespace-pre-wrap text-sm text-gray-900">{n.body}</p>
                   </li>

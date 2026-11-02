@@ -87,7 +87,7 @@ export function OffsetsByProgramCard({ overview }: { overview: OffsetOverview })
 }
 
 /** Published reports, most recent month first, each linking to its scorecard */
-export function RecentReportsCard({ reports, title = "Recent reports" }: { reports: (PublishedReportSummary & { href: string | null })[]; title?: string }) {
+export function RecentReportsCard({ reports, title = "Recent reports", tz }: { reports: (PublishedReportSummary & { href: string | null })[]; title?: string; /** The viewer's time zone */ tz?: string }) {
   if (!reports.length) return null;
   return (
     <Card>
@@ -102,7 +102,7 @@ export function RecentReportsCard({ reports, title = "Recent reports" }: { repor
               <span>
                 <span className="text-sm font-medium text-gray-900">{r.title}</span>
                 <span className="block text-xs text-gray-500">
-                  Published {formatDate(r.publishedAt)} · {r.violations} violation(s) · {formatCurrency(r.postOffset)} post-dispute offsets
+                  Published {formatDate(r.publishedAt, tz)} · {r.violations} violation(s) · {formatCurrency(r.postOffset)} post-dispute offsets
                 </span>
               </span>
               <Badge variant="success">Published</Badge>

@@ -6,6 +6,7 @@ import { Paperclip, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { apiFetch } from "@/lib/client-api";
 import { formatDateTime } from "@/lib/utils";
+import { useTimeZone } from "@/components/time-zone";
 
 interface Attachment {
   id: string;
@@ -17,6 +18,7 @@ interface Attachment {
 
 /** An issue's files: download for everyone who can see the issue; attach and remove with issues.manage. */
 export function IssueAttachments({ issueId, attachments, canEdit }: { issueId: string; attachments: Attachment[]; canEdit: boolean }) {
+  const tz = useTimeZone();
   const router = useRouter();
   const input = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
@@ -62,7 +64,7 @@ export function IssueAttachments({ issueId, attachments, canEdit }: { issueId: s
                   {a.fileName}
                 </a>
                 <span className="text-xs text-gray-400">
-                  {a.size < 1024 ? "under 1 KB" : `${(a.size / 1024).toFixed(0)} KB`} · {formatDateTime(a.createdAt)}
+                  {a.size < 1024 ? "under 1 KB" : `${(a.size / 1024).toFixed(0)} KB`} · {formatDateTime(a.createdAt, tz)}
                   {a.uploadedBy ? ` · ${a.uploadedBy}` : ""}
                 </span>
               </div>

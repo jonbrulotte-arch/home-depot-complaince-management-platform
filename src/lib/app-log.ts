@@ -41,7 +41,7 @@ export const ACTION_LABELS: Record<string, string> = {
   "user.inviteResend": "Resent an invitation",
   "user.inviteRevoke": "Revoked an invitation",
   "user.inviteAccept": "Accepted an invitation",
-  "account.update": "Changed their name",
+  "account.update": "Changed their account settings",
   "account.password": "Changed their password",
   "account.passwordFailed": "Wrong current password",
   "user.update": "Changed a user",

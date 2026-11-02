@@ -13,8 +13,10 @@ import { ScorecardShareBar } from "@/components/scorecard/scorecard-share-bar";
 import { ensureShareToken } from "@/lib/scorecard-share";
 import { withFeedback } from "@/lib/feedback";
 import { ScorecardHitBeacon } from "@/components/scorecard/scorecard-hit-beacon";
+import { getTimeZone } from "@/lib/time-zone-server";
 
 export default async function ReportScorecardPage({ params }: { params: Promise<{ id: string }> }) {
+  const tz = await getTimeZone();
   const user = await requirePagePermission("reports.view");
   const { id } = await params;
   const report = await prisma.complianceReport.findUnique({
@@ -45,15 +47,15 @@ export default async function ReportScorecardPage({ params }: { params: Promise<
           </div>
           <p className="text-sm text-gray-500 mt-1">
             {scorecard
-              ? `Generated ${formatDateTime(scorecard.generatedAt)}${scorecard.generatedBy ? ` by ${scorecard.generatedBy.name}` : ""}` +
-                (scorecard.publishedAt ? ` · published ${formatDateTime(scorecard.publishedAt)}${scorecard.publishedBy ? ` by ${scorecard.publishedBy.name}` : ""}` : "")
+              ? `Generated ${formatDateTime(scorecard.generatedAt, tz)}${scorecard.generatedBy ? ` by ${scorecard.generatedBy.name}` : ""}` +
+                (scorecard.publishedAt ? ` · published ${formatDateTime(scorecard.publishedAt, tz)}${scorecard.publishedBy ? ` by ${scorecard.publishedBy.name}` : ""}` : "")
               : "Generate the scorecard from the report page once every dispute is submitted or withdrawn."}
           </p>
         </div>
         <ScorecardToolbar reportId={id} canRegenerate={report.status === "SCORECARD" && user.permissions.has("reports.advance")} canExport={Boolean(scorecard)} />
       </div>
       <ScorecardShareBar sharePath={shareToken ? `/s/${shareToken}` : null} feedbackHref={canFeedback ? `/feedback/${id}` : null} feedbackCount={feedbackCount} />
-      <ScorecardView data={data} />
+      <ScorecardView data={data} tz={tz} />
       {scorecard?.publishedAt && <ScorecardHitBeacon reportId={id} />}
     </div>
   );

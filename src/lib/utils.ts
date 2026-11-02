@@ -12,18 +12,22 @@ export function slugify(text: string): string {
     .replace(/(^-|-$)/g, "");
 }
 
-export function formatDate(date: Date | string | null | undefined): string {
+/** An app timestamp's date in the viewer's time zone (getTimeZone() on the server, useTimeZone() in the browser). */
+export function formatDate(date: Date | string | null | undefined, timeZone?: string): string {
   if (!date) return "—";
   return new Date(date).toLocaleDateString("en-US", {
+    timeZone,
     year: "numeric",
     month: "short",
     day: "numeric",
   });
 }
 
-export function formatDateTime(date: Date | string | null | undefined): string {
+/** An app timestamp's date and time in the viewer's time zone (getTimeZone() on the server, useTimeZone() in the browser). */
+export function formatDateTime(date: Date | string | null | undefined, timeZone?: string): string {
   if (!date) return "—";
   return new Date(date).toLocaleString("en-US", {
+    timeZone,
     year: "numeric",
     month: "short",
     day: "numeric",

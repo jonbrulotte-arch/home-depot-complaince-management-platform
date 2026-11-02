@@ -5,12 +5,14 @@ import { cn, formatDate, formatDateTime } from "@/lib/utils";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { RangeSelect } from "@/components/analytics/range-select";
 import { StatTiles } from "@/components/analytics/stat-tiles";
+import { getTimeZone } from "@/lib/time-zone-server";
 
 const th = "px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap";
 const td = "px-3 py-2 text-sm";
 const n = (v: number) => v.toLocaleString("en-US");
 
 export default async function ViewAnalyticsPage({ searchParams }: { searchParams: Promise<{ days?: string }> }) {
+  const tz = await getTimeZone();
   await requirePagePermission("admin.analytics");
   const days = parseRange((await searchParams).days);
   const { rows, totals } = await analyticsOverview(days);
@@ -69,7 +71,7 @@ export default async function ViewAnalyticsPage({ searchParams }: { searchParams
                         <div className="text-xs text-gray-500">{r.title}</div>
                       </td>
                       <td className={cn(td, "text-gray-700 whitespace-nowrap")}>
-                        {formatDate(r.publishedAt)}
+                        {formatDate(r.publishedAt, tz)}
                         <div className="text-xs text-gray-500">version {r.version}</div>
                       </td>
                       <td className={cn(td, "font-medium text-gray-900")}>{n(r.hits)}</td>
@@ -78,7 +80,7 @@ export default async function ViewAnalyticsPage({ searchParams }: { searchParams
                       <td className={cn(td, "text-gray-700")}>{n(r.sessions)}</td>
                       <td className={cn(td, "text-gray-700")}>{n(r.users)}</td>
                       <td className={cn(td, "text-gray-700")}>{n(r.publicHits)}</td>
-                      <td className={cn(td, r.lastAt ? "text-gray-700" : "text-gray-400", "whitespace-nowrap")}>{r.lastAt ? formatDateTime(r.lastAt) : "No hits"}</td>
+                      <td className={cn(td, r.lastAt ? "text-gray-700" : "text-gray-400", "whitespace-nowrap")}>{r.lastAt ? formatDateTime(r.lastAt, tz) : "No hits"}</td>
                     </tr>
                   ))}
                 </tbody>

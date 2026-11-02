@@ -13,6 +13,7 @@ import { DISPUTE_STATUS_LABELS } from "@/lib/disputes";
 import type { FeedbackItem } from "@/lib/feedback";
 import type { ScorecardViolation } from "@/lib/scorecard";
 import { cn, formatCurrency, formatDateTime } from "@/lib/utils";
+import { useTimeZone } from "@/components/time-zone";
 
 type Violation = ScorecardViolation & { lineId: string; poRecordId: string | null };
 
@@ -130,6 +131,7 @@ function ViolationFeedback({
   onAdded: (item: FeedbackItem) => void;
   onDeleted: (id: string) => void;
 }) {
+  const tz = useTimeZone();
   const [draft, setDraft] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -212,7 +214,7 @@ function ViolationFeedback({
             <li key={f.id} className="flex items-start gap-3">
               <div className="min-w-0 flex-1">
                 <p className="text-xs text-gray-500">
-                  <span className="font-medium text-gray-700">{f.author ?? "Former user"}</span> · {formatDateTime(f.createdAt)}
+                  <span className="font-medium text-gray-700">{f.author ?? "Former user"}</span> · {formatDateTime(f.createdAt, tz)}
                 </p>
                 <p className="text-sm text-gray-900 whitespace-pre-wrap break-words">{f.body}</p>
               </div>

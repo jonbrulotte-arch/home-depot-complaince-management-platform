@@ -46,7 +46,7 @@ export const HELP_TOPICS: HelpTopic[] = [
       { p: "The menu only shows what your role allows, and you start on the first page your role can open. If something you need is missing, ask an administrator to change your role under Admin › Roles & Access." },
       { h: "Your account" },
       {
-        p: "The gear icon at the bottom of the menu, next to sign out, opens **Account settings**: change the name others see, or change your password (you need your current one). If you've forgotten your password, ask an administrator to set a temporary one. New users join through an emailed invitation: open the link, choose your name and password, and you're signed in.",
+        p: "The gear icon at the bottom of the menu, next to sign out, opens **Account settings**: change the name others see, choose the **time zone** times are shown in, or change your password (you need your current one). Times (when something was logged, updated, imported or decided) follow your computer's time zone unless you pick one; dates and times from THD's exports are shown as THD sent them. If you've forgotten your password, ask an administrator to set a temporary one. New users join through an emailed invitation: open the link, choose your name and password, and you're signed in.",
       },
       { h: "Roles" },
       {

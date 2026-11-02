@@ -9,8 +9,10 @@ import { NewReportDialog } from "./new-report-dialog";
 import { getPeriodBasis } from "@/lib/periods";
 import { HistoricalDialog } from "./historical-dialog";
 import { Badge } from "@/components/ui/badge";
+import { getTimeZone } from "@/lib/time-zone-server";
 
 export default async function ReportsPage() {
+  const tz = await getTimeZone();
   const user = await requirePagePermission("reports.view");
   const basis = await getPeriodBasis();
   const [reports, programs] = await Promise.all([
@@ -69,7 +71,7 @@ export default async function ReportsPage() {
                     {r.historical && <Badge variant="outline">Historical</Badge>}
                   </div>
                 </td>
-                <td className="px-4 py-3 text-gray-500">{formatDate(r.createdAt)}{r.createdBy ? ` · ${r.createdBy.name}` : ""}</td>
+                <td className="px-4 py-3 text-gray-500">{formatDate(r.createdAt, tz)}{r.createdBy ? ` · ${r.createdBy.name}` : ""}</td>
               </tr>
             ))}
           </tbody>

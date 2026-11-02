@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { LogFiltersBar } from "./log-filters";
+import { getTimeZone } from "@/lib/time-zone-server";
 
 const PAGE_SIZE = 50;
 const th = "px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap";
@@ -16,6 +17,7 @@ const td = "px-3 py-2 text-sm align-top";
 type Search = LogFilters & { page?: string };
 
 export default async function AppLogPage({ searchParams }: { searchParams: Promise<Search> }) {
+  const tz = await getTimeZone();
   await requirePagePermission("admin.audit");
   const sp = await searchParams;
   const filters: LogFilters = { q: sp.q, userId: sp.userId, category: sp.category, from: sp.from, to: sp.to };
@@ -76,7 +78,7 @@ export default async function AppLogPage({ searchParams }: { searchParams: Promi
                     const failed = e.action === "auth.signInFailed";
                     return (
                       <tr key={e.id} className="border-t border-gray-200">
-                        <td className={cn(td, "text-gray-700 whitespace-nowrap")}>{formatDateTime(e.at)}</td>
+                        <td className={cn(td, "text-gray-700 whitespace-nowrap")}>{formatDateTime(e.at, tz)}</td>
                         <td className={td}>
                           {e.user ? (
                             <>

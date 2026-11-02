@@ -12,6 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { apiFetch } from "@/lib/client-api";
 import { cn, formatDateTime } from "@/lib/utils";
 import { InviteButton, PendingInvites, type InviteRow } from "./invites";
+import { useTimeZone } from "@/components/time-zone";
 
 interface UserRow {
   id: string;
@@ -24,6 +25,7 @@ interface UserRow {
 }
 
 export function UsersManager({ users, roles, meId, invites }: { users: UserRow[]; roles: { id: string; name: string }[]; meId: string; invites: InviteRow[] }) {
+  const tz = useTimeZone();
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
@@ -83,7 +85,7 @@ export function UsersManager({ users, roles, meId, invites }: { users: UserRow[]
                   </Select>
                 </td>
                 <td className="px-4 py-3">{u.active ? <Badge variant="success">Active</Badge> : <Badge variant="secondary">Inactive</Badge>}</td>
-                <td className="px-4 py-3 text-gray-500">{formatDateTime(u.lastLoginAt)}</td>
+                <td className="px-4 py-3 text-gray-500">{formatDateTime(u.lastLoginAt, tz)}</td>
                 <td className="px-4 py-3">
                   <div className="flex justify-end gap-1">
                     <button onClick={() => setResetFor(u)} className="p-1.5 rounded-md text-gray-400 hover:bg-gray-100 hover:text-gray-700" title="Set password">

@@ -12,6 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { apiFetch } from "@/lib/client-api";
 import { copyText } from "@/lib/clipboard";
 import { formatDateTime } from "@/lib/utils";
+import { useTimeZone } from "@/components/time-zone";
 
 export interface InviteRow {
   id: string;
@@ -141,6 +142,7 @@ export function InviteButton({ roles }: { roles: { id: string; name: string }[] 
 
 /** Invitations not yet accepted or revoked, with Resend (a new link) and Revoke. */
 export function PendingInvites({ invites }: { invites: InviteRow[] }) {
+  const tz = useTimeZone();
   const router = useRouter();
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -202,7 +204,7 @@ export function PendingInvites({ invites }: { invites: InviteRow[] }) {
                 <td className="px-4 py-3 text-gray-700">{i.roleName}</td>
                 <td className="px-4 py-3 text-gray-700">{i.invitedBy ?? "—"}</td>
                 <td className="px-4 py-3 text-gray-500">
-                  {formatDateTime(i.sentAt)}
+                  {formatDateTime(i.sentAt, tz)}
                   {!i.emailed && <div className="text-xs text-amber-700">Link given to the admin, not emailed</div>}
                 </td>
                 <td className="px-4 py-3">
@@ -211,7 +213,7 @@ export function PendingInvites({ invites }: { invites: InviteRow[] }) {
                   ) : (
                     <>
                       <Badge variant="warning">Pending</Badge>
-                      <div className="text-xs text-gray-500">expires {formatDateTime(i.expiresAt)}</div>
+                      <div className="text-xs text-gray-500">expires {formatDateTime(i.expiresAt, tz)}</div>
                     </>
                   )}
                 </td>

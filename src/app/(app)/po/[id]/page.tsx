@@ -14,6 +14,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ComplianceBadge, DispositionBadge, DisputeStatusBadge } from "@/components/shared/status-badges";
+import { getTimeZone } from "@/lib/time-zone-server";
 
 type Line = PoRecordView["record"]["lines"][number];
 
@@ -23,6 +24,7 @@ const fieldValue = (kind: string, v: unknown) =>
 const distinct = (values: (string | null | undefined)[]) => [...new Set(values.filter((v): v is string => Boolean(v && v.trim())))];
 
 export default async function PoRecordPage({ params }: { params: Promise<{ id: string }> }) {
+  const tz = await getTimeZone();
   const user = await requirePagePermission("view.polookup");
   const found = await getPoRecord((await params).id);
   if (!found) notFound();
@@ -48,8 +50,8 @@ export default async function PoRecordPage({ params }: { params: Promise<{ id: s
     ["DC / locations", distinct([record.dcNumber, ...lines.map((l) => l.dcNumber)]).join(", ") || "—"],
     ["Programs", distinct(lines.map((l) => l.metric.program.name)).join(", ")],
     ["Fiscal months", months.length ? `${fiscalLabel(months[0])}${months.length > 1 ? ` – ${fiscalLabel(months[months.length - 1])}` : ""} (FM ${months.join(", ")})` : "—"],
-    ["First imported", formatDateTime(record.firstSeenAt)],
-    ["Last imported", formatDateTime(record.lastSeenAt)],
+    ["First imported", formatDateTime(record.firstSeenAt, tz)],
+    ["Last imported", formatDateTime(record.lastSeenAt, tz)],
   ];
 
   const refs: [string, string[]][] = [
@@ -226,11 +228,11 @@ export default async function PoRecordPage({ params }: { params: Promise<{ id: s
       <div className="space-y-3">
         <h2 className="text-lg font-semibold text-gray-900">Compliance lines</h2>
         {lines.map((l) => (
-          <LineDetail key={l.id} line={l} reasonCode={l.review?.reasonCodeId ? (reasonCode.get(l.review.reasonCodeId) ?? null) : null} reports={reportsFor(l)} canSeeReports={canSeeReports} />
+          <LineDetail key={l.id} line={l} reasonCode={l.review?.reasonCodeId ? (reasonCode.get(l.review.reasonCodeId) ?? null) : null} reports={reportsFor(l)} canSeeReports={canSeeReports} tz={tz} />
         ))}
       </div>
 
-      <Activity lines={lines} />
+      <Activity lines={lines} tz={tz} />
     </div>
   );
 }
@@ -245,7 +247,7 @@ function Stat({ label, value, sub, tone }: { label: string; value: string; sub?:
   );
 }
 
-function LineDetail({ line: l, reasonCode, reports, canSeeReports }: { line: Line; reasonCode: string | null; reports: { id: string; title: string; historical: boolean }[]; canSeeReports: boolean }) {
+function LineDetail({ line: l, reasonCode, reports, canSeeReports, tz }: { line: Line; reasonCode: string | null; reports: { id: string; title: string; historical: boolean }[]; canSeeReports: boolean; tz: string }) {
   const record = l as unknown as Record<string, unknown>;
   const fields = LINE_FIELD_LABELS.filter(([key]) => key !== "poNumber" && record[key] != null && record[key] !== "");
   const raw = Object.entries((l.raw ?? {}) as Record<string, unknown>);
@@ -283,7 +285,7 @@ function LineDetail({ line: l, reasonCode, reports, canSeeReports }: { line: Lin
             {l.batch.fileName} · sheet &quot;{l.sourceSheet}&quot;, row {l.sourceRow}
           </p>
           <p className="text-gray-500">
-            {l.batch.source === "backfill" ? "Loaded from the archive" : `Imported ${formatDateTime(l.batch.importedAt)}${l.batch.importedBy ? ` by ${l.batch.importedBy.name}` : ""}`}
+            {l.batch.source === "backfill" ? "Loaded from the archive" : `Imported ${formatDateTime(l.batch.importedAt, tz)}${l.batch.importedBy ? ` by ${l.batch.importedBy.name}` : ""}`}
             {l.batch.exportKind !== "UNKNOWN" && ` · ${l.batch.exportKind.replace("_", " ").toLowerCase()} export`}
             {l.batch.source !== "backfill" && ` · ${periodLabel(l.batch.period)} import`}
             {` · received ${fiscalLabel(l.receivedMonth)}`}
@@ -327,7 +329,7 @@ function LineDetail({ line: l, reasonCode, reports, canSeeReports }: { line: Lin
               </dl>
             )}
             <p className="text-xs text-gray-400">
-              {l.review.reviewedAt ? `Reviewed ${formatDateTime(l.review.reviewedAt)}` : `Updated ${formatDateTime(l.review.updatedAt)}`}
+              {l.review.reviewedAt ? `Reviewed ${formatDateTime(l.review.reviewedAt, tz)}` : `Updated ${formatDateTime(l.review.updatedAt, tz)}`}
               {l.review.reviewer ? ` by ${l.review.reviewer.name}` : ""}
             </p>
           </Section>
@@ -344,9 +346,9 @@ function LineDetail({ line: l, reasonCode, reports, canSeeReports }: { line: Lin
                 [
                   ["Disputed", formatCurrency(Number(l.dispute.amountDisputed))],
                   ["Recovered", l.dispute.amountRecovered == null ? "—" : formatCurrency(Number(l.dispute.amountRecovered))],
-                  ["Submitted", l.dispute.submittedAt ? formatDateTime(l.dispute.submittedAt) : "—"],
+                  ["Submitted", l.dispute.submittedAt ? formatDateTime(l.dispute.submittedAt, tz) : "—"],
                   ["SPM reference", l.dispute.spmReference ?? "—"],
-                  ["Decided", l.dispute.decidedAt ? formatDateTime(l.dispute.decidedAt) : "—"],
+                  ["Decided", l.dispute.decidedAt ? formatDateTime(l.dispute.decidedAt, tz) : "—"],
                   ["THD decision code", l.dispute.decisionCode ?? "—"],
                 ] as const
               ).map(([label, value]) => (
@@ -370,7 +372,7 @@ function LineDetail({ line: l, reasonCode, reports, canSeeReports }: { line: Lin
                     ) : (
                       a.fileName
                     )}
-                    <span className="text-xs text-gray-400">{Math.ceil(a.size / 1024)} KB · {formatDateTime(a.uploadedAt)}</span>
+                    <span className="text-xs text-gray-400">{Math.ceil(a.size / 1024)} KB · {formatDateTime(a.uploadedAt, tz)}</span>
                   </li>
                 ))}
               </ul>
@@ -379,7 +381,7 @@ function LineDetail({ line: l, reasonCode, reports, canSeeReports }: { line: Lin
               <ol className="space-y-1 border-l border-gray-200 pl-3">
                 {l.dispute.events.map((e) => (
                   <li key={e.id} className="text-xs text-gray-600">
-                    <span className="text-gray-400">{formatDateTime(e.at)}</span>
+                    <span className="text-gray-400">{formatDateTime(e.at, tz)}</span>
                     {e.user ? ` · ${e.user.name}` : ""}
                     {e.toStatus ? ` · ${e.fromStatus ? `${DISPUTE_STATUS_LABELS[e.fromStatus]} → ` : ""}${DISPUTE_STATUS_LABELS[e.toStatus]}` : ""}
                     {e.body ? ` · ${e.body}` : ""}
@@ -395,7 +397,7 @@ function LineDetail({ line: l, reasonCode, reports, canSeeReports }: { line: Lin
             {l.feedback.map((f) => (
               <div key={f.id}>
                 <p className="text-xs text-gray-500">
-                  <span className="font-medium text-gray-700">{f.author?.name ?? "Former user"}</span> · {formatDateTime(f.createdAt)}
+                  <span className="font-medium text-gray-700">{f.author?.name ?? "Former user"}</span> · {formatDateTime(f.createdAt, tz)}
                 </p>
                 <p className="whitespace-pre-wrap">{f.body}</p>
               </div>
@@ -431,7 +433,7 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 }
 
 /** Everything that happened to this PO's lines, newest first */
-function Activity({ lines }: { lines: Line[] }) {
+function Activity({ lines, tz }: { lines: Line[]; tz: string }) {
   const events: { at: Date; text: string }[] = [];
   const label = (l: Line) => `${l.metric.program.name} · ${l.metric.name} (${fiscalLabel(l.fiscalMonth)})`;
   const imports = new Map<string, { at: Date; text: string }>();
@@ -456,7 +458,7 @@ function Activity({ lines }: { lines: Line[] }) {
         <ol className="space-y-2 border-l border-gray-200 pl-4">
           {events.map((e, i) => (
             <li key={i} className="text-sm text-gray-700">
-              <span className="text-xs text-gray-400">{formatDateTime(e.at)}</span> · {e.text}
+              <span className="text-xs text-gray-400">{formatDateTime(e.at, tz)}</span> · {e.text}
             </li>
           ))}
         </ol>
