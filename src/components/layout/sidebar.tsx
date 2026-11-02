@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { signOut } from "next-auth/react";
 import { useState } from "react";
 import {
@@ -61,6 +61,7 @@ const isActive = (pathname: string, href: string) => pathname === href || pathna
 
 export function Sidebar({ user, permissions, branding }: { user: { name: string; role: string }; permissions: Permission[]; branding: Branding }) {
   const pathname = usePathname();
+  const router = useRouter();
   const [collapsed, setCollapsed] = useState(false);
   const granted = new Set(permissions);
   const visibleNav = navItems.filter((i) => granted.has(i.permission));
@@ -122,7 +123,13 @@ export function Sidebar({ user, permissions, branding }: { user: { name: string;
               <Settings className="h-4 w-4" />
             </Link>
             <button
-              onClick={() => signOut({ callbackUrl: "/login" })}
+              onClick={async () => {
+                // Auth.js would redirect to an absolute URL built from the server's own address
+                // (http://localhost:8014 behind no proxy), so go to /login on the address in use
+                await signOut({ redirect: false });
+                router.replace("/login");
+                router.refresh();
+              }}
               className="p-1.5 rounded-md text-gray-400 hover:text-white hover:bg-gray-800"
               title="Sign out"
             >

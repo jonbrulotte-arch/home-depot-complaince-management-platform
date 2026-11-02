@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { requireApiPermission } from "@/lib/auth-guard";
 import { badRequest, notFound, parseJson, type IdParams } from "@/lib/api";
 import { audit } from "@/lib/audit";
+import { voidResets } from "@/lib/password-reset";
 
 const patchSchema = z.object({
   name: z.string().trim().min(1).max(200).optional(),
@@ -31,6 +32,7 @@ export async function PATCH(req: Request, { params }: IdParams) {
     where: { id },
     data: { ...data, ...(password ? { passwordHash: await bcrypt.hash(password, 12) } : {}) },
   });
+  if (password) await voidResets(id);
   await audit(guard.user.id, "user.update", "User", id, { ...data, passwordChanged: Boolean(password) });
   return NextResponse.json({ ok: true });
 }

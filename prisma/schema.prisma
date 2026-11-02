@@ -53,6 +53,7 @@ model User {
   issueNotes          IssueNote[]
   issueAttachments    IssueAttachment[]
   invitesSent         UserInvite[]
+  passwordResets      PasswordReset[]
 }
 
 model AuditLog {
@@ -805,4 +806,21 @@ model UserInvite {
   revokedAt   DateTime?
 
   @@index([email])
+}
+
+/// A "forgot password" link (src/lib/password-reset.ts): works once, for RESET_MINUTES
+model PasswordReset {
+  id          String    @id @default(cuid())
+  userId      String
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /// sha256 of the link's token; the token itself is only ever in the email
+  tokenHash   String    @unique
+  createdAt   DateTime  @default(now())
+  expiresAt   DateTime
+  usedAt      DateTime?
+  /// Address the request came from, to limit requests per address
+  requestedIp String?
+
+  @@index([userId])
+  @@index([requestedIp, createdAt])
 }

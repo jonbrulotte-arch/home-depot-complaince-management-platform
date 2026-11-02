@@ -6,6 +6,7 @@ import { getCurrentUser } from "@/lib/auth-guard";
 import { badRequest, parseJson } from "@/lib/api";
 import { audit } from "@/lib/audit";
 import { PASSWORD_MIN, hashPassword } from "@/lib/passwords";
+import { voidResets } from "@/lib/password-reset";
 
 const schema = z.object({
   currentPassword: z.string().min(1, "is required").max(200),
@@ -25,6 +26,7 @@ export async function POST(req: Request) {
   }
   if (body.data.newPassword === body.data.currentPassword) return badRequest("Choose a password different from the current one");
   await prisma.user.update({ where: { id: user.id }, data: { passwordHash: await hashPassword(body.data.newPassword) } });
+  await voidResets(user.id);
   await audit(user.id, "account.password", "User", user.id);
   return NextResponse.json({ ok: true });
 }

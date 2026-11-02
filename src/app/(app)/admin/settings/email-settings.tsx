@@ -31,7 +31,7 @@ export function EmailSettings({ configured, sender, missing }: { configured: boo
     <Card>
       <CardHeader className="pb-3">
         <CardTitle>Email Configuration (MS Graph)</CardTitle>
-        <CardDescription>Used for user invitations. Requires an Azure AD App Registration with the Mail.Send application permission.</CardDescription>
+        <CardDescription>Used for user invitations and password reset emails. Requires an Azure AD App Registration with the Mail.Send application permission.</CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="flex items-center justify-between text-sm">

@@ -5,6 +5,8 @@ export const ACTION_LABELS: Record<string, string> = {
   "auth.signIn": "Signed in",
   "auth.signInFailed": "Failed sign-in",
   "auth.signOut": "Signed out",
+  "auth.passwordResetRequest": "Asked for a password reset link",
+  "auth.passwordReset": "Reset their password with an emailed link",
   "report.create": "Created a compliance report",
   "report.update": "Updated a compliance report",
   "report.status": "Moved a report to another stage",
