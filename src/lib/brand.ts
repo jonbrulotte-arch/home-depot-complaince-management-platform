@@ -1,6 +1,6 @@
 // Branding values safe to import anywhere (no database access).
 
-export const DEFAULT_SITE_NAME = "Sympl CM";
+export const DEFAULT_SITE_NAME = "HD Compliance Platform";
 export const MAX_LOGO_BYTES = 1024 * 1024;
 export const LOGO_TYPES = ["image/png", "image/jpeg", "image/gif", "image/webp", "image/svg+xml"] as const;
 

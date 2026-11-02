@@ -18,7 +18,7 @@ interface BackupRow {
 }
 
 const size = (bytes: number) => (bytes > 1024 * 1024 ? `${(bytes / 1024 / 1024).toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1024))} KB`);
-const labelOf = (name: string) => name.match(/^sympl-cm-backup-\d{8}-\d{6}-(.+)\.json\.gz$/)?.[1] ?? null;
+const labelOf = (name: string) => name.match(/^(?:hd-compliance|sympl-cm)-backup-\d{8}-\d{6}-(.+)\.json\.gz$/)?.[1] ?? null;
 
 export function BackupManager({ backups, dir }: { backups: BackupRow[]; dir: string }) {
   const router = useRouter();

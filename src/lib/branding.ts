@@ -4,7 +4,7 @@ import { DEFAULT_SITE_NAME, type Branding } from "@/lib/brand";
 
 export { DEFAULT_SITE_NAME, type Branding };
 
-/** Effective branding for this request; the default Sympl CM look when custom branding is off. */
+/** Effective branding for this request; the default HD Compliance Platform look when custom branding is off. */
 export const getBranding = cache(async (): Promise<Branding> => {
   const s = await prisma.siteSettings.findUnique({
     where: { id: "site" },

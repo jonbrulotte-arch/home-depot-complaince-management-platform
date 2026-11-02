@@ -29,6 +29,13 @@ export const ACTION_LABELS: Record<string, string> = {
   "package.export": "Exported a chargeback package",
   "summary.export": "Exported a Summarizer PDF",
   "appLog.export": "Exported the App Log",
+  "issue.create": "Logged an issue",
+  "issue.update": "Updated an issue",
+  "issue.delete": "Deleted an issue",
+  "issue.note": "Added an issue update",
+  "issue.attach": "Attached a file to an issue",
+  "issue.detach": "Removed a file from an issue",
+  "issue.export": "Exported the Issue Log",
   "user.create": "Added a user",
   "user.update": "Changed a user",
   "role.create": "Added a role",
@@ -56,6 +63,7 @@ export const LOG_CATEGORIES = [
   { key: "reports", label: "Reports & imports", prefixes: ["report", "reports", "import", "line", "period"] },
   { key: "disputes", label: "Disputes", prefixes: ["dispute", "disputes"] },
   { key: "scorecards", label: "Scorecards & feedback", prefixes: ["scorecard", "feedback"] },
+  { key: "issues", label: "Issue Log", prefixes: ["issue"] },
   { key: "exports", label: "Lookups & exports", prefixes: ["package", "summary", "appLog"] },
   { key: "access", label: "Users & roles", prefixes: ["user", "role"] },
   { key: "config", label: "Configuration & settings", prefixes: ["metric", "rule", "alias", "reasonCode", "settings"] },
@@ -130,6 +138,8 @@ export function entryLink(entity: string, entityId: string | null, details: unkn
       return reportId ? `/reports/${reportId}/scorecard` : null;
     case "ScorecardFeedback":
       return reportId ? `/feedback/${reportId}` : null;
+    case "Issue":
+      return entityId ? `/issues/${entityId}` : "/issues";
     case "ChargebackPackage":
       return entityId ? `/po-lookup/package/${encodeURIComponent(entityId)}` : null;
     case "User":

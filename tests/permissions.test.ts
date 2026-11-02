@@ -4,13 +4,14 @@ import { DEFAULT_ROLES, homePath, type Permission } from "@/lib/permissions";
 const role = (name: string) => new Set(DEFAULT_ROLES.find((r) => r.name === name)!.permissions);
 
 describe("roles and landing pages", () => {
-  it("has a Warehouse role limited to scorecard feedback", () => {
-    expect([...role("Warehouse")].sort()).toEqual(["feedback.submit", "feedback.view"]);
+  it("has a Warehouse role limited to scorecard feedback and the Issue Log", () => {
+    expect([...role("Warehouse")].sort()).toEqual(["feedback.submit", "feedback.view", "issues.manage", "issues.view"]);
   });
 
-  it("has a read-only Finance role for PO Lookup, Scorecard Feedback and the Summarizer", () => {
-    expect([...role("Finance")].sort()).toEqual(["feedback.view", "summarizer.use", "view.polookup"]);
+  it("has a read-only Finance role for PO Lookup, Scorecard Feedback, the Issue Log and the Summarizer", () => {
+    expect([...role("Finance")].sort()).toEqual(["feedback.view", "issues.view", "summarizer.use", "view.polookup"]);
     expect(role("Finance").has("feedback.submit")).toBe(false);
+    expect(role("Finance").has("issues.manage")).toBe(false);
   });
 
   it("lets Analysts use the Summarizer but not Viewers or the Warehouse", () => {

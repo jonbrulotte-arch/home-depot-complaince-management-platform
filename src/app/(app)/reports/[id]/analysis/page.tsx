@@ -5,6 +5,9 @@ import { prisma } from "@/lib/prisma";
 import { requirePagePermission } from "@/lib/auth-guard";
 import { LINE_FIELD_LABELS } from "@/lib/line-fields";
 import { getPeriodField, linesInPeriod } from "@/lib/periods";
+import { issuesForPoRecords } from "@/lib/issues-data";
+import { ISSUE_STATUSES, issueLabel } from "@/lib/issues";
+import { formatUtcDate } from "@/lib/utils";
 import { TriageWorkspace, type TriageLine } from "./triage-workspace";
 
 export default async function AnalysisPage({ params }: { params: Promise<{ id: string }> }) {
@@ -25,7 +28,8 @@ export default async function AnalysisPage({ params }: { params: Promise<{ id: s
 
   const metricIds = [...new Set(lines.map((l) => l.metricId))];
   const poNumbers = [...new Set(lines.map((l) => l.poNumber).filter((p): p is string => Boolean(p)))];
-  const [reasonCodes, history] = await Promise.all([
+  const recordIds = [...new Set(lines.flatMap((l) => (l.poRecordId ? [l.poRecordId] : [])))];
+  const [reasonCodes, history, issues] = await Promise.all([
     prisma.disputeReasonCode.findMany({ where: { metricId: { in: metricIds }, active: true }, orderBy: { code: "asc" } }),
     poNumbers.length
       ? prisma.complianceLine.findMany({
@@ -34,6 +38,7 @@ export default async function AnalysisPage({ params }: { params: Promise<{ id: s
           orderBy: { fiscalMonth: "desc" },
         })
       : Promise.resolve([]),
+    user.permissions.has("issues.view") ? issuesForPoRecords(recordIds) : Promise.resolve(new Map<string, never[]>()),
   ]);
 
   const toTriage = (l: (typeof lines)[number]): TriageLine => {
@@ -54,6 +59,14 @@ export default async function AnalysisPage({ params }: { params: Promise<{ id: s
       }),
       raw: l.raw as Record<string, string | number | boolean | null>,
       dispute: l.dispute,
+      issues: (l.poRecordId ? (issues.get(l.poRecordId) ?? []) : []).map((i) => ({
+        id: i.id,
+        label: issueLabel(i.number),
+        title: i.title,
+        date: formatUtcDate(i.issueDate),
+        status: ISSUE_STATUSES[i.status].label,
+        statusVariant: ISSUE_STATUSES[i.status].variant,
+      })),
       review: l.review
         ? {
             disposition: l.review.disposition,

@@ -36,6 +36,8 @@ export interface TriageLine {
   raw: Record<string, string | number | boolean | null>;
   review: TriageReview | null;
   dispute: { id: string; status: DisputeStatus } | null;
+  /** Issue Log entries for this line's PO; only for people who can see the Issue Log */
+  issues: { id: string; label: string; title: string; date: string; status: string; statusVariant: "destructive" | "warning" | "success" | "secondary" }[];
 }
 
 interface ReasonCode {
@@ -290,6 +292,27 @@ function LineDetail({
           </table>
         )}
       </div>
+
+      {line.issues.length > 0 && (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 p-4">
+          <p className="mb-2 text-sm font-semibold text-gray-900">Issues logged for this PO</p>
+          <ul className="space-y-1 text-sm">
+            {line.issues.map((i) => (
+              <li key={i.id} className="flex items-center justify-between gap-2">
+                <span className="min-w-0">
+                  <Link href={`/issues/${i.id}`} target="_blank" className="font-medium text-blue-600 hover:underline">
+                    {i.label}
+                  </Link>{" "}
+                  <span className="text-gray-700">
+                    {i.title} · {i.date}
+                  </span>
+                </span>
+                <Badge variant={i.statusVariant}>{i.status}</Badge>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       {history.length > 0 && (
         <div className="rounded-lg border border-gray-200 bg-white p-4">

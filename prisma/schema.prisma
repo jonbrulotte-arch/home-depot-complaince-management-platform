@@ -45,6 +45,10 @@ model User {
   scorecardsPublished Scorecard[]         @relation("ScorecardPublishedBy")
   scorecardFeedback   ScorecardFeedback[]
   scorecardHits       ScorecardHit[]
+  issuesCreated       Issue[]             @relation("IssueCreatedBy")
+  issuesUpdated       Issue[]             @relation("IssueUpdatedBy")
+  issueNotes          IssueNote[]
+  issueAttachments    IssueAttachment[]
 }
 
 model AuditLog {
@@ -78,6 +82,7 @@ model Program {
   shipmentCounts ShipmentCount[]
   lineCounts     LineCount[]
   packages       ChargebackPackage[]
+  issues         Issue[]
 }
 
 model Metric {
@@ -661,7 +666,7 @@ model ChargebackPackage {
 /// Single row (id "site") of platform-wide settings.
 model SiteSettings {
   id                   String      @id @default("site")
-  /// When off, the default Sympl CM branding is shown
+  /// When off, the default HD Compliance Platform branding is shown
   brandingEnabled      Boolean     @default(false)
   siteName             String?
   logo                 Bytes?
@@ -679,4 +684,98 @@ enum PeriodBasis {
   RECEIVED_MONTH
   /// THD's fiscal month on each line
   FISCAL_MONTH
+}
+
+// ─── Issue Log ─────────────────────────────────────────────────
+
+enum IssueStatus {
+  OPEN
+  IN_PROGRESS
+  RESOLVED
+  CLOSED
+}
+
+enum IssueSeverity {
+  LOW
+  MEDIUM
+  HIGH
+}
+
+/// Something that went wrong with one or more POs, logged when it happens; tied to compliance data by PO number
+model Issue {
+  id             String            @id @default(cuid())
+  /// Shown as ISS-0001
+  number         Int               @unique @default(autoincrement())
+  title          String
+  issueDate      DateTime          @db.Date
+  status         IssueStatus       @default(OPEN)
+  severity       IssueSeverity     @default(MEDIUM)
+  /// One of ISSUE_CATEGORIES (src/lib/issues.ts)
+  category       String
+  programId      String?
+  program        Program?          @relation(fields: [programId], references: [id], onDelete: SetNull)
+  team           TeamInfluence?
+  /// HD Support ticket number
+  hdTicket       String?
+  description    String
+  actionsTaken   String?
+  consequences   String?
+  peopleInvolved String?
+  /// BOL, PRO, customer order, tracking and other references
+  references     String?
+  resolution     String?
+  followUpDate   DateTime?         @db.Date
+  resolvedAt     DateTime?
+  createdById    String?
+  createdBy      User?             @relation("IssueCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  updatedById    String?
+  updatedBy      User?             @relation("IssueUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+  pos            IssuePo[]
+  notes          IssueNote[]
+  attachments    IssueAttachment[]
+
+  @@index([issueDate])
+  @@index([status])
+}
+
+/// A PO an issue is about, as typed; matched to PO records (and so to compliance lines) when they are imported
+model IssuePo {
+  id           String    @id @default(cuid())
+  issueId      String
+  issue        Issue     @relation(fields: [issueId], references: [id], onDelete: Cascade)
+  poNumber     String
+  /// Picks the use of a reused PO number; without it, the use created on or before the issue date
+  poCreateDate DateTime? @db.Date
+
+  @@index([poNumber])
+  @@index([issueId])
+}
+
+model IssueNote {
+  id        String   @id @default(cuid())
+  issueId   String
+  issue     Issue    @relation(fields: [issueId], references: [id], onDelete: Cascade)
+  body      String
+  authorId  String?
+  author    User?    @relation(fields: [authorId], references: [id], onDelete: SetNull)
+  createdAt DateTime @default(now())
+
+  @@index([issueId])
+}
+
+model IssueAttachment {
+  id           String   @id @default(cuid())
+  issueId      String
+  issue        Issue    @relation(fields: [issueId], references: [id], onDelete: Cascade)
+  fileName     String
+  contentType  String
+  size         Int
+  data         Bytes
+  uploadedById String?
+  uploadedBy   User?    @relation(fields: [uploadedById], references: [id], onDelete: SetNull)
+  createdAt    DateTime @default(now())
+
+  @@index([issueId])
 }

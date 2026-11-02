@@ -1,16 +1,17 @@
 import type { Branding } from "@/lib/brand";
 import { cn } from "@/lib/utils";
 
-/** Logo and site name: the default "Sympl CM" wordmark, or the custom logo and name. */
+/** Logo and site name: the default "HD Compliance Platform" wordmark, or the custom logo and name. */
 export function BrandMark({ branding, size = "sidebar", collapsed = false }: { branding: Branding; size?: "sidebar" | "login"; collapsed?: boolean }) {
   const text = size === "login" ? "text-3xl" : "text-lg";
   const logo = size === "login" ? "h-10 max-w-[160px]" : "h-7 max-w-[56px]";
 
   if (!branding.custom) {
-    if (collapsed) return <span className="text-lg font-bold text-white mx-auto">S</span>;
+    if (collapsed) return <span className="text-lg font-bold text-white mx-auto">H</span>;
+    // The sidebar is narrow, so the wordmark drops to the size long custom names use
     return (
-      <span className={cn(text, "font-bold text-white tracking-tight")}>
-        Sympl <span className="text-blue-400">CM</span>
+      <span className={cn(size === "login" ? text : "text-sm leading-tight", "font-bold text-white tracking-tight")}>
+        HD Compliance <span className="text-blue-400">Platform</span>
       </span>
     );
   }

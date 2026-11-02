@@ -1,14 +1,17 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ChevronLeft, ChevronRight, Paperclip } from "lucide-react";
+import { ChevronLeft, ChevronRight, Paperclip, Plus } from "lucide-react";
 import { requirePagePermission } from "@/lib/auth-guard";
 import { getPoRecord, type PoRecordView } from "@/lib/po-record";
+import { issuesForPoRecords } from "@/lib/issues-data";
+import { ISSUE_STATUSES, issueLabel } from "@/lib/issues";
 import { fiscalLabel } from "@/lib/fiscal";
 import { DISPUTE_STATUS_LABELS } from "@/lib/disputes";
 import { LINE_FIELD_LABELS, TEAM_INFLUENCES } from "@/lib/line-fields";
 import { periodLabel } from "@/lib/shipment-ranges";
 import { cn, formatCurrency, formatDateTime, formatUtcDate, formatUtcDateTime } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ComplianceBadge, DispositionBadge, DisputeStatusBadge } from "@/components/shared/status-badges";
 
@@ -26,6 +29,8 @@ export default async function PoRecordPage({ params }: { params: Promise<{ id: s
   const { record, otherUses, reasonCode, reportsFor } = found;
   const { lines } = record;
   const canSeeReports = user.permissions.has("reports.view");
+  const canSeeIssues = user.permissions.has("issues.view");
+  const issues = canSeeIssues ? ((await issuesForPoRecords([record.id])).get(record.id) ?? []) : [];
 
   const violations = lines.filter((l) => !l.isCompliant);
   const resolved = violations.filter((l) => l.review?.disposition === "RESOLVED");
@@ -175,6 +180,46 @@ export default async function PoRecordPage({ params }: { params: Promise<{ id: s
               </tbody>
             </table>
           </div>
+        </Card>
+      )}
+
+      {canSeeIssues && (
+        <Card className="overflow-hidden">
+          <CardHeader className="flex flex-row items-center justify-between gap-4 pb-3">
+            <CardTitle>Issue Log</CardTitle>
+            {user.permissions.has("issues.manage") && (
+              <Button asChild variant="outline" size="sm">
+                <Link href={`/issues/new?po=${encodeURIComponent(record.poNumber)}${record.poCreateDate ? `&poDate=${record.poCreateDate.toISOString().slice(0, 10)}` : ""}`}>
+                  <Plus className="h-4 w-4 mr-1.5" />
+                  Log an issue for this PO
+                </Link>
+              </Button>
+            )}
+          </CardHeader>
+          <CardContent className={issues.length ? "p-0" : undefined}>
+            {issues.length === 0 ? (
+              <p className="text-sm text-gray-400">No issues logged for this PO.</p>
+            ) : (
+              <ul className="divide-y divide-gray-200 border-t border-gray-200">
+                {issues.map((i) => (
+                  <li key={i.id} className="flex flex-wrap items-center justify-between gap-3 px-6 py-3 text-sm">
+                    <span>
+                      <Link href={`/issues/${i.id}`} className="font-medium text-blue-600 hover:underline">
+                        {issueLabel(i.number)}
+                      </Link>{" "}
+                      <span className="text-gray-900">{i.title}</span>
+                      <span className="text-gray-500">
+                        {" "}
+                        · {formatUtcDate(i.issueDate)} · {i.category}
+                        {i.hdTicket ? ` · ticket ${i.hdTicket}` : ""}
+                      </span>
+                    </span>
+                    <Badge variant={ISSUE_STATUSES[i.status].variant}>{ISSUE_STATUSES[i.status].label}</Badge>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </CardContent>
         </Card>
       )}
 

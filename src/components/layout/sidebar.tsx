@@ -23,6 +23,7 @@ import {
   LifeBuoy,
   BarChart3,
   ScrollText,
+  NotebookPen,
 } from "lucide-react";
 import { cn, getInitials } from "@/lib/utils";
 import type { Permission } from "@/lib/permissions";
@@ -37,6 +38,7 @@ const navItems: NavItem[] = [
   { href: "/reports", label: "Compliance Reports", icon: ClipboardCheck, permission: "reports.view" },
   { href: "/disputes", label: "Disputes", icon: Gavel, permission: "reports.view" },
   { href: "/po-lookup", label: "PO Lookup", icon: Search, permission: "view.polookup" },
+  { href: "/issues", label: "Issue Log", icon: NotebookPen, permission: "issues.view" },
   { href: "/feedback", label: "Scorecard Feedback", icon: MessageSquare, permission: "feedback.view" },
   { href: "/summarizer", label: "Summarizer", icon: FileText, permission: "summarizer.use" },
 ];

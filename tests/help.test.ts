@@ -12,8 +12,8 @@ describe("Help & Docs", () => {
   });
 
   it("shows each role the topics for the parts it uses", () => {
-    expect(ids(role("Warehouse"))).toEqual(["getting-started", "feedback", "faq", "glossary"]);
-    expect(ids(role("Finance"))).toEqual(["getting-started", "feedback", "summarizer", "po-lookup", "faq", "glossary"]);
+    expect(ids(role("Warehouse"))).toEqual(["getting-started", "feedback", "issue-log", "faq", "glossary"]);
+    expect(ids(role("Finance"))).toEqual(["getting-started", "feedback", "summarizer", "po-lookup", "issue-log", "faq", "glossary"]);
     expect(ids(new Set(ALL_PERMISSIONS))).toEqual(HELP_TOPICS.map((t) => t.id));
     // Show all topics
     expect(ids(role("Warehouse"), true)).toHaveLength(HELP_TOPICS.length);

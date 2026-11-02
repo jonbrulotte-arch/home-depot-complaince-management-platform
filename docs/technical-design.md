@@ -1,8 +1,8 @@
-# Sympl CM: Technical Design Document
+# HD Compliance Platform: Technical Design Document
 
 | | |
 |---|---|
-| **System** | Sympl CM, THD Compliance Management Platform (the default brand; admins can rename it) |
+| **System** | HD Compliance Platform, THD compliance management for JS Products (the default name; admins can rename it under Admin › Settings › Custom Branding) |
 | **Organisation** | JS Products (THD P-Vendor 875062) |
 | **Document status** | Current, describes the system as built |
 | **Last updated** | October 2026 |
@@ -57,10 +57,10 @@ Each month JS Products receives compliance results from The Home Depot (THD) thr
 | Role | Purpose | Permissions |
 |---|---|---|
 | Admin | Everything (always has every permission, including ones added later) | all |
-| Analyst | Runs the monthly workflow | `view.dashboard`, `view.polookup`, `reports.*`, `lines.triage`, `disputes.manage`, `feedback.view`, `feedback.submit`, `summarizer.use` |
-| Viewer | Read-only results | `view.dashboard`, `view.polookup` |
-| Warehouse | Comments on published violations | `feedback.view`, `feedback.submit` |
-| Finance | Read-only lookup and summaries, chargeback packages | `view.polookup`, `feedback.view`, `summarizer.use` |
+| Analyst | Runs the monthly workflow | `view.dashboard`, `view.polookup`, `reports.*`, `lines.triage`, `disputes.manage`, `feedback.view`, `feedback.submit`, `summarizer.use`, `issues.view`, `issues.manage` |
+| Viewer | Read-only results | `view.dashboard`, `view.polookup`, `issues.view` |
+| Warehouse | Comments on published violations, logs issues | `feedback.view`, `feedback.submit`, `issues.view`, `issues.manage` |
+| Finance | Read-only lookup and summaries, chargeback packages, issues | `view.polookup`, `feedback.view`, `summarizer.use`, `issues.view` |
 
 Admins can create further roles. Permissions are listed in `src/lib/permissions.ts`.
 
@@ -176,6 +176,10 @@ erDiagram
   User ||--o{ AuditLog : writes
   Scorecard ||--o{ ScorecardHit : "views, downloads"
   User ||--o{ ScorecardHit : "when signed in"
+  Issue ||--o{ IssuePo : "POs, as typed"
+  Issue ||--o{ IssueNote : updates
+  Issue ||--o{ IssueAttachment : files
+  IssuePo }o..o| PoRecord : "matched by number and date"
 ```
 
 | Model | Purpose and key fields |
@@ -197,6 +201,7 @@ erDiagram
 | `ScorecardFeedback` | A comment on a published violation, keyed by report and line. |
 | `ShipmentCount`, `LineCount`, `ChargebackPackage` | Manual inputs per report, program and compliance period: shipments by mode, line totals (§6.4), the chargeback Package ID (§5.8). |
 | `SiteSettings` | Single row (`id = "site"`): branding and logo, `reportPeriodBasis`, `publicDashboardToken`. |
+| `Issue`, `IssuePo`, `IssueNote`, `IssueAttachment` | The Issue Log (§5.11): an issue (number shown as ISS-0001, date, status, severity, category, program, team, HD Support ticket, what happened, actions, consequences, people, references, resolution, follow-up date), its POs as typed (number and optional create date), its timeline of updates and its files (stored as bytes). |
 | `User`, `Role`, `AuditLog` | Accounts (bcrypt hash, active flag), roles with permission lists, and the App Log: every event in the platform (§9.5). |
 | `ScorecardHit` | One view or download of a published scorecard (§5.10): channel (`APP` or `PUBLIC` link), kind (`VIEW`, `PDF`, `EXCEL`), version, browser session, user when signed in, IP and user agent. |
 
@@ -326,6 +331,15 @@ The **App Log** (`/admin/app-log`, permission `admin.audit`) lists `AuditLog` ne
 
 ---
 
+### 5.11 Issue Log
+
+`/issues` (permission `issues.view`; logging and editing need `issues.manage`) records problems with POs when they happen, before THD's data about them exists. An issue lists its POs as typed (`IssuePo`), not as foreign keys, so it can be logged first and tied to the compliance data later. The tie is computed when an issue or a PO record is shown (`src/lib/issues-data.ts`):
+
+- PO numbers are matched with and without leading zeros (`poNumberVariants`).
+- THD reuses PO numbers, so an issue PO means one use of the number (`resolveIssuePo`): the use with the PO create date given on the issue, or else the use created on or before the issue date (`pickPoInstance`, §4.2).
+
+The issue page shows each PO's compliance lines (month, program · metric, result, offset, decision, team, dispute); the PO record page lists its issues with a **Log an issue for this PO** button; the violation review shows **Issues logged for this PO** beside the line. The list filters by search (PO, ticket, issue number, words), status, category and date, and exports to Excel (`issue-export.ts`): an Issues sheet and an Issue POs sheet with the lines, violations and offsets the compliance data holds for each PO. Updates (`IssueNote`) and files (`IssueAttachment`, the dispute attachment types and 10 MB limit) form the issue's history. Only the person who logged an issue, or a user admin, can delete it. Validation and the list filter are pure (`src/lib/issues.ts`) and unit-tested.
+
 ## 6. Calculation rules
 
 All per-metric figures come from `getMetricStats(programIds, month, lineCounts)` in `src/lib/reports.ts`, using pure helpers in `src/lib/scorecard-rules.ts`. Lines are selected with `linesInPeriod(await getPeriodField(), month)` so the report period setting is respected everywhere.
@@ -379,6 +393,7 @@ All route handlers check the session and then a permission (`requireApiPermissio
 | Summarizer | `GET /api/summarizer/pdf?r=…` | `summarizer.use` |
 | PO Lookup | `GET /api/po-lookup/package/[packageId]/export` | `view.polookup` |
 | Admin | `/api/admin/users`, `/roles`, `/aliases`, `/metrics/[id]` (+ `/rules`, `/reason-codes`), `/rules/[id]`, `/reason-codes/[id]`, `/settings/{branding,report-periods,public-dashboard}`, `/backups` (+ `/[name]`, `/restore`), `GET /app-log/export` | the matching `admin.*` permission |
+| Issue Log | `POST /api/issues`, `PATCH`/`DELETE /api/issues/[id]`, `POST /api/issues/[id]/notes`, `POST /api/issues/[id]/attachments`, `DELETE …/attachments/[attachmentId]` (`issues.manage`; delete also needs to be the issue's author or have `admin.users`); `GET …/attachments/[attachmentId]`, `GET /api/issues/export` (`issues.view`) | as shown |
 | Analytics | `POST /api/scorecard-hits` (a view: `reportId` when signed in, or a public `token`) | signed in, or token only |
 | Other | `/api/auth/[...nextauth]`, `GET /api/branding/logo` | — |
 
@@ -413,13 +428,13 @@ Public scorecards and the public dashboard are reachable by anyone who has the l
 ### 9.4 Input handling
 
 - Request bodies: zod schemas with trimming, length and range limits.
-- Uploads: SPM files 25 MB, 200 columns and 100,000 rows per sheet; dispute attachments 10 MB with an extension allow-list; backups up to 500 MB, restored only at the same schema migration and only after typing RESTORE.
+- Uploads: SPM files 25 MB, 200 columns and 100,000 rows per sheet; dispute and issue attachments 10 MB with an extension allow-list, always served as downloads; backups up to 500 MB, restored only at the same schema migration and only after typing RESTORE.
 - Identifiers from URLs (tokens, report ids, Package IDs) are pattern-checked before use.
 - Spreadsheet cell values are stored as data and never evaluated; generated Excel files contain values, not formulas from input.
 
 ### 9.5 Audit
 
-Every event writes an `AuditLog` row (user, action, entity, id, details), shown in Admin › App Log: sign-ins, failed sign-ins (with the email typed, the reason and the IP address) and sign-outs (NextAuth `authorize` and `events.signOut`); reviews, disputes and their notes and files, report moves, imports and purges; scorecard generation and every scorecard, package, Summarizer and App Log download, including anonymous public-link downloads; settings, users and roles, line counts, Package IDs and backups. Scorecard page views are recorded separately as `ScorecardHit` rows (§5.10). The CSV export prefixes cells that start with `=`, `+`, `-` or `@` so spreadsheet programs don't run typed text as formulas. Both tables are kept indefinitely and are included in backups.
+Every event writes an `AuditLog` row (user, action, entity, id, details), shown in Admin › App Log: sign-ins, failed sign-ins (with the email typed, the reason and the IP address) and sign-outs (NextAuth `authorize` and `events.signOut`); reviews, disputes and their notes and files, issues and their updates, files and exports, report moves, imports and purges; scorecard generation and every scorecard, package, Summarizer and App Log download, including anonymous public-link downloads; settings, users and roles, line counts, Package IDs and backups. Scorecard page views are recorded separately as `ScorecardHit` rows (§5.10). The CSV export prefixes cells that start with `=`, `+`, `-` or `@` so spreadsheet programs don't run typed text as formulas. Both tables are kept indefinitely and are included in backups.
 
 ### 9.6 Deployment boundary
 
@@ -461,7 +476,7 @@ Migrations are generated with `prisma migrate diff` and reviewed by hand; data c
 
 ### 10.4 Backups and recovery
 
-`src/lib/backup.ts` writes logical backups: every model in `TABLE_ORDER`, attachments included, as gzipped JSON, with the schema migration they were taken at. A test enforces that every model is in `TABLE_ORDER`.
+`src/lib/backup.ts` writes logical backups: every model in `TABLE_ORDER`, attachments included, as gzipped JSON, with the schema migration they were taken at. A test enforces that every model is in `TABLE_ORDER`. Files are named `hd-compliance-backup-<date>-<time>[-label].json.gz`; ones named `sympl-cm-backup-…` (from before the platform was renamed) are still listed, restored and pruned, and the format id inside the files is unchanged.
 
 - Manual: **Back up now** in Admin › Backup & Restore.
 - Scheduled: `npm run backup -- --keep 30` from cron; `--label` keeps a separate set.
@@ -482,9 +497,9 @@ Migrations are generated with `prisma migrate diff` and reviewed by hand; data c
 |---|---|
 | Lint | `npm run lint` (ESLint with Next.js rules, including `react-hooks/set-state-in-effect`) |
 | Types | `npm run typecheck` (strict TypeScript) |
-| Unit tests | `npm test` (Vitest, 74 tests): import transform against real SPM fixtures (DS, RDC, DFC, US Transportation quirks, summary-only, Fill Rate fractions, Invoice Timeliness), value parsing, catalog, scorecard rules (goals, Drop Ship Fill Rate, entered lines, pass/fail, offsets), shipment ranges, disputes, PO instance keys, permissions and landing pages, backups' table coverage, branding, Summarizer, Package IDs, help topics |
+| Unit tests | `npm test` (Vitest, 86 tests): import transform against real SPM fixtures (DS, RDC, DFC, US Transportation quirks, summary-only, Fill Rate fractions, Invoice Timeliness), value parsing, catalog, scorecard rules (goals, Drop Ship Fill Rate, entered lines, pass/fail, offsets), shipment ranges, disputes, PO instance keys, permissions and landing pages, backups' table coverage, branding, Summarizer, Package IDs, help topics, App Log labels and filters, View Analytics, Issue Log (PO lists, validation, reused-PO matching, filters) |
 | Build | `npm run build` |
-| End to end | Playwright scripts run against a local build during development (imports, review, disputes, scorecards, sharing, feedback, roles, Summarizer, packages, help) |
+| End to end | Playwright scripts run against a local build during development (imports, review, disputes, scorecards, sharing, feedback, roles, Summarizer, packages, help, analytics, App Log, Issue Log) |
 | Data checks | Backfill reconciled against the workbook's YTD Offset Report (73 of 85 month cells by month received); migrations tested on copies of the archive database |
 
 ---

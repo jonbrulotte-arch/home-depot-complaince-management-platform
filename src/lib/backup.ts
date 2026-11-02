@@ -6,6 +6,7 @@ import { Prisma, type PrismaClient } from "@prisma/client";
 // Logical backups: every table as JSON, gzipped. They need no pg_dump on the server and
 // restore into any instance at the same schema migration.
 
+// The format id inside every backup file; kept from before the platform was renamed so older backups restore
 export const BACKUP_FORMAT = "sympl-cm-backup";
 export const BACKUP_FORMAT_VERSION = 1;
 export const MAX_BACKUP_UPLOAD_BYTES = 500 * 1024 * 1024;
@@ -41,6 +42,10 @@ export const TABLE_ORDER = [
   "ChargebackPackage",
   "ScorecardFeedback",
   "ScorecardHit",
+  "Issue",
+  "IssuePo",
+  "IssueNote",
+  "IssueAttachment",
   "SiteSettings",
 ] as const;
 
@@ -155,7 +160,8 @@ export async function restoreBackup(db: PrismaClient, backup: BackupFile): Promi
 
 // ─── Server-side backup files ──────────────────────────────────
 
-const NAME = /^sympl-cm-backup-\d{8}-\d{6}(-[a-z0-9-]{1,40})?\.json\.gz$/;
+// New backups are named hd-compliance-backup-…; sympl-cm-backup-… are from before the platform was renamed
+const NAME = /^(?:hd-compliance|sympl-cm)-backup-(\d{8}-\d{6})(-[a-z0-9-]{1,40})?\.json\.gz$/;
 
 // The turbopackIgnore hints stop the build tracing the whole project for these runtime paths
 export function backupDir(): string {
@@ -169,7 +175,7 @@ export function isBackupName(name: string): boolean {
 export function backupName(date: Date, label: string | null): string {
   const stamp = date.toISOString().replace(/[-:]/g, "").replace("T", "-").slice(0, 15);
   const slug = label?.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "").slice(0, 40);
-  return `sympl-cm-backup-${stamp}${slug ? `-${slug}` : ""}.json.gz`;
+  return `hd-compliance-backup-${stamp}${slug ? `-${slug}` : ""}.json.gz`;
 }
 
 export async function saveBackup(db: PrismaClient, label: string | null): Promise<{ name: string; size: number; counts: Record<string, number> }> {
@@ -190,7 +196,9 @@ export async function listBackups(): Promise<{ name: string; size: number; creat
       return { name, size: s.size, createdAt: s.mtime.toISOString() };
     }),
   );
-  return files.sort((a, b) => b.name.localeCompare(a.name));
+  // Newest first by the time in the name, whichever prefix it has
+  const stampOf = (name: string) => name.match(NAME)?.[1] ?? "";
+  return files.sort((a, b) => stampOf(b.name).localeCompare(stampOf(a.name)) || b.name.localeCompare(a.name));
 }
 
 export async function readBackupFile(name: string): Promise<Buffer> {

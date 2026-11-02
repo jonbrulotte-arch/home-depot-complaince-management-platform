@@ -37,6 +37,7 @@ export const HELP_TOPICS: HelpTopic[] = [
           "**Compliance Reports**: one report per month, where the work happens (import, review, disputes, scorecard).",
           "**Disputes**: every dispute across reports, by deadline.",
           "**PO Lookup**: any PO, SKU, tracking #, PRO #, BOL #, TMS shipment ID, ASN doc trace ID or chargeback Package ID.",
+          "**Issue Log**: problems with POs as they happen (what went wrong, actions, consequences, people, HD Support ticket), linked to the compliance data for those POs.",
           "**Scorecard Feedback**: the warehouse team's comments on each violation of a published scorecard.",
           "**Summarizer**: one summary of several published reports, exported as a PDF.",
           "**Help & Docs**: this page.",
@@ -47,10 +48,10 @@ export const HELP_TOPICS: HelpTopic[] = [
       {
         terms: [
           ["Admin", "Everything, including users, roles, programs and rules, settings and backups."],
-          ["Analyst", "Creates reports, imports data, reviews violations, works disputes, publishes scorecards, reads and answers feedback, and uses the Summarizer."],
-          ["Viewer", "The dashboard, published scorecards and PO Lookup, read-only."],
-          ["Warehouse", "Scorecard Feedback only: reads published violations and adds comments."],
-          ["Finance", "PO Lookup (including chargeback packages), Scorecard Feedback without commenting, and the Summarizer, all read-only."],
+          ["Analyst", "Creates reports, imports data, reviews violations, works disputes, publishes scorecards, reads and answers feedback, logs issues and uses the Summarizer."],
+          ["Viewer", "The dashboard, published scorecards, PO Lookup and the Issue Log, read-only."],
+          ["Warehouse", "Scorecard Feedback (reads published violations and adds comments) and the Issue Log (logs and updates issues)."],
+          ["Finance", "PO Lookup (including chargeback packages), Scorecard Feedback without commenting, the Issue Log and the Summarizer, all read-only."],
         ],
       },
       { h: "Months" },
@@ -270,6 +271,44 @@ export const HELP_TOPICS: HelpTopic[] = [
         ],
       },
       { note: "A package only appears once someone has entered its Package ID on the compliance report." },
+    ],
+  },
+  {
+    id: "issue-log",
+    title: "Issue Log",
+    summary: "Recording problems with POs as they happen, and seeing them next to the compliance data.",
+    anyOf: ["issues.view"],
+    blocks: [
+      {
+        p: "Log an issue as soon as something goes wrong with one or more POs: a missed pickup, a short shipment, an ASN that didn't send, an order THD cancelled. THD's compliance data for that PO usually arrives weeks later; the issue is then already on record and links to it automatically.",
+      },
+      { h: "Log an issue" },
+      {
+        steps: [
+          "Open **Issue Log** and click **Log an issue** (or **Log an issue for this PO** on a PO record).",
+          "Give it a **Title**, the **Date of the issue**, a **Category** and a **Severity**. Add the **HD Support ticket #** if you opened one.",
+          "Add the **POs**: one per row, or paste a list (one per line, or separated by commas or spaces) and click **Add these POs**. Add a PO's create date only when THD has used that PO number more than once.",
+          "Describe **What happened**, the **Actions taken**, the **Consequences** and the **People involved**, plus any **References** (BOL, PRO, customer order, tracking #).",
+          "Click **Log issue**.",
+        ],
+      },
+      { h: "Keep it up to date" },
+      {
+        list: [
+          "**Add update** records each new development on the issue's timeline, with your name and the time.",
+          "**Attach a file** for emails, photos, BOLs or spreadsheets (PDF, images, Excel/CSV, Word, Outlook .msg/.eml or text, up to 10 MB).",
+          "**Edit** changes any field. Set the status to **In progress** while it is being worked, then **Resolved** with a **Resolution**, or **Closed**.",
+          "**Delete** is only for mistakes: the person who logged it or an administrator can delete an issue. To keep the record, close it instead.",
+        ],
+      },
+      { h: "Issues and compliance data" },
+      {
+        p: "Each PO on an issue is matched to its PO record when THD's exports for it are imported: by the PO create date when you gave one, otherwise the use of that PO number created on or before the issue date. The issue page then shows that PO's compliance lines (result, offset, decision, team and dispute). The other way round, the PO record shows its issues, and the violation review shows **Issues logged for this PO** beside the line, so analysts can use them when deciding and disputing.",
+      },
+      { h: "Find and export" },
+      {
+        p: "Search by PO number, HD Support ticket #, issue number (ISS-0001) or any word, and filter by status, category and date. **Export to Excel** downloads the filtered issues, with a second sheet of their POs and what the compliance data holds for each.",
+      },
     ],
   },
   {

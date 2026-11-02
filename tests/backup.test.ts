@@ -11,8 +11,10 @@ describe("backups", () => {
 
   it("names files safely and rejects anything else", () => {
     const name = backupName(new Date("2026-10-22T21:05:09Z"), "Before June Import!");
-    expect(name).toBe("sympl-cm-backup-20261022-210509-before-june-import.json.gz");
+    expect(name).toBe("hd-compliance-backup-20261022-210509-before-june-import.json.gz");
     expect(isBackupName(name)).toBe(true);
+    // Backups taken before the platform was renamed still list, restore and prune
+    expect(isBackupName("sympl-cm-backup-20261022-210509-pre-deploy.json.gz")).toBe(true);
     expect(isBackupName("../../etc/passwd")).toBe(false);
     expect(isBackupName("sympl-cm-backup-20261022-210509.json.gz/../x")).toBe(false);
   });
