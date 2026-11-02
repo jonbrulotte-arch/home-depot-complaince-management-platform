@@ -359,6 +359,8 @@ Pre-dispute counts Cancelled / Resolved lines as compliant; post-dispute also co
 
 The export's own population always takes precedence over an entered line count.
 
+Whether a line is compliant comes from THD's export (classified in `transform.ts`); the platform does not re-judge timing. For reference when reviewing and in Help (Questions and troubleshooting): THD's On Time rules only count late shipments. RDC/DFC collect shipments are on time when RTS is marked in TMS by 11 AM local time, 2 business days before the ship-by date (ESD), with a pickup request date on or before the ESD; SYNC orders when shipped on or before the ESD; prepaid shipments when the trailer checks in by the expected delivery date; US Drop Ship lines when ship-confirmed on or before the expected ship date. A pickup ahead of the ESD is therefore not an On Time violation, though it can lead to ASN timeliness, TMS Shipment ID, Fill Rate or Routing Guide violations.
+
 ### 6.2 Result against goal
 
 `meetsGoal` compares the post-dispute percentage with the rule's goal. Without a percentage it falls back to: a percentage-of-value metric is **Below goal** while a post-dispute offset remains (THD only charges it below goal); any other metric is **Below goal** while an uncleared violation remains; otherwise no result.

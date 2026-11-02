@@ -370,6 +370,22 @@ export const HELP_TOPICS: HelpTopic[] = [
       { p: "Those sheets belong to the report's other compliance period. Import them in that period's box (or in the report for that month) to add their lines." },
       { h: "A Copy button doesn't copy" },
       { p: "Some browsers block copying on internal (http) addresses. Select the text in the box and press Ctrl+C instead." },
+      { h: "The carrier picked up before the estimated ship date. Is that a violation?" },
+      {
+        p: "Not for On Time. THD's On Time rules only count shipping late: RDC and DFC collect shipments are on time when the shipment was marked Ready to Ship in TMS by 11 AM local time, 2 business days before the PO's ship-by date (the estimated ship date, ESD), with a pickup request date on or before the ESD; SYNC orders when the actual ship date is on or before the ESD; prepaid shipments when the trailer checks in on or before the expected delivery date; US Drop Ship lines when they are ship-confirmed on or before the expected ship date. An early pickup meets all of these.",
+      },
+      { p: "An early pickup can still cause **other** violations, so check them:" },
+      {
+        list: [
+          "**Late or missing ASN**: the ASN must reach THD before the trailer checks in (send it as soon as the trailer is sealed). An unexpected early pickup shortens that window. Late ASN $250, missing ASN $1,000.",
+          "**TMS Shipment ID**: if the load leaves before the shipment is accepted in TMS, or on a different carrier or load than the one tendered, the ASN can carry a missing or wrong TMS Shipment ID ($100).",
+          "**Fill Rate**: if the truck leaves before every unit is staged, the units left behind are a short shipment against the PO.",
+          "**Routing Guide**: a carrier other than the one THD routed picking up the load is a routing guide violation.",
+        ],
+      },
+      {
+        p: "The platform takes compliant or non-compliant from THD's export; it doesn't re-judge it. If THD ever flags an early pickup as late, dispute it with the TMS RTS time and pickup request date. Log early pickups in the **Issue Log** the day they happen (RTS time, pickup request date, actual pickup time, carrier, BOL/PRO) so the evidence is ready.",
+      },
       { h: "I can't see a page someone else uses" },
       { p: "Your role doesn't include it. An administrator can change your role under Admin › Users, or what the role can do under Admin › Roles & Access." },
     ],
