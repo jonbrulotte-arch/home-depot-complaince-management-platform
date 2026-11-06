@@ -97,6 +97,23 @@ const optionalText = (max: number) =>
     .nullish()
     .transform((s) => s || null);
 
+export const MAX_HD_TICKETS = 20;
+
+/** HD Support ticket numbers from typed or pasted text (commas, semicolons, spaces or new lines between them), de-duplicated. */
+export function parseTickets(text: string): string[] {
+  return cleanTickets(text.split(/[\s,;]+/));
+}
+
+/** Trimmed, non-empty, de-duplicated ticket numbers (case-insensitive), in the order given. */
+export function cleanTickets(tickets: string[]): string[] {
+  const out: string[] = [];
+  for (const t of tickets) {
+    const v = t.trim();
+    if (v && !out.some((o) => o.toLowerCase() === v.toLowerCase())) out.push(v);
+  }
+  return out;
+}
+
 /** The body of a new or edited issue; strings are trimmed and empty ones become null. */
 export const issueInput = z.object({
   title: z.string().trim().min(1, "is required").max(200),
@@ -109,7 +126,11 @@ export const issueInput = z.object({
     .enum(Object.keys(TEAM_INFLUENCES) as [keyof typeof TEAM_INFLUENCES, ...(keyof typeof TEAM_INFLUENCES)[]])
     .nullish()
     .transform((t) => t ?? null),
-  hdTicket: optionalText(60),
+  hdTickets: z
+    .array(z.string().trim().max(60, "must be at most 60 characters"))
+    .max(MAX_HD_TICKETS, `can list at most ${MAX_HD_TICKETS} tickets`)
+    .default([])
+    .transform(cleanTickets),
   description: z.string().trim().min(1, "is required").max(10_000),
   actionsTaken: optionalText(10_000),
   consequences: optionalText(10_000),
@@ -149,7 +170,7 @@ export function issueData(input: IssueInput, previous?: { status: string; resolv
     category: input.category,
     programId: input.programId,
     team: input.team,
-    hdTicket: input.hdTicket,
+    hdTickets: input.hdTickets,
     description: input.description,
     actionsTaken: input.actionsTaken,
     consequences: input.consequences,
@@ -179,7 +200,8 @@ export function issueWhere(f: IssueFilters): Prisma.IssueWhereInput {
     and.push({
       OR: [
         { title: { contains: q, mode: "insensitive" } },
-        { hdTicket: { contains: q, mode: "insensitive" } },
+        // Ticket numbers match exactly (as typed, or upper case)
+        { hdTickets: { hasSome: [...new Set([q, q.toUpperCase()])] } },
         { peopleInvolved: { contains: q, mode: "insensitive" } },
         { references: { contains: q, mode: "insensitive" } },
         { description: { contains: q, mode: "insensitive" } },

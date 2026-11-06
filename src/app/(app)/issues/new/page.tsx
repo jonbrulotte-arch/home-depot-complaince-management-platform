@@ -32,7 +32,7 @@ export default async function NewIssuePage({ searchParams }: { searchParams: Pro
           category: "Other",
           programId: null,
           team: null,
-          hdTicket: "",
+          hdTickets: [],
           description: "",
           actionsTaken: "",
           consequences: "",

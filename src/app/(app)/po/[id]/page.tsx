@@ -213,7 +213,7 @@ export default async function PoRecordPage({ params }: { params: Promise<{ id: s
                       <span className="text-gray-500">
                         {" "}
                         · {formatUtcDate(i.issueDate)} · {i.category}
-                        {i.hdTicket ? ` · ticket ${i.hdTicket}` : ""}
+                        {i.hdTickets.length ? ` · ticket${i.hdTickets.length > 1 ? "s" : ""} ${i.hdTickets.join(", ")}` : ""}
                       </span>
                     </span>
                     <Badge variant={ISSUE_STATUSES[i.status].variant}>{ISSUE_STATUSES[i.status].label}</Badge>

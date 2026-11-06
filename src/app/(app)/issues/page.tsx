@@ -81,7 +81,7 @@ export default async function IssueLogPage({ searchParams }: { searchParams: Pro
               <table className="min-w-full">
                 <thead className="bg-gray-50">
                   <tr>
-                    {["Issue", "Date", "Title", "POs", "Category", "Severity", "Status", "HD ticket", "Logged by"].map((h) => (
+                    {["Issue", "Date", "Title", "POs", "Category", "Severity", "Status", "HD tickets", "Logged by"].map((h) => (
                       <th key={h} className={th}>
                         {h}
                       </th>
@@ -122,7 +122,9 @@ export default async function IssueLogPage({ searchParams }: { searchParams: Pro
                           {ISSUE_STATUSES[i.status].label}
                         </Badge>
                       </td>
-                      <td className={cn(td, "whitespace-nowrap", i.hdTicket ? "text-gray-700" : "text-gray-400")}>{i.hdTicket ?? "—"}</td>
+                      <td className={cn(td, "whitespace-nowrap", i.hdTickets.length ? "text-gray-700" : "text-gray-400")}>
+                        {i.hdTickets.length ? i.hdTickets.map((t) => <div key={t}>{t}</div>) : "—"}
+                      </td>
                       <td className={cn(td, "text-gray-700")}>{i.createdBy?.name ?? "—"}</td>
                     </tr>
                   ))}

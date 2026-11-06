@@ -37,7 +37,7 @@ export const HELP_TOPICS: HelpTopic[] = [
           "**Compliance Reports**: one report per month, where the work happens (import, review, disputes, scorecard).",
           "**Disputes**: every dispute across reports, by deadline.",
           "**PO Lookup**: any PO, SKU, tracking #, PRO #, BOL #, TMS shipment ID, ASN doc trace ID or chargeback Package ID.",
-          "**Issue Log**: problems with POs as they happen (what went wrong, actions, consequences, people, HD Support ticket), linked to the compliance data for those POs.",
+          "**Issue Log**: problems with POs as they happen (what went wrong, actions, consequences, people, HD Support tickets), linked to the compliance data for those POs.",
           "**Scorecard Feedback**: the warehouse team's comments on each violation of a published scorecard.",
           "**Summarizer**: one summary of several published reports, exported as a PDF.",
           "**Help & Docs**: this page.",
@@ -291,7 +291,7 @@ export const HELP_TOPICS: HelpTopic[] = [
       {
         steps: [
           "Open **Issue Log** and click **Log an issue** (or **Log an issue for this PO** on a PO record).",
-          "Give it a **Title**, the **Date of the issue**, a **Category** and a **Severity**. Add the **HD Support ticket #** if you opened one.",
+          "Give it a **Title**, the **Date of the issue**, a **Category** and a **Severity**. Add any **HD Support tickets** you opened: type a number and press Enter or **Add**, or paste several at once (separated by commas, spaces or new lines). Remove one with its **×**.",
           "Add the **POs**: one per row, or paste a list (one per line, or separated by commas or spaces) and click **Add these POs**. Add a PO's create date only when THD has used that PO number more than once.",
           "Describe **What happened**, the **Actions taken**, the **Consequences** and the **People involved**, plus any **References** (BOL, PRO, customer order, tracking #).",
           "Click **Log issue**.",
@@ -319,7 +319,7 @@ export const HELP_TOPICS: HelpTopic[] = [
       },
       { h: "Find and export" },
       {
-        p: "Search by PO number, HD Support ticket #, issue number (ISS-0001) or any word, and filter by status, category and date. **Export to Excel** downloads the filtered issues, with a second sheet of their POs and what the compliance data holds for each.",
+        p: "Search by PO number, an HD Support ticket number (exact), issue number (ISS-0001) or any word, and filter by status, category and date. **Export to Excel** downloads the filtered issues, with a second sheet of their POs and what the compliance data holds for each.",
       },
     ],
   },

@@ -721,8 +721,8 @@ model Issue {
   programId      String?
   program        Program?          @relation(fields: [programId], references: [id], onDelete: SetNull)
   team           TeamInfluence?
-  /// HD Support ticket number
-  hdTicket       String?
+  /// HD Support ticket numbers (an issue can have several)
+  hdTickets      String[]          @default([])
   description    String
   actionsTaken   String?
   consequences   String?

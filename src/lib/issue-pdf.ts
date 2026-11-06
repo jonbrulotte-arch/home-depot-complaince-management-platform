@@ -50,7 +50,7 @@ export function issuePdf(found: Found, opts: { timeZone: string; siteName?: stri
     ["Date of the issue", formatUtcDate(issue.issueDate)],
     ["Category", issue.category],
     ["Severity", ISSUE_SEVERITIES[issue.severity]],
-    ["HD Support ticket", issue.hdTicket ?? "—"],
+    [issue.hdTickets.length > 1 ? "HD Support tickets" : "HD Support ticket", issue.hdTickets.join(", ") || "—"],
     ["THD program", issue.program?.name ?? "—"],
     ["Team responsible", issue.team ? TEAM_INFLUENCES[issue.team] : "—"],
     ["Follow-up date", issue.followUpDate ? formatUtcDate(issue.followUpDate) : "—"],

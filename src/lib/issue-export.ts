@@ -39,13 +39,13 @@ export async function issuesWorkbook(filters: IssueFilters, siteName = DEFAULT_S
   wb.creator = siteName;
   const ws = sheet(wb, "Issues", [
     ["Issue", 10], ["Date", 12], ["Title", 36], ["Status", 12], ["Severity", 10], ["Category", 22], ["Program", 22], ["Team", 18],
-    ["HD Support ticket", 16], ["POs", 30], ["What happened", 50], ["Actions taken", 40], ["Consequences", 40], ["People involved", 30],
+    ["HD Support tickets", 20], ["POs", 30], ["What happened", 50], ["Actions taken", 40], ["Consequences", 40], ["People involved", 30],
     ["References", 26], ["Resolution", 36], ["Follow-up", 12], ["Resolved", 12], ["Logged by", 18],
   ]);
   for (const i of issues) {
     ws.addRow([
       issueLabel(i.number), formatUtcDate(i.issueDate), i.title, ISSUE_STATUSES[i.status].label, ISSUE_SEVERITIES[i.severity], i.category,
-      i.program?.name ?? null, i.team ? TEAM_INFLUENCES[i.team] : null, i.hdTicket, i.pos.map((p) => p.poNumber).join(", "),
+      i.program?.name ?? null, i.team ? TEAM_INFLUENCES[i.team] : null, i.hdTickets.join(", ") || null, i.pos.map((p) => p.poNumber).join(", "),
       i.description, i.actionsTaken, i.consequences, i.peopleInvolved, i.references, i.resolution,
       i.followUpDate ? formatUtcDate(i.followUpDate) : null, i.resolvedAt ? formatUtcDate(i.resolvedAt) : null, i.createdBy?.name ?? null,
     ]).alignment = { vertical: "top", wrapText: true };

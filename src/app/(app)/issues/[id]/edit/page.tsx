@@ -36,7 +36,7 @@ export default async function EditIssuePage({ params }: { params: Promise<{ id: 
           category: issue.category,
           programId: issue.programId,
           team: issue.team,
-          hdTicket: issue.hdTicket ?? "",
+          hdTickets: issue.hdTickets,
           description: issue.description,
           actionsTaken: issue.actionsTaken ?? "",
           consequences: issue.consequences ?? "",

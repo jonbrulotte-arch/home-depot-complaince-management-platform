@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { apiFetch } from "@/lib/client-api";
-import { ISSUE_CATEGORIES, ISSUE_SEVERITIES, ISSUE_STATUSES, MAX_ISSUE_POS, normalizePoNumber, parsePoList, type IssueSeverityKey, type IssueStatusKey } from "@/lib/issues";
+import { ISSUE_CATEGORIES, ISSUE_SEVERITIES, ISSUE_STATUSES, MAX_HD_TICKETS, MAX_ISSUE_POS, normalizePoNumber, parsePoList, parseTickets, type IssueSeverityKey, type IssueStatusKey } from "@/lib/issues";
 import { RETIRED_TEAM_INFLUENCES, TEAM_INFLUENCES } from "@/lib/line-fields";
 
 const NONE = "none";
@@ -22,7 +22,7 @@ export interface IssueFormValues {
   category: string;
   programId: string | null;
   team: string | null;
-  hdTicket: string;
+  hdTickets: string[];
   description: string;
   actionsTaken: string;
   consequences: string;
@@ -50,6 +50,8 @@ export function IssueForm({ issueId, initial, programs }: { issueId?: string; in
   const router = useRouter();
   const [v, setV] = useState<IssueFormValues>(initial);
   const [paste, setPaste] = useState("");
+  // A ticket number typed but not yet added is saved too
+  const [ticketDraft, setTicketDraft] = useState("");
   const [pasteNote, setPasteNote] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -72,6 +74,7 @@ export function IssueForm({ issueId, initial, programs }: { issueId?: string; in
     setError(null);
     const body = {
       ...v,
+      hdTickets: parseTickets([...v.hdTickets, ticketDraft].join(" ")),
       programId: v.programId,
       team: v.team,
       followUpDate: v.followUpDate || null,
@@ -150,8 +153,8 @@ export function IssueForm({ issueId, initial, programs }: { issueId?: string; in
               </SelectContent>
             </Select>
           </Field>
-          <Field label="HD Support ticket #" htmlFor="issue-ticket">
-            <Input id="issue-ticket" value={v.hdTicket} onChange={(e) => set("hdTicket", e.target.value)} placeholder="Ticket number" maxLength={60} />
+          <Field label="HD Support tickets" htmlFor="issue-ticket">
+            <TicketsInput tickets={v.hdTickets} onChange={(t) => set("hdTickets", t)} text={ticketDraft} setText={setTicketDraft} />
           </Field>
           <Field label="THD program" hint="(optional)">
             <Select value={v.programId ?? NONE} onValueChange={(p) => set("programId", p === NONE ? null : p)}>
@@ -260,6 +263,59 @@ export function IssueForm({ issueId, initial, programs }: { issueId?: string; in
           {busy ? "Saving…" : issueId ? "Save changes" : "Log issue"}
         </Button>
       </div>
+    </div>
+  );
+}
+
+/** Ticket numbers as removable chips, with a box to add more (Enter, a comma or Add; a pasted list adds them all). */
+function TicketsInput({ tickets, onChange, text, setText }: { tickets: string[]; onChange: (tickets: string[]) => void; text: string; setText: (text: string) => void }) {
+  const full = tickets.length >= MAX_HD_TICKETS;
+  function add(value = text) {
+    const next = parseTickets([...tickets, value].join(" ")).map((t) => t.slice(0, 60)).slice(0, MAX_HD_TICKETS);
+    onChange(next);
+    setText("");
+  }
+  return (
+    <div className="space-y-2">
+      <div className="flex gap-2">
+        <Input
+          id="issue-ticket"
+          value={text}
+          onChange={(e) => (/[,;\s]$/.test(e.target.value) ? add(e.target.value) : setText(e.target.value))}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              if (text.trim()) add();
+            }
+          }}
+          onPaste={(e) => {
+            const pasted = e.clipboardData.getData("text");
+            if (/[,;\s]/.test(pasted.trim())) {
+              e.preventDefault();
+              add(`${text} ${pasted}`);
+            }
+          }}
+          placeholder={full ? `At most ${MAX_HD_TICKETS} tickets` : "Ticket number"}
+          maxLength={60}
+          disabled={full}
+        />
+        <Button type="button" variant="outline" onClick={() => add()} disabled={!text.trim() || full}>
+          <Plus className="h-4 w-4 mr-1" />
+          Add
+        </Button>
+      </div>
+      {tickets.length > 0 && (
+        <div className="flex flex-wrap gap-1.5" aria-label="HD Support tickets">
+          {tickets.map((t) => (
+            <span key={t} className="inline-flex items-center gap-1 rounded-md border border-gray-200 bg-gray-50 py-0.5 pl-2 pr-1 text-sm text-gray-900">
+              {t}
+              <button type="button" onClick={() => onChange(tickets.filter((x) => x !== t))} className="rounded p-0.5 text-gray-400 hover:bg-gray-200 hover:text-gray-700" title={`Remove ${t}`}>
+                <X className="h-3.5 w-3.5" />
+              </button>
+            </span>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

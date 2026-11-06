@@ -62,7 +62,7 @@ export async function getIssue(id: string) {
   };
 }
 
-export type IssueSummary = { id: string; number: number; title: string; issueDate: Date; status: keyof typeof ISSUE_STATUSES; category: string; hdTicket: string | null };
+export type IssueSummary = { id: string; number: number; title: string; issueDate: Date; status: keyof typeof ISSUE_STATUSES; category: string; hdTickets: string[] };
 
 /** Issues tied to each of these PO records (by number, and by create date or issue date for reused numbers). */
 export async function issuesForPoRecords(recordIds: string[]): Promise<Map<string, IssueSummary[]>> {
@@ -72,7 +72,7 @@ export async function issuesForPoRecords(recordIds: string[]): Promise<Map<strin
   const variants = [...new Set(records.flatMap((r) => poNumberVariants(r.poNumber)))];
   const issuePos = await prisma.issuePo.findMany({
     where: { poNumber: { in: variants } },
-    include: { issue: { select: { id: true, number: true, title: true, issueDate: true, status: true, category: true, hdTicket: true } } },
+    include: { issue: { select: { id: true, number: true, title: true, issueDate: true, status: true, category: true, hdTickets: true } } },
   });
   const matched = await matchIssuePos(issuePos.map((p) => ({ poNumber: p.poNumber, poCreateDate: p.poCreateDate, issueDate: p.issue.issueDate })));
   issuePos.forEach((p, i) => {

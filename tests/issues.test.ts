@@ -63,3 +63,19 @@ describe("Issue Log", () => {
     expect(issueWhere({ status: "NOPE", from: "2026-13-01" })).toEqual({});
   });
 });
+
+describe("HD Support tickets", () => {
+  it("splits a typed or pasted list, trims and drops repeats", async () => {
+    const { parseTickets, cleanTickets } = await import("@/lib/issues");
+    expect(parseTickets("7822873, 7822521;7822873\n HDS-448812 ")).toEqual(["7822873", "7822521", "HDS-448812"]);
+    expect(cleanTickets([" a1 ", "A1", "", "b2"])).toEqual(["a1", "b2"]);
+  });
+
+  it("accepts a list of tickets on an issue and cleans it", async () => {
+    const { issueInput } = await import("@/lib/issues");
+    const base = { title: "t", issueDate: "2026-11-04", status: "OPEN", severity: "MEDIUM", category: "ASN / EDI", description: "d", pos: [] };
+    expect(issueInput.parse({ ...base, hdTickets: ["7822873", " 7822521 ", "7822873", ""] }).hdTickets).toEqual(["7822873", "7822521"]);
+    expect(issueInput.parse(base).hdTickets).toEqual([]);
+    expect(issueInput.safeParse({ ...base, hdTickets: Array.from({ length: 21 }, (_, i) => String(i)) }).success).toBe(false);
+  });
+});
