@@ -1,12 +1,18 @@
 import { gzipSync } from "node:zlib";
 import { Prisma } from "@prisma/client";
 import { describe, expect, it } from "vitest";
-import { BackupError, backupName, isBackupName, readBackup, TABLE_ORDER } from "@/lib/backup";
+import { BackupError, backupName, isBackupName, keyOrder, readBackup, TABLE_ORDER } from "@/lib/backup";
 
 describe("backups", () => {
   it("covers every model in the schema", () => {
     const models = Prisma.dmmf.datamodel.models.map((m) => m.name).sort();
     expect([...TABLE_ORDER].sort()).toEqual(models);
+  });
+
+  it("orders every table by its own primary key, including tables without an id", () => {
+    for (const model of TABLE_ORDER) expect(keyOrder(model).length, model).toBeGreaterThan(0);
+    expect(keyOrder("IssueShare")).toEqual([{ issueId: "asc" }]);
+    expect(keyOrder("Issue")).toEqual([{ id: "asc" }]);
   });
 
   it("names files safely and rejects anything else", () => {

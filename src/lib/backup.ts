@@ -77,6 +77,20 @@ function fieldsOfType(model: string, type: string): string[] {
   return (m?.fields ?? []).filter((f) => f.kind === "scalar" && f.type === type).map((f) => f.name);
 }
 
+/** Tables without an `id` column, and the column their rows are ordered by in a backup. */
+const BACKUP_KEYS: Record<string, string> = { IssueShare: "issueId" };
+
+/**
+ * The order rows are read in, so two backups of the same data are identical: `id`, or the key
+ * named in BACKUP_KEYS (Prisma's runtime metadata doesn't say which field is the primary key).
+ */
+export function keyOrder(model: string): Record<string, "asc">[] {
+  const fields = Prisma.dmmf.datamodel.models.find((x) => x.name === model)?.fields ?? [];
+  const key = BACKUP_KEYS[model] ?? (fields.some((f) => f.name === "id") ? "id" : null);
+  if (!key || !fields.some((f) => f.name === key && f.kind === "scalar")) throw new BackupError(`${model} has no id column; add its key to BACKUP_KEYS`);
+  return [{ [key]: "asc" }];
+}
+
 export async function latestMigration(db: PrismaClient): Promise<string> {
   const rows = await db.$queryRaw<{ migration_name: string }[]>`
     SELECT migration_name FROM "_prisma_migrations"
@@ -92,8 +106,7 @@ export async function createBackup(db: PrismaClient, label: string | null = null
   const counts: Record<string, number> = {};
   for (const model of TABLE_ORDER) {
     const bytes = fieldsOfType(model, "Bytes");
-    // Ordered so two backups of the same data are identical
-    const rows = await delegate(db, model).findMany({ orderBy: { id: "asc" } });
+    const rows = await delegate(db, model).findMany({ orderBy: keyOrder(model) });
     tables[model] = rows.map((row) => {
       const out: Row = { ...row };
       for (const f of bytes) if (out[f] != null) out[f] = Buffer.from(out[f] as Uint8Array).toString("base64");
