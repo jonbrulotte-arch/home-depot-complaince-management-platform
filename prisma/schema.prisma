@@ -54,6 +54,7 @@ model User {
   issueAttachments    IssueAttachment[]
   invitesSent         UserInvite[]
   passwordResets      PasswordReset[]
+  issueShares         IssueShare[]
 }
 
 model AuditLog {
@@ -740,6 +741,7 @@ model Issue {
   pos            IssuePo[]
   notes          IssueNote[]
   attachments    IssueAttachment[]
+  share          IssueShare?
 
   @@index([issueDate])
   @@index([status])
@@ -823,4 +825,15 @@ model PasswordReset {
 
   @@index([userId])
   @@index([requestedIp, createdAt])
+}
+
+/// The public, read-only link to an issue (/i/<token>); deleting the row turns the link off.
+/// Kept apart from Issue so sharing doesn't change the issue's "updated" time.
+model IssueShare {
+  issueId     String   @id
+  issue       Issue    @relation(fields: [issueId], references: [id], onDelete: Cascade)
+  token       String   @unique
+  createdAt   DateTime @default(now())
+  createdById String?
+  createdBy   User?    @relation(fields: [createdById], references: [id], onDelete: SetNull)
 }

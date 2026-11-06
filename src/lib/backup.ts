@@ -46,6 +46,7 @@ export const TABLE_ORDER = [
   "IssuePo",
   "IssueNote",
   "IssueAttachment",
+  "IssueShare",
   "UserInvite",
   "PasswordReset",
   "SiteSettings",

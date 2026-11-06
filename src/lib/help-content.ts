@@ -309,6 +309,13 @@ export const HELP_TOPICS: HelpTopic[] = [
       {
         p: "Each PO on an issue is matched to its PO record when THD's exports for it are imported: by the PO create date when you gave one, otherwise the use of that PO number created on or before the issue date. The issue page then shows that PO's compliance lines (result, offset, decision, team and dispute). The other way round, the PO record shows its issues, and the violation review shows **Issues logged for this PO** beside the line, so analysts can use them when deciding and disputing.",
       },
+      { h: "PDF and sharing" },
+      {
+        list: [
+          "**PDF** (top right of an issue) downloads the issue as a formatted PDF: details, what happened, its POs and compliance data, the updates and the list of files.",
+          "**Share** (for people who can log issues) turns on a public, read-only link to the issue, for someone without an account such as THD support or a carrier. They see the issue page without signing in and can download its PDF; attached files stay in the platform. **Copy** the link to send it, **New link** replaces it (the old one stops working) and **Turn off** removes it. A shared issue's button reads **Shared**.",
+        ],
+      },
       { h: "Find and export" },
       {
         p: "Search by PO number, HD Support ticket #, issue number (ISS-0001) or any word, and filter by status, category and date. **Export to Excel** downloads the filtered issues, with a second sheet of their POs and what the compliance data holds for each.",

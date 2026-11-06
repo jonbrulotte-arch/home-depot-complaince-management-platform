@@ -201,7 +201,7 @@ erDiagram
 | `ScorecardFeedback` | A comment on a published violation, keyed by report and line. |
 | `ShipmentCount`, `LineCount`, `ChargebackPackage` | Manual inputs per report, program and compliance period: shipments by mode, line totals (§6.4), the chargeback Package ID (§5.8). |
 | `SiteSettings` | Single row (`id = "site"`): branding and logo, `reportPeriodBasis`, `publicDashboardToken`. |
-| `Issue`, `IssuePo`, `IssueNote`, `IssueAttachment` | The Issue Log (§5.11): an issue (number shown as ISS-0001, date, status, severity, category, program, team, HD Support ticket, what happened, actions, consequences, people, references, resolution, follow-up date), its POs as typed (number and optional create date), its timeline of updates and its files (stored as bytes). |
+| `Issue`, `IssuePo`, `IssueNote`, `IssueAttachment`, `IssueShare` | The Issue Log (§5.11): an issue (number shown as ISS-0001, date, status, severity, category, program, team, HD Support ticket, what happened, actions, consequences, people, references, resolution, follow-up date), its POs as typed (number and optional create date), its timeline of updates and its files (stored as bytes), and its public read-only link when shared. |
 | `PasswordReset` | A "forgot password" link (§9.1): user, sha256 of the token, expiry (1 hour), used time, requesting IP address. |
 | `UserInvite` | An invitation (§9.1): email, optional name, role, sha256 of the link token, who sent it, when, whether Graph accepted the email, expiry, accepted / revoked times. |
 | `User`, `Role`, `AuditLog` | Accounts (bcrypt hash, active flag, optional `timeZone`), roles with permission lists, and the App Log: every event in the platform (§9.5). |
@@ -342,6 +342,8 @@ The **App Log** (`/admin/app-log`, permission `admin.audit`) lists `AuditLog` ne
 
 The issue page shows each PO's compliance lines (month, program · metric, result, offset, decision, team, dispute); the PO record page lists its issues with a **Log an issue for this PO** button; the violation review shows **Issues logged for this PO** beside the line. The list filters by search (PO, ticket, issue number, words), status, category and date, and exports to Excel (`issue-export.ts`): an Issues sheet and an Issue POs sheet with the lines, violations and offsets the compliance data holds for each PO. Updates (`IssueNote`) and files (`IssueAttachment`, the dispute attachment types and 10 MB limit) form the issue's history. Only the person who logged an issue, or a user admin, can delete it. Validation and the list filter are pure (`src/lib/issues.ts`) and unit-tested.
 
+**PDF and public sharing.** **PDF** on an issue downloads `issuePdf` (`src/lib/issue-pdf.ts`): the issue, a details box, the free-text fields, its POs with their compliance lines, the updates and the file list (names only), with times in the viewer's zone. It reuses the Summarizer PDF's layout helpers (`summary-pdf-layout.ts`); typed text passes through `pdfText`, which replaces characters the standard PDF fonts can't draw. **Share** (`issues.manage`) turns on a public read-only link `/i/<token>` (`IssueShare`: one row per shared issue, a 192-bit random token; kept apart from `Issue` so sharing doesn't change the issue's updated time). **New link** replaces the token, so the old link stops working; **Turn off** deletes the row. The public page renders the same `IssueBody` component as the signed-in page (`src/components/issues/issue-view.tsx`) without edit controls, PO-record links or file downloads, and offers the PDF (`/api/i/[token]/pdf`). Turning links on, replacing and turning them off and every PDF download (with `publicLink` and the IP address for public ones) are in the App Log.
+
 ## 6. Calculation rules
 
 All per-metric figures come from `getMetricStats(programIds, month, lineCounts)` in `src/lib/reports.ts`, using pure helpers in `src/lib/scorecard-rules.ts`. Lines are selected with `linesInPeriod(await getPeriodField(), month)` so the report period setting is respected everywhere.
@@ -392,13 +394,13 @@ All route handlers check the session and then a permission (`requireApiPermissio
 | Review | `PUT /api/lines/[id]/review` | `lines.triage` |
 | Disputes | `/api/disputes/[id]` (status, fields), `/events`, `/attachments`, `/attachments/[attachmentId]`; `POST /api/reports/[id]/disputes/sync`; `PATCH /api/periods/[id]` (dispute window) | `disputes.manage` (downloads `reports.view`) |
 | Scorecards | `/api/reports/[id]/scorecard` (regenerate), `/pdf`, `/export` | `reports.advance`; downloads `reports.view` or `view.dashboard` once published |
-| Public | `/api/s/[token]/pdf`, `/export`; pages `/s/[token]`, `/d/[token]` | token only |
+| Public | `/api/s/[token]/pdf`, `/export`, `/api/i/[token]/pdf`; pages `/s/[token]`, `/d/[token]`, `/i/[token]` | token only |
 | Feedback | `POST /api/feedback`, `DELETE /api/feedback/[id]` | `feedback.submit` |
 | Summarizer | `GET /api/summarizer/pdf?r=…` | `summarizer.use` |
 | PO Lookup | `GET /api/po-lookup/package/[packageId]/export` | `view.polookup` |
 | Admin | `/api/admin/users`, `/roles`, `/aliases`, `/metrics/[id]` (+ `/rules`, `/reason-codes`), `/rules/[id]`, `/reason-codes/[id]`, `/settings/{branding,report-periods,public-dashboard}`, `/backups` (+ `/[name]`, `/restore`), `GET /app-log/export`, `POST /settings/email-test`, `POST /invites`, `POST /invites/[id]/resend`, `DELETE /invites/[id]`, `POST /users/[id]/password-reset` | the matching `admin.*` permission (invites `admin.users`) |
 | Accounts | `PATCH /api/account`, `POST /api/account/password` (signed in); `POST /api/invite/[token]`, `POST /api/password-reset/[token]` (the link is the credential); `POST /api/password-reset` (no sign-in; same answer for every email) | as shown |
-| Issue Log | `POST /api/issues`, `PATCH`/`DELETE /api/issues/[id]`, `POST /api/issues/[id]/notes`, `POST /api/issues/[id]/attachments`, `DELETE …/attachments/[attachmentId]` (`issues.manage`; delete also needs to be the issue's author or have `admin.users`); `GET …/attachments/[attachmentId]`, `GET /api/issues/export` (`issues.view`) | as shown |
+| Issue Log | `POST /api/issues`, `PATCH`/`DELETE /api/issues/[id]`, `POST /api/issues/[id]/notes`, `POST /api/issues/[id]/attachments`, `DELETE …/attachments/[attachmentId]` (`issues.manage`; delete also needs to be the issue's author or have `admin.users`); `POST`/`DELETE /api/issues/[id]/share` (`issues.manage`); `GET …/attachments/[attachmentId]`, `GET /api/issues/[id]/pdf`, `GET /api/issues/export` (`issues.view`) | as shown |
 | Analytics | `POST /api/scorecard-hits` (a view: `reportId` when signed in, or a public `token`) | signed in, or token only |
 | Other | `/api/auth/[...nextauth]`, `GET /api/branding/logo` | — |
 
@@ -510,7 +512,7 @@ Migrations are generated with `prisma migrate diff` and reviewed by hand; data c
 |---|---|
 | Lint | `npm run lint` (ESLint with Next.js rules, including `react-hooks/set-state-in-effect`) |
 | Types | `npm run typecheck` (strict TypeScript) |
-| Unit tests | `npm test` (Vitest, 101 tests): import transform against real SPM fixtures (DS, RDC, DFC, US Transportation quirks, summary-only, Fill Rate fractions, Invoice Timeliness), value parsing, catalog, scorecard rules (goals, Drop Ship Fill Rate, entered lines, pass/fail, offsets), shipment ranges, disputes, PO instance keys, permissions and landing pages, backups' table coverage, branding, Summarizer, Package IDs, help topics, App Log labels and filters, View Analytics, Issue Log (PO lists, validation, reused-PO matching, filters), Microsoft Graph email (token and send calls, errors, escaping), invitation tokens and states, time zones (validation, choice order, offsets, formatting), password reset links (expiry, one use, request limits) |
+| Unit tests | `npm test` (Vitest, 102 tests): import transform against real SPM fixtures (DS, RDC, DFC, US Transportation quirks, summary-only, Fill Rate fractions, Invoice Timeliness), value parsing, catalog, scorecard rules (goals, Drop Ship Fill Rate, entered lines, pass/fail, offsets), shipment ranges, disputes, PO instance keys, permissions and landing pages, backups' table coverage, branding, Summarizer, Package IDs, help topics, App Log labels and filters, View Analytics, Issue Log (PO lists, validation, reused-PO matching, filters), Microsoft Graph email (token and send calls, errors, escaping), invitation tokens and states, time zones (validation, choice order, offsets, formatting), password reset links (expiry, one use, request limits), issue PDF text |
 | Build | `npm run build` |
 | End to end | Playwright scripts run against a local build during development (imports, review, disputes, scorecards, sharing, feedback, roles, Summarizer, packages, help, analytics, App Log, Issue Log, invitations, time zones, password reset, sign-out) |
 | Data checks | Backfill reconciled against the workbook's YTD Offset Report (73 of 85 month cells by month received); migrations tested on copies of the archive database |
@@ -565,7 +567,7 @@ Migrations are generated with `prisma migrate diff` and reviewed by hand; data c
 | Single server, single database | No high availability; recovery is from backups. Off-server copies of `BACKUP_DIR` are recommended. |
 | Plain http | See §9.6. |
 | Password reset by email | Anyone who can read a user's mailbox can reset their password; JWT sessions already signed in elsewhere are not ended by a reset (they expire normally). |
-| Public links | Anyone with a link can view; there is no expiry other than unpublishing or replacing the dashboard link. |
+| Public links | Anyone with a link can view; there is no expiry other than unpublishing, replacing the dashboard link, or replacing or turning off an issue's link. A shared issue shows its people, POs and offsets to anyone holding the link. |
 | Snapshot schema evolution | New snapshot fields must stay optional so older scorecards render. |
 | Log growth | `AuditLog` and `ScorecardHit` grow without a retention limit; at this platform's volume that is small, but a purge of entries older than a set age may be wanted later. |
 | Help content drift | Help is data in the repo and must be updated with UI or rule changes (noted in `CLAUDE.md`). |
