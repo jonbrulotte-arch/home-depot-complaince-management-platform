@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { requirePagePermission } from "@/lib/auth-guard";
 import { issueLabel } from "@/lib/issues";
 import { IssueForm } from "../../issue-form";
+import { getTeams } from "@/lib/teams";
 
 const day = (d: Date | null) => (d ? d.toISOString().slice(0, 10) : "");
 
@@ -26,6 +27,7 @@ export default async function EditIssuePage({ params }: { params: Promise<{ id: 
         <h1 className="text-2xl font-bold text-gray-900">Edit {issueLabel(issue.number)}</h1>
       </div>
       <IssueForm
+        teams={(await getTeams()).map((t) => ({ key: t.key, name: t.name, active: t.active }))}
         issueId={id}
         programs={programs}
         initial={{

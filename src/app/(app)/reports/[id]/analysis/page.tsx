@@ -9,6 +9,7 @@ import { issuesForPoRecords } from "@/lib/issues-data";
 import { ISSUE_STATUSES, issueLabel } from "@/lib/issues";
 import { formatUtcDate } from "@/lib/utils";
 import { TriageWorkspace, type TriageLine } from "./triage-workspace";
+import { getTeams } from "@/lib/teams";
 
 export default async function AnalysisPage({ params }: { params: Promise<{ id: string }> }) {
   const user = await requirePagePermission("reports.view");
@@ -92,6 +93,7 @@ export default async function AnalysisPage({ params }: { params: Promise<{ id: s
         </p>
       </div>
       <TriageWorkspace
+        teams={(await getTeams()).map((t) => ({ key: t.key, name: t.name, active: t.active }))}
         lines={lines.map(toTriage)}
         reasonCodes={reasonCodes.map((r) => ({ id: r.id, metricId: r.metricId, code: r.code, whenToUse: r.whenToUse, requiredDocs: r.requiredDocs, docDetails: r.docDetails }))}
         history={history.map((h) => ({

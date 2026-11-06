@@ -4,6 +4,7 @@ import { requireApiPermission } from "@/lib/auth-guard";
 import { badRequest, notFound, parseJson, type IdParams } from "@/lib/api";
 import { audit } from "@/lib/audit";
 import { cleanPos, issueData, issueInput, issueLabel } from "@/lib/issues";
+import { isAssignableTeam } from "@/lib/teams";
 
 /** Saves an edited issue; its PO list is replaced by the one sent. */
 export async function PATCH(req: Request, { params }: IdParams) {
@@ -14,9 +15,10 @@ export async function PATCH(req: Request, { params }: IdParams) {
   if (body.error) return body.error;
   const pos = cleanPos(body.data.pos);
   if (pos.error) return badRequest(pos.error);
-  const previous = await prisma.issue.findUnique({ where: { id }, select: { number: true, status: true, resolvedAt: true } });
+  const previous = await prisma.issue.findUnique({ where: { id }, select: { number: true, status: true, resolvedAt: true, team: true } });
   if (!previous) return notFound("Issue not found");
   if (body.data.programId && !(await prisma.program.findUnique({ where: { id: body.data.programId }, select: { id: true } }))) return badRequest("Unknown program");
+  if (body.data.team && !(await isAssignableTeam(body.data.team, previous.team))) return badRequest("Unknown or inactive team");
 
   await prisma.$transaction([
     prisma.issuePo.deleteMany({ where: { issueId: id } }),

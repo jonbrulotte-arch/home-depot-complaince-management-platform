@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import { ChevronDown, ChevronRight, Plus, X } from "lucide-react";
 import Link from "next/link";
-import type { DisputeStatus, Disposition, TeamInfluence } from "@prisma/client";
+import type { DisputeStatus, Disposition } from "@prisma/client";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -11,12 +11,12 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { DISPOSITIONS, DispositionBadge, DisputeStatusBadge } from "@/components/shared/status-badges";
 import { apiFetch } from "@/lib/client-api";
-import { RETIRED_TEAM_INFLUENCES, TEAM_INFLUENCES } from "@/lib/line-fields";
+import { pickerTeams, type TeamOption } from "@/lib/team-options";
 import { cn, formatCurrency, formatUtcDateTime } from "@/lib/utils";
 
 export interface TriageReview {
   disposition: Disposition;
-  teamInfluence: TeamInfluence | null;
+  teamInfluence: string | null;
   reasonCodeId: string | null;
   rootCause: string | null;
   notes: string | null;
@@ -76,12 +76,15 @@ export function TriageWorkspace({
   history,
   reportId,
   canEdit,
+  teams,
 }: {
   lines: TriageLine[];
   reasonCodes: ReasonCode[];
   history: HistoryItem[];
   reportId: string;
   canEdit: boolean;
+  /** Admin › Teams, in order */
+  teams: TeamOption[];
 }) {
   const [lines, setLines] = useState(initial);
   const groups = useMemo(() => {
@@ -190,6 +193,7 @@ export function TriageWorkspace({
             reportId={reportId}
             canEdit={canEdit}
             onSaved={onSaved}
+            teams={teams}
           />
         ) : (
           <p className="text-sm text-gray-400">Select a line to review.</p>
@@ -206,6 +210,7 @@ function LineDetail({
   reportId,
   canEdit,
   onSaved,
+  teams,
 }: {
   line: TriageLine;
   reasonCodes: ReasonCode[];
@@ -213,6 +218,7 @@ function LineDetail({
   reportId: string;
   canEdit: boolean;
   onSaved: (id: string, review: TriageReview, advance: boolean) => void;
+  teams: TeamOption[];
 }) {
   const [review, setReview] = useState<TriageReview>(
     line.review ?? { disposition: "PENDING", teamInfluence: null, reasonCodeId: null, rootCause: null, notes: null, extraFields: {} },
@@ -378,17 +384,18 @@ function LineDetail({
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1.5">Team influence</label>
-            <Select value={review.teamInfluence ?? NONE} onValueChange={(v) => setReview({ ...review, teamInfluence: v === NONE ? null : (v as TeamInfluence) })} disabled={!canEdit}>
+            <Select value={review.teamInfluence ?? NONE} onValueChange={(v) => setReview({ ...review, teamInfluence: v === NONE ? null : v })} disabled={!canEdit}>
               <SelectTrigger>
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value={NONE}>Not set</SelectItem>
-                {Object.entries(TEAM_INFLUENCES)
-                  .filter(([k]) => !RETIRED_TEAM_INFLUENCES.includes(k) || k === review.teamInfluence)
-                  .map(([k, label]) => (
-                    <SelectItem key={k} value={k}>{label}</SelectItem>
-                  ))}
+                {pickerTeams(teams, review.teamInfluence).map((t) => (
+                  <SelectItem key={t.key} value={t.key}>
+                    {t.name}
+                    {!t.active && " (inactive)"}
+                  </SelectItem>
+                ))}
               </SelectContent>
             </Select>
           </div>

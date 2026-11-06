@@ -1,6 +1,5 @@
-import type { DisputeStatus, Disposition, IssueSeverity, IssueStatus, TeamInfluence } from "@prisma/client";
+import type { DisputeStatus, Disposition, IssueSeverity, IssueStatus } from "@prisma/client";
 import { fiscalLabel, shiftFiscalMonth } from "@/lib/fiscal";
-import { TEAM_INFLUENCES } from "@/lib/line-fields";
 
 // Reports & Insights (/insights): pure aggregation over compliance lines, published scorecards and
 // the Issue Log for a chosen time frame and program. insights-data.ts loads the rows; this file
@@ -116,7 +115,8 @@ export interface InsightLine {
   isCompliant: boolean;
   offset: number;
   disposition: Disposition | null;
-  team: TeamInfluence | null;
+  /** Name of the team responsible (Admin › Teams), or null when not set */
+  team: string | null;
   rootCause: string | null;
   dcNumber: string | null;
   carrier: string | null;
@@ -210,7 +210,6 @@ export function groupBy(lines: InsightLine[], key: (l: InsightLine) => string | 
     .sort((a, b) => b.offsets - a.offsets || b.violations - a.violations || a.label.localeCompare(b.label));
 }
 
-export const teamLabel = (team: string) => TEAM_INFLUENCES[team as TeamInfluence] ?? team;
 
 /** Month-by-month figures for every month in the frame (months without violations included). */
 export function byMonth(lines: InsightLine[], months: number[]): ({ month: number; label: string; quarter: string } & Figures)[] {
@@ -254,7 +253,7 @@ export function rootCauses(lines: InsightLine[], limit = 15): { cause: string; v
     const g = map.get(k) ?? { cause: l.rootCause.trim(), violations: 0, offsets: 0, teams: new Set<string>() };
     g.violations++;
     g.offsets += l.offset;
-    if (l.team) g.teams.add(teamLabel(l.team));
+    if (l.team) g.teams.add(l.team);
     map.set(k, g);
   }
   return [...map.values()]
@@ -367,7 +366,8 @@ export interface InsightIssue {
   status: IssueStatus;
   severity: IssueSeverity;
   category: string;
-  team: TeamInfluence | null;
+  /** Name of the team responsible, or null */
+  team: string | null;
   programCode: string | null;
   createdAt: Date;
   resolvedAt: Date | null;
@@ -418,7 +418,7 @@ export function issueInsights(issues: InsightIssue[], months: number[], monthOf:
     byStatus: count((i) => i.status),
     byCategory: count((i) => i.category),
     bySeverity: count((i) => i.severity),
-    byTeam: count((i) => i.team, teamLabel),
+    byTeam: count((i) => i.team),
     byMonth: months.map((m) => ({ month: m, label: fiscalLabel(m), count: inFrame.filter((i) => monthOf(i.issueDate) === m).length })),
     aging,
     overdue,

@@ -417,25 +417,14 @@ enum Disposition {
   RESOLVED // not a real violation (e.g. cancelled by the customer); counts as compliant on the scorecard
 }
 
-enum TeamInfluence {
-  WAREHOUSE_SITE_0
-  WAREHOUSE_SITE_3
-  WAREHOUSE // before the warehouse was split by site; no longer offered
-  CUSTOMER_SERVICE
-  CS_WAREHOUSE
-  EDI
-  ECOMM
-  CARRIER
-  THD
-  OTHER
-}
-
 model LineReview {
   id            String         @id @default(cuid())
   lineId        String         @unique
   line          ComplianceLine @relation(fields: [lineId], references: [id], onDelete: Cascade)
   disposition   Disposition    @default(PENDING)
-  teamInfluence TeamInfluence?
+  /// Team.key of the team responsible (Admin › Teams)
+  teamInfluence String?
+  team          Team?          @relation(fields: [teamInfluence], references: [key], onDelete: SetNull, onUpdate: Cascade)
   reasonCodeId  String?
   rootCause     String?
   notes         String?
@@ -720,7 +709,9 @@ model Issue {
   category       String
   programId      String?
   program        Program?          @relation(fields: [programId], references: [id], onDelete: SetNull)
-  team           TeamInfluence?
+  /// Team.key of the team responsible (Admin › Teams)
+  team           String?
+  teamRef        Team?             @relation(fields: [team], references: [key], onDelete: SetNull, onUpdate: Cascade)
   /// HD Support ticket numbers (an issue can have several)
   hdTickets      String[]          @default([])
   description    String
@@ -836,4 +827,21 @@ model IssueShare {
   createdAt   DateTime @default(now())
   createdById String?
   createdBy   User?    @relation(fields: [createdById], references: [id], onDelete: SetNull)
+}
+
+/// A team that can be responsible for a violation or an issue (Admin › Teams). Reviews and issues
+/// refer to it by `key`, which never changes, so renaming a team shows everywhere at once.
+model Team {
+  id          String       @id @default(cuid())
+  /// Stable code, e.g. WAREHOUSE_SITE_0; made from the first name and never changed
+  key         String       @unique
+  name        String       @unique
+  description String?
+  /// Inactive teams are kept on earlier reviews and issues but not offered for new ones
+  active      Boolean      @default(true)
+  sortOrder   Int          @default(0)
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+  reviews     LineReview[]
+  issues      Issue[]
 }

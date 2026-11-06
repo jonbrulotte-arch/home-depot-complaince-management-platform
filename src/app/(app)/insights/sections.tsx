@@ -20,7 +20,6 @@ import {
   repeatPos,
   rootCauses,
   teamKey,
-  teamLabel,
   winRate,
   type Figures,
   type GroupRow,
@@ -69,7 +68,7 @@ export function OverviewTab({ data }: { data: Insights }) {
   const before = data.previous ? figures(data.previous.lines) : null;
   const months = byMonth(data.lines, data.frame.months);
   const metrics = groupBy(data.lines, metricKey, (_k, l) => `${l.programName} · ${l.metricName}`);
-  const teams = groupBy(data.lines, teamKey, (k) => teamLabel(k));
+  const teams = groupBy(data.lines, teamKey, (k) => k);
   const issues = issueInsights(data.issues, data.frame.months, fiscalMonthOf);
   const vs = before ? `vs ${compareLabel(data.previous)}` : undefined;
 
@@ -279,9 +278,9 @@ export function TimeTab({ data }: { data: Insights }) {
 // ─── Teams ───────────────────────────────────────────────────────
 
 export function TeamsTab({ data }: { data: Insights }) {
-  const teams = groupBy(data.lines, teamKey, (k) => teamLabel(k));
+  const teams = groupBy(data.lines, teamKey, (k) => k);
   const grid = monthGrid(data.lines, data.frame.months, teamKey, teams.map((t) => ({ key: t.key, label: t.label })));
-  const cross = crossTab(data.lines, { key: teamKey, label: (k) => teamLabel(k) }, { key: programKey, label: (_k, l) => l.programName });
+  const cross = crossTab(data.lines, { key: teamKey, label: (k) => k }, { key: programKey, label: (_k, l) => l.programName });
   const causes = rootCauses(data.lines);
   const total = figures(data.lines);
 
@@ -439,7 +438,7 @@ export function IssuesTab({ data, access }: { data: Insights; access: Access }) 
             { header: "Issue", cell: (r) => link(r) },
             { header: "Title", cell: (r) => <span className="text-gray-900">{r.title}</span> },
             { header: "Follow-up date", cell: (r) => <span className="text-red-700">{formatUtcDate(r.followUpDate)}</span> },
-            { header: "Team", cell: (r) => (r.team ? teamLabel(r.team) : "—") },
+            { header: "Team", cell: (r) => (r.team ?? "—") },
             { header: "Status", cell: (r) => ISSUE_STATUSES[r.status].label },
           ]}
         />

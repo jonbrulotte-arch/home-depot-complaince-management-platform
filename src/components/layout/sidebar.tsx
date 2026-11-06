@@ -25,6 +25,7 @@ import {
   ScrollText,
   NotebookPen,
   PieChart,
+  UsersRound,
 } from "lucide-react";
 import { cn, getInitials } from "@/lib/utils";
 import type { Permission } from "@/lib/permissions";
@@ -52,6 +53,7 @@ const adminNavItems: NavItem[] = [
   { href: "/admin/users", label: "Users", icon: Users, permission: "admin.users" },
   { href: "/admin/rbac", label: "Roles & Access", icon: ShieldCheck, permission: "admin.rbac" },
   { href: "/admin/programs", label: "Programs & Rules", icon: SlidersHorizontal, permission: "admin.programs" },
+  { href: "/admin/teams", label: "Teams", icon: UsersRound, permission: "admin.teams" },
   { href: "/admin/backup", label: "Backup & Restore", icon: DatabaseBackup, permission: "admin.backup" },
   { href: "/admin/analytics", label: "View Analytics", icon: BarChart3, permission: "admin.analytics" },
   { href: "/admin/app-log", label: "App Log", icon: ScrollText, permission: "admin.audit" },

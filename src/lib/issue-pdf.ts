@@ -3,7 +3,6 @@ import { DISPUTE_STATUS_LABELS } from "@/lib/disputes";
 import { fiscalLabel } from "@/lib/fiscal";
 import { ISSUE_SEVERITIES, ISSUE_STATUSES, issueLabel } from "@/lib/issues";
 import type { getIssue } from "@/lib/issues-data";
-import { TEAM_INFLUENCES } from "@/lib/line-fields";
 import { C, MARGIN, createPdf, money } from "@/lib/summary-pdf-layout";
 import { formatDateTime, formatUtcDate } from "@/lib/utils";
 import { DISPOSITIONS } from "@/components/shared/status-badges";
@@ -20,7 +19,8 @@ export function pdfText(s: string): string {
   return s.replace(/\r\n?/g, "\n").replace(/[^\n\t\x20-\x7e\xa0-\xff]/g, (c) => (WIN_ANSI_EXTRA.includes(c) ? c : c === "→" ? "->" : c === "≥" ? ">=" : c === "≤" ? "<=" : "?"));
 }
 
-export function issuePdf(found: Found, opts: { timeZone: string; siteName?: string }): Promise<Buffer> {
+export function issuePdf(found: Found, opts: { timeZone: string; siteName?: string; teamNames?: Record<string, string> }): Promise<Buffer> {
+  const teamName = (key: string) => opts.teamNames?.[key] ?? key;
   const { issue, pos } = found;
   const siteName = opts.siteName ?? DEFAULT_SITE_NAME;
   const tz = opts.timeZone;
@@ -52,7 +52,7 @@ export function issuePdf(found: Found, opts: { timeZone: string; siteName?: stri
     ["Severity", ISSUE_SEVERITIES[issue.severity]],
     [issue.hdTickets.length > 1 ? "HD Support tickets" : "HD Support ticket", issue.hdTickets.join(", ") || "—"],
     ["THD program", issue.program?.name ?? "—"],
-    ["Team responsible", issue.team ? TEAM_INFLUENCES[issue.team] : "—"],
+    ["Team responsible", issue.team ? teamName(issue.team) : "—"],
     ["Follow-up date", issue.followUpDate ? formatUtcDate(issue.followUpDate) : "—"],
     ["Resolved", issue.resolvedAt ? formatDateTime(issue.resolvedAt, tz) : "—"],
   ];
@@ -124,7 +124,7 @@ export function issuePdf(found: Found, opts: { timeZone: string; siteName?: stri
           l.isCompliant ? { text: "Compliant", color: C.green } : { text: "Violation", color: C.red, bold: true },
           Number(l.offsetAmount) ? money(Number(l.offsetAmount)) : "—",
           l.isCompliant ? "—" : DISPOSITIONS[l.review?.disposition ?? "PENDING"].label,
-          l.review?.teamInfluence ? TEAM_INFLUENCES[l.review.teamInfluence] : "—",
+          l.review?.teamInfluence ? teamName(l.review.teamInfluence) : "—",
           l.dispute
             ? `${DISPUTE_STATUS_LABELS[l.dispute.status]}${l.dispute.amountRecovered && Number(l.dispute.amountRecovered) > 0 ? `\n${money(Number(l.dispute.amountRecovered))} recovered` : ""}`
             : "—",

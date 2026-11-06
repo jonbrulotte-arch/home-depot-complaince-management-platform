@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { requirePagePermission } from "@/lib/auth-guard";
 import { normalizePoNumber } from "@/lib/issues";
 import { IssueForm } from "../issue-form";
+import { getTeams } from "@/lib/teams";
 
 export default async function NewIssuePage({ searchParams }: { searchParams: Promise<{ po?: string; poDate?: string }> }) {
   await requirePagePermission("issues.manage");
@@ -23,6 +24,7 @@ export default async function NewIssuePage({ searchParams }: { searchParams: Pro
         <p className="text-sm text-gray-500 mt-1">Record it while it&apos;s fresh. You can add updates, files and the resolution later.</p>
       </div>
       <IssueForm
+        teams={(await getTeams()).map((t) => ({ key: t.key, name: t.name, active: t.active }))}
         programs={programs}
         initial={{
           title: "",

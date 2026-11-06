@@ -7,7 +7,8 @@ import { issuesForPoRecords } from "@/lib/issues-data";
 import { ISSUE_STATUSES, issueLabel } from "@/lib/issues";
 import { fiscalLabel } from "@/lib/fiscal";
 import { DISPUTE_STATUS_LABELS } from "@/lib/disputes";
-import { LINE_FIELD_LABELS, TEAM_INFLUENCES } from "@/lib/line-fields";
+import { LINE_FIELD_LABELS } from "@/lib/line-fields";
+import { teamNames } from "@/lib/teams";
 import { periodLabel } from "@/lib/shipment-ranges";
 import { cn, formatCurrency, formatDateTime, formatUtcDate, formatUtcDateTime } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
@@ -25,6 +26,7 @@ const distinct = (values: (string | null | undefined)[]) => [...new Set(values.f
 
 export default async function PoRecordPage({ params }: { params: Promise<{ id: string }> }) {
   const tz = await getTimeZone();
+  const teams = await teamNames();
   const user = await requirePagePermission("view.polookup");
   const found = await getPoRecord((await params).id);
   if (!found) notFound();
@@ -228,7 +230,7 @@ export default async function PoRecordPage({ params }: { params: Promise<{ id: s
       <div className="space-y-3">
         <h2 className="text-lg font-semibold text-gray-900">Compliance lines</h2>
         {lines.map((l) => (
-          <LineDetail key={l.id} line={l} reasonCode={l.review?.reasonCodeId ? (reasonCode.get(l.review.reasonCodeId) ?? null) : null} reports={reportsFor(l)} canSeeReports={canSeeReports} tz={tz} />
+          <LineDetail key={l.id} line={l} reasonCode={l.review?.reasonCodeId ? (reasonCode.get(l.review.reasonCodeId) ?? null) : null} reports={reportsFor(l)} canSeeReports={canSeeReports} tz={tz} teams={teams} />
         ))}
       </div>
 
@@ -247,7 +249,7 @@ function Stat({ label, value, sub, tone }: { label: string; value: string; sub?:
   );
 }
 
-function LineDetail({ line: l, reasonCode, reports, canSeeReports, tz }: { line: Line; reasonCode: string | null; reports: { id: string; title: string; historical: boolean }[]; canSeeReports: boolean; tz: string }) {
+function LineDetail({ line: l, reasonCode, reports, canSeeReports, tz, teams }: { line: Line; reasonCode: string | null; reports: { id: string; title: string; historical: boolean }[]; canSeeReports: boolean; tz: string; teams: Record<string, string> }) {
   const record = l as unknown as Record<string, unknown>;
   const fields = LINE_FIELD_LABELS.filter(([key]) => key !== "poNumber" && record[key] != null && record[key] !== "");
   const raw = Object.entries((l.raw ?? {}) as Record<string, unknown>);
@@ -313,7 +315,7 @@ function LineDetail({ line: l, reasonCode, reports, canSeeReports, tz }: { line:
           <Section title="Violation review">
             <div className="flex flex-wrap items-center gap-2">
               <DispositionBadge disposition={l.review.disposition} />
-              {l.review.teamInfluence && <span>Team: {TEAM_INFLUENCES[l.review.teamInfluence]}</span>}
+              {l.review.teamInfluence && <span>Team: {teams[l.review.teamInfluence] ?? l.review.teamInfluence}</span>}
               {reasonCode && <span>· Reason code: {reasonCode}</span>}
             </div>
             {l.review.rootCause && <p className="font-medium text-gray-800">Root cause: {l.review.rootCause}</p>}

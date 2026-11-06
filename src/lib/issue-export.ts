@@ -3,7 +3,7 @@ import { DEFAULT_SITE_NAME } from "@/lib/brand";
 import { prisma } from "@/lib/prisma";
 import { ISSUE_SEVERITIES, ISSUE_STATUSES, issueLabel, issueWhere, type IssueFilters } from "@/lib/issues";
 import { matchIssuePos } from "@/lib/issues-data";
-import { TEAM_INFLUENCES } from "@/lib/line-fields";
+import { teamNames } from "@/lib/teams";
 import { formatUtcDate } from "@/lib/utils";
 
 const MONEY = '"$"#,##0.00';
@@ -35,6 +35,7 @@ export async function issuesWorkbook(filters: IssueFilters, siteName = DEFAULT_S
     include: { program: { select: { name: true } }, createdBy: { select: { name: true } }, pos: { orderBy: { poNumber: "asc" } } },
   });
 
+  const teams = await teamNames();
   const wb = new ExcelJS.Workbook();
   wb.creator = siteName;
   const ws = sheet(wb, "Issues", [
@@ -45,7 +46,7 @@ export async function issuesWorkbook(filters: IssueFilters, siteName = DEFAULT_S
   for (const i of issues) {
     ws.addRow([
       issueLabel(i.number), formatUtcDate(i.issueDate), i.title, ISSUE_STATUSES[i.status].label, ISSUE_SEVERITIES[i.severity], i.category,
-      i.program?.name ?? null, i.team ? TEAM_INFLUENCES[i.team] : null, i.hdTickets.join(", ") || null, i.pos.map((p) => p.poNumber).join(", "),
+      i.program?.name ?? null, i.team ? (teams[i.team] ?? i.team) : null, i.hdTickets.join(", ") || null, i.pos.map((p) => p.poNumber).join(", "),
       i.description, i.actionsTaken, i.consequences, i.peopleInvolved, i.references, i.resolution,
       i.followUpDate ? formatUtcDate(i.followUpDate) : null, i.resolvedAt ? formatUtcDate(i.resolvedAt) : null, i.createdBy?.name ?? null,
     ]).alignment = { vertical: "top", wrapText: true };

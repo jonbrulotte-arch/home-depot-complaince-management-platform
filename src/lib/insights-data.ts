@@ -2,6 +2,7 @@ import { prisma } from "@/lib/prisma";
 import { calendarToFiscal } from "@/lib/fiscal";
 import { getPeriodField, linesInPeriod, periodOf } from "@/lib/periods";
 import { matchIssuePos } from "@/lib/issues-data";
+import { teamNames } from "@/lib/teams";
 import { scorecardData } from "@/lib/scorecard-store";
 import { previousFrame, priorYearFrame, resolveTimeFrame, type GoalSnapshot, type InsightIssue, type InsightLine, type TimeFrame } from "@/lib/insights";
 
@@ -25,14 +26,27 @@ export async function loadInsights(filters: InsightFilters) {
   const programCode = programs.some((p) => p.code === filters.program) ? filters.program : undefined;
   const programWhere = programCode ? { metric: { program: { code: programCode } } } : {};
 
-  const bounds = await prisma.complianceLine.aggregate({ _min: { [field]: true }, _max: { [field]: true } });
-  const latest = (bounds._max as Record<string, number | null>)[field] ?? null;
-  const earliest = (bounds._min as Record<string, number | null>)[field] ?? null;
+  // The frame ends at the latest month with compliance data or a logged issue: issues are logged
+  // as things happen, so they usually run ahead of THD's data
+  const [bounds, issueBounds] = await Promise.all([
+    prisma.complianceLine.aggregate({ _min: { [field]: true }, _max: { [field]: true } }),
+    prisma.issue.aggregate({ _min: { issueDate: true }, _max: { issueDate: true } }),
+  ]);
+  const months = [
+    (bounds._min as Record<string, number | null>)[field],
+    (bounds._max as Record<string, number | null>)[field],
+    issueBounds._min.issueDate ? fiscalMonthOf(issueBounds._min.issueDate) : null,
+    issueBounds._max.issueDate ? fiscalMonthOf(issueBounds._max.issueDate) : null,
+  ].filter((m): m is number => typeof m === "number");
+  const latest = months.length ? Math.max(...months) : null;
+  const earliest = months.length ? Math.min(...months) : null;
   const frame = resolveTimeFrame(filters.range, latest, earliest, { from: filters.from, to: filters.to });
   const prev = previousFrame(frame);
   const prior = priorYearFrame(frame);
   const loadFrom = Math.min(frame.from, prev?.from ?? frame.from, prior?.from ?? frame.from);
 
+  const names = await teamNames();
+  const teamName = (key: string | null | undefined) => (key ? (names[key] ?? key) : null);
   const [rows, snapshots, issues] = await Promise.all([
     frame.months.length
       ? prisma.complianceLine.findMany({
@@ -57,7 +71,7 @@ export async function loadInsights(filters: InsightFilters) {
         })
       : Promise.resolve([]),
     prisma.scorecard.findMany({ where: { publishedAt: { not: null }, report: { status: "PUBLISHED" } }, select: { data: true } }),
-    loadIssues(programCode),
+    loadIssues(programCode, teamName),
   ]);
 
   const lines: InsightLine[] = rows.map((r) => ({
@@ -70,7 +84,7 @@ export async function loadInsights(filters: InsightFilters) {
     isCompliant: r.isCompliant,
     offset: Number(r.offsetAmount),
     disposition: r.review?.disposition ?? null,
-    team: r.review?.teamInfluence ?? null,
+    team: teamName(r.review?.teamInfluence),
     rootCause: r.review?.rootCause ?? null,
     dcNumber: r.dcNumber,
     carrier: r.carrierUsed?.trim() || null,
@@ -121,7 +135,7 @@ export async function loadInsights(filters: InsightFilters) {
 }
 
 /** Every issue (optionally for one program), with the violations and offsets on its POs. */
-async function loadIssues(programCode: string | undefined): Promise<InsightIssue[]> {
+async function loadIssues(programCode: string | undefined, teamName: (key: string | null) => string | null): Promise<InsightIssue[]> {
   const issues = await prisma.issue.findMany({
     where: programCode ? { program: { code: programCode } } : {},
     select: {
@@ -167,7 +181,7 @@ async function loadIssues(programCode: string | undefined): Promise<InsightIssue
       status: i.status,
       severity: i.severity,
       category: i.category,
-      team: i.team,
+      team: teamName(i.team),
       programCode: i.program?.code ?? null,
       createdAt: i.createdAt,
       resolvedAt: i.resolvedAt,

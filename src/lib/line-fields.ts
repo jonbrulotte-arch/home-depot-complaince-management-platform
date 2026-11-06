@@ -52,18 +52,3 @@ export const LINE_FIELD_LABELS: [key: string, label: string, kind: "text" | "dat
   ["spmCoordinatorComment", "THD coordinator comment", "text"],
 ];
 
-export const TEAM_INFLUENCES = {
-  WAREHOUSE_SITE_0: "Warehouse (Site 0)",
-  WAREHOUSE_SITE_3: "Warehouse (Site 3)",
-  WAREHOUSE: "Warehouse (site not set)",
-  CUSTOMER_SERVICE: "Customer Service",
-  CS_WAREHOUSE: "CS / Warehouse",
-  EDI: "EDI",
-  ECOMM: "Ecomm",
-  CARRIER: "Carrier",
-  THD: "THD",
-  OTHER: "Other",
-} as const;
-
-/** Team influences that are no longer offered; kept so earlier reviews still show them */
-export const RETIRED_TEAM_INFLUENCES: string[] = ["WAREHOUSE"];

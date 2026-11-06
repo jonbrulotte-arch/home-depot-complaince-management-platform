@@ -4,10 +4,12 @@ import { prisma } from "@/lib/prisma";
 import { requireApiPermission } from "@/lib/auth-guard";
 import { badRequest, notFound, parseJson, type IdParams } from "@/lib/api";
 import { audit } from "@/lib/audit";
+import { isAssignableTeam } from "@/lib/teams";
 
 const reviewSchema = z.object({
   disposition: z.enum(["PENDING", "ACCEPTED", "DISPUTABLE", "NOT_DISPUTABLE", "NEEDS_RESEARCH", "RESOLVED"]),
-  teamInfluence: z.enum(["WAREHOUSE_SITE_0", "WAREHOUSE_SITE_3", "WAREHOUSE", "CUSTOMER_SERVICE", "CS_WAREHOUSE", "EDI", "ECOMM", "CARRIER", "THD", "OTHER"]).nullable().optional(),
+  // A team key (Admin › Teams): an active team, or the one the review already has
+  teamInfluence: z.string().trim().max(64).nullable().optional(),
   reasonCodeId: z.string().trim().min(1).nullable().optional(),
   rootCause: z.string().trim().max(2000).nullable().optional(),
   notes: z.string().trim().max(10000).nullable().optional(),
@@ -21,8 +23,9 @@ export async function PUT(req: Request, { params }: IdParams) {
   const body = await parseJson(req, reviewSchema);
   if (body.error) return body.error;
 
-  const line = await prisma.complianceLine.findUnique({ where: { id }, select: { id: true, metricId: true } });
+  const line = await prisma.complianceLine.findUnique({ where: { id }, select: { id: true, metricId: true, review: { select: { teamInfluence: true } } } });
   if (!line) return notFound("Line not found");
+  if (body.data.teamInfluence && !(await isAssignableTeam(body.data.teamInfluence, line.review?.teamInfluence))) return badRequest("Unknown or inactive team");
   const { reasonCodeId, ...rest } = body.data;
   if (reasonCodeId) {
     const code = await prisma.disputeReasonCode.findFirst({ where: { id: reasonCodeId, metricId: line.metricId } });

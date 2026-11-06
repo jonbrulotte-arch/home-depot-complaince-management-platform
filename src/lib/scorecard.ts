@@ -1,4 +1,4 @@
-import type { DisputeStatus, PeriodBasis, Prisma, TeamInfluence } from "@prisma/client";
+import type { DisputeStatus, PeriodBasis, Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { getPeriodField, linesInPeriod, periodOf, type PeriodField } from "@/lib/periods";
 import { fiscalLabel, shiftFiscalMonth } from "@/lib/fiscal";
@@ -7,7 +7,7 @@ import { getLineCounts } from "@/lib/line-counts";
 import { meetsGoal } from "@/lib/scorecard-rules";
 import { getShipmentInputs, type ShipmentInput } from "@/lib/shipments";
 import { reportShipmentRanges, SHIPMENT_RANGES, type ShipmentRanges } from "@/lib/shipment-ranges";
-import { TEAM_INFLUENCES } from "@/lib/line-fields";
+import { teamNames } from "@/lib/teams";
 
 export interface ScorecardMetric {
   code: string;
@@ -119,6 +119,7 @@ const TREND_MONTHS = 12;
 
 /** Builds the scorecard for a report from the current lines, reviews and disputes. */
 export async function buildScorecard(reportId: string): Promise<ScorecardData> {
+  const teams = await teamNames();
   const report = await prisma.complianceReport.findUniqueOrThrow({
     where: { id: reportId },
     include: { period: true, programs: { include: { program: true }, orderBy: { program: { sortOrder: "asc" } } } },
@@ -193,7 +194,7 @@ export async function buildScorecard(reportId: string): Promise<ScorecardData> {
     dcNumber: l.dcNumber,
     offset: Number(l.offsetAmount),
     disposition: l.review?.disposition ?? "PENDING",
-    teamInfluence: l.review?.teamInfluence ? TEAM_INFLUENCES[l.review.teamInfluence] : null,
+    teamInfluence: l.review?.teamInfluence ? (teams[l.review.teamInfluence] ?? l.review.teamInfluence) : null,
     disputeStatus: l.dispute && l.dispute.status !== "WITHDRAWN" ? l.dispute.status : null,
     reasonCode: l.dispute?.reasonCode?.code ?? null,
     recovered: l.dispute?.amountRecovered == null ? null : Number(l.dispute.amountRecovered),
@@ -207,7 +208,7 @@ export async function buildScorecard(reportId: string): Promise<ScorecardData> {
 
   const byTeam = new Map<string, { amount: number; lines: number }>();
   for (const l of standing) {
-    const team = l.review?.teamInfluence ? TEAM_INFLUENCES[l.review.teamInfluence as TeamInfluence] : "Not assigned";
+    const team = l.review?.teamInfluence ? (teams[l.review.teamInfluence] ?? l.review.teamInfluence) : "Not assigned";
     const entry = byTeam.get(team) ?? { amount: 0, lines: 0 };
     entry.amount += Number(l.offsetAmount);
     entry.lines += 1;

@@ -6,6 +6,7 @@ import { issueLabel } from "@/lib/issues";
 import { getIssue } from "@/lib/issues-data";
 import { issuePdf } from "@/lib/issue-pdf";
 import { getTimeZone } from "@/lib/time-zone-server";
+import { teamNames } from "@/lib/teams";
 
 // Public read-only links to Issue Log issues (/i/<token>). Someone who can manage issues turns a
 // link on, replaces it (the old one stops working) or turns it off. Anyone with the link sees the
@@ -33,8 +34,8 @@ export async function sharedIssue(token: string) {
 
 /** The issue PDF as a download, with times in the viewer's zone. */
 export async function issuePdfResponse(found: NonNullable<Awaited<ReturnType<typeof getIssue>>>) {
-  const [{ siteName }, timeZone] = await Promise.all([getBranding(), getTimeZone()]);
-  const buffer = await issuePdf(found, { timeZone, siteName });
+  const [{ siteName }, timeZone, names] = await Promise.all([getBranding(), getTimeZone(), teamNames()]);
+  const buffer = await issuePdf(found, { timeZone, siteName, teamNames: names });
   const name = `${issueLabel(found.issue.number)}_${found.issue.title.replace(/[^A-Za-z0-9]+/g, "_").replace(/^_|_$/g, "").slice(0, 60)}.pdf`;
   return new NextResponse(new Uint8Array(buffer), {
     headers: { "Content-Type": "application/pdf", "Content-Disposition": `attachment; filename="${name}"`, "Cache-Control": "private, no-store" },

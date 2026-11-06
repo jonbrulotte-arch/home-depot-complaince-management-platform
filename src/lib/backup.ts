@@ -20,6 +20,7 @@ export const TABLE_ORDER = [
   "Role",
   "User",
   "AuditLog",
+  "Team",
   "Program",
   "Metric",
   "MetricRule",

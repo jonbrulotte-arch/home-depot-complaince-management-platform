@@ -10,7 +10,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { apiFetch } from "@/lib/client-api";
 import { ISSUE_CATEGORIES, ISSUE_SEVERITIES, ISSUE_STATUSES, MAX_HD_TICKETS, MAX_ISSUE_POS, normalizePoNumber, parsePoList, parseTickets, type IssueSeverityKey, type IssueStatusKey } from "@/lib/issues";
-import { RETIRED_TEAM_INFLUENCES, TEAM_INFLUENCES } from "@/lib/line-fields";
+import { pickerTeams, type TeamOption } from "@/lib/team-options";
 
 const NONE = "none";
 
@@ -46,7 +46,7 @@ function Field({ label, hint, htmlFor, children, className }: { label: string; h
 }
 
 /** Logs a new issue or edits one: what happened, the POs involved, and what was done about it. */
-export function IssueForm({ issueId, initial, programs }: { issueId?: string; initial: IssueFormValues; programs: { id: string; name: string }[] }) {
+export function IssueForm({ issueId, initial, programs, teams: allTeams }: { issueId?: string; initial: IssueFormValues; programs: { id: string; name: string }[]; teams: TeamOption[] }) {
   const router = useRouter();
   const [v, setV] = useState<IssueFormValues>(initial);
   const [paste, setPaste] = useState("");
@@ -95,7 +95,7 @@ export function IssueForm({ issueId, initial, programs }: { issueId?: string; in
     }
   }
 
-  const teams = Object.entries(TEAM_INFLUENCES).filter(([k]) => !RETIRED_TEAM_INFLUENCES.includes(k) || k === initial.team);
+  const teams = pickerTeams(allTeams, initial.team);
   const valid = v.title.trim() && v.description.trim() && v.issueDate;
 
   return (
@@ -178,9 +178,10 @@ export function IssueForm({ issueId, initial, programs }: { issueId?: string; in
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value={NONE}>Not set</SelectItem>
-                {teams.map(([k, label]) => (
-                  <SelectItem key={k} value={k}>
-                    {label}
+                {teams.map((t) => (
+                  <SelectItem key={t.key} value={t.key}>
+                    {t.name}
+                    {!t.active && " (inactive)"}
                   </SelectItem>
                 ))}
               </SelectContent>

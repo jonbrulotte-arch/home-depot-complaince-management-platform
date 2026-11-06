@@ -3,7 +3,7 @@ import type { ReactNode } from "react";
 import { ISSUE_SEVERITIES } from "@/lib/issues";
 import type { getIssue } from "@/lib/issues-data";
 import { fiscalLabel } from "@/lib/fiscal";
-import { TEAM_INFLUENCES } from "@/lib/line-fields";
+import { teamNames } from "@/lib/teams";
 import { cn, formatCurrency, formatDateTime, formatUtcDate } from "@/lib/utils";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ComplianceBadge, DispositionBadge, DisputeStatusBadge } from "@/components/shared/status-badges";
@@ -33,7 +33,7 @@ export function issueSubtitle(issue: IssueFound["issue"], tz: string): string {
   );
 }
 
-export function IssueBody({
+export async function IssueBody({
   found,
   tz,
   canOpenPo,
@@ -50,6 +50,7 @@ export function IssueBody({
   files: ReactNode;
 }) {
   const { issue, pos } = found;
+  const teams = await teamNames();
   const linked = pos.filter((p) => p.record);
   const violations = linked.flatMap((p) => p.lines.filter((l) => !l.isCompliant));
   const offsets = violations.reduce((s, l) => s + Number(l.offsetAmount), 0);
@@ -59,7 +60,7 @@ export function IssueBody({
     ["Severity", ISSUE_SEVERITIES[issue.severity]],
     [issue.hdTickets.length > 1 ? "HD Support tickets" : "HD Support ticket", issue.hdTickets.join(", ") || "—"],
     ["THD program", issue.program?.name ?? "—"],
-    ["Team responsible", issue.team ? TEAM_INFLUENCES[issue.team] : "—"],
+    ["Team responsible", issue.team ? (teams[issue.team] ?? issue.team) : "—"],
     ["Follow-up date", issue.followUpDate ? formatUtcDate(issue.followUpDate) : "—"],
     ["Resolved", issue.resolvedAt ? formatDateTime(issue.resolvedAt, tz) : "—"],
   ];
@@ -163,7 +164,7 @@ export function IssueBody({
                       </td>
                       <td className={cn(td, "text-gray-900")}>{Number(l.offsetAmount) ? formatCurrency(Number(l.offsetAmount)) : "—"}</td>
                       <td className={td}>{l.isCompliant ? <span className="text-gray-400">—</span> : <DispositionBadge disposition={l.review?.disposition} />}</td>
-                      <td className={cn(td, "text-gray-700")}>{l.review?.teamInfluence ? TEAM_INFLUENCES[l.review.teamInfluence] : "—"}</td>
+                      <td className={cn(td, "text-gray-700")}>{l.review?.teamInfluence ? (teams[l.review.teamInfluence] ?? l.review.teamInfluence) : "—"}</td>
                       <td className={td}>
                         {l.dispute ? (
                           <>

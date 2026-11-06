@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { fiscalLabel } from "@/lib/fiscal";
-import { TEAM_INFLUENCES } from "@/lib/line-fields";
+import { teamNames } from "@/lib/teams";
 import { getPeriodField, linesInPeriod } from "@/lib/periods";
 import { lineCountKey } from "@/lib/scorecard-rules";
 import { periodLabel, periodOfMetric } from "@/lib/shipment-ranges";
@@ -65,6 +65,7 @@ export interface PackageLine {
 
 /** Every line with an offset in the slots carrying this Package ID (matched ignoring case), or null if none does. */
 export async function packageReport(packageId: string) {
+  const teams = await teamNames();
   const slots = await prisma.chargebackPackage.findMany({
     where: { packageId: { equals: packageId, mode: "insensitive" } },
     include: {
@@ -107,7 +108,7 @@ export async function packageReport(packageId: string) {
         fiscalMonth: fiscalLabel(l.fiscalMonth),
         offset,
         decision: DECISIONS[l.review?.disposition ?? "PENDING"] ?? "Pending",
-        team: l.review?.teamInfluence ? TEAM_INFLUENCES[l.review.teamInfluence as keyof typeof TEAM_INFLUENCES] ?? l.review.teamInfluence : null,
+        team: l.review?.teamInfluence ? (teams[l.review.teamInfluence] ?? l.review.teamInfluence) : null,
         rootCause: l.review?.rootCause ?? null,
         disputeStatus: dispute ? DISPUTE_STATUS_LABELS[dispute.status] : null,
         amountDisputed: dispute ? Number(dispute.amountDisputed) : null,

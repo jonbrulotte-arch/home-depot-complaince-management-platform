@@ -66,6 +66,10 @@ export const ACTION_LABELS: Record<string, string> = {
   "settings.publicDashboard": "Changed the public dashboard link",
   "settings.reportPeriods": "Changed the report period basis",
   "email.test": "Sent a test email",
+  "team.create": "Added a team",
+  "team.update": "Changed a team",
+  "team.delete": "Deleted a team",
+  "team.reorder": "Reordered the teams",
   "insights.export": "Exported Reports & Insights",
   "backup.create": "Took a backup",
   "backup.download": "Downloaded a backup",
@@ -82,7 +86,7 @@ export const LOG_CATEGORIES = [
   { key: "issues", label: "Issue Log", prefixes: ["issue"] },
   { key: "exports", label: "Lookups & exports", prefixes: ["package", "summary", "appLog", "insights"] },
   { key: "access", label: "Users & roles", prefixes: ["user", "role", "account"] },
-  { key: "config", label: "Configuration & settings", prefixes: ["metric", "rule", "alias", "reasonCode", "settings", "email"] },
+  { key: "config", label: "Configuration & settings", prefixes: ["metric", "rule", "alias", "reasonCode", "settings", "email", "team"] },
   { key: "backups", label: "Backups", prefixes: ["backup"] },
 ] as const;
 

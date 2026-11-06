@@ -2,7 +2,6 @@
 import { z } from "zod";
 import type { Prisma } from "@prisma/client";
 import { pickPoInstance } from "@/lib/po";
-import { TEAM_INFLUENCES } from "@/lib/line-fields";
 
 export const ISSUE_STATUSES = {
   OPEN: { label: "Open", variant: "destructive" },
@@ -122,10 +121,13 @@ export const issueInput = z.object({
   severity: z.enum(Object.keys(ISSUE_SEVERITIES) as [keyof typeof ISSUE_SEVERITIES, ...(keyof typeof ISSUE_SEVERITIES)[]]),
   category: z.enum(ISSUE_CATEGORIES),
   programId: optionalText(64),
+  // A team key (Admin › Teams); the route checks it's an active team or the issue's current one
   team: z
-    .enum(Object.keys(TEAM_INFLUENCES) as [keyof typeof TEAM_INFLUENCES, ...(keyof typeof TEAM_INFLUENCES)[]])
+    .string()
+    .trim()
+    .max(64)
     .nullish()
-    .transform((t) => t ?? null),
+    .transform((t) => t || null),
   hdTickets: z
     .array(z.string().trim().max(60, "must be at most 60 characters"))
     .max(MAX_HD_TICKETS, `can list at most ${MAX_HD_TICKETS} tickets`)

@@ -16,7 +16,6 @@ import {
   repeatPos,
   rootCauses,
   teamKey,
-  teamLabel,
   winRate,
   type Figures,
 } from "@/lib/insights";
@@ -100,7 +99,7 @@ export async function insightsWorkbook(data: Insights, siteName = DEFAULT_SITE_N
     goals.programs.flatMap((p) => p.metrics.map((m) => [p.name, m.name, m.goalPct, ...m.cells.map((c) => (!c ? null : c.pct !== null ? c.pct : c.meets === true ? "Met" : c.meets === false ? "Missed" : null)), m.judged ? `${m.met} of ${m.judged}` : null])),
   );
 
-  const teams = groupBy(data.lines, teamKey, (k) => teamLabel(k));
+  const teams = groupBy(data.lines, teamKey, (k) => k);
   sheet(wb, "Teams", `By team responsible · ${scope}`, [["Team", 24], ...FIG_COLS, ["Share %", 10, "pct"], ["With feedback", 13, "int"]], teams.map((t) => [t.label, ...figRow(t), t.share, t.withFeedback]));
 
   sheet(wb, "Root causes", `Most common root causes · ${scope}`, [["Root cause", 50], ["Teams", 30], ["Violations", 12, "int"], ["Offsets", 14, "money"]], rootCauses(data.lines, 100).map((r) => [r.cause, r.teams.join(", "), r.violations, r.offsets]));
@@ -127,7 +126,7 @@ export async function insightsWorkbook(data: Insights, siteName = DEFAULT_SITE_N
       ISSUE_STATUSES[i.status].label,
       ISSUE_SEVERITIES[i.severity],
       i.category,
-      i.team ? teamLabel(i.team) : null,
+      i.team,
       i.poCount,
       i.violations,
       i.offsets,

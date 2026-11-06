@@ -16,6 +16,7 @@ export const PERMISSIONS = {
   "admin.users": "Manage users",
   "admin.rbac": "Manage roles and permissions",
   "admin.programs": "Manage programs, metrics, thresholds and column mappings",
+  "admin.teams": "Manage the teams responsible for violations and issues",
   "admin.backup": "Backup and restore",
   "admin.settings": "Manage site settings and branding",
   "admin.audit": "View the App Log (every event in the platform)",
