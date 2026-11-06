@@ -42,7 +42,8 @@ export default async function NewIssuePage({ searchParams }: { searchParams: Pro
           references: "",
           resolution: "",
           followUpDate: "",
-          pos: [{ poNumber: po ?? "", poCreateDate: po ? poDate : "" }],
+          estimatedFine: "",
+          pos: [{ poNumber: po ?? "", poCreateDate: po ? poDate : "", estimatedFine: "" }],
         }}
       />
     </div>

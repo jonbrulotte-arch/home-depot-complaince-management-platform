@@ -4,7 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { requirePagePermission } from "@/lib/auth-guard";
 import { ISSUE_SEVERITIES, ISSUE_STATUSES, issueLabel, issueWhere, type IssueFilters } from "@/lib/issues";
 import { issueCounts } from "@/lib/issues-data";
-import { cn, formatUtcDate } from "@/lib/utils";
+import { cn, formatCurrency, formatUtcDate } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -81,7 +81,7 @@ export default async function IssueLogPage({ searchParams }: { searchParams: Pro
               <table className="min-w-full">
                 <thead className="bg-gray-50">
                   <tr>
-                    {["Issue", "Date", "Title", "POs", "Category", "Severity", "Status", "HD tickets", "Logged by"].map((h) => (
+                    {["Issue", "Date", "Title", "POs", "Category", "Severity", "Status", "HD tickets", "Est. max fine", "Logged by"].map((h) => (
                       <th key={h} className={th}>
                         {h}
                       </th>
@@ -124,6 +124,9 @@ export default async function IssueLogPage({ searchParams }: { searchParams: Pro
                       </td>
                       <td className={cn(td, "whitespace-nowrap", i.hdTickets.length ? "text-gray-700" : "text-gray-400")}>
                         {i.hdTickets.length ? i.hdTickets.map((t) => <div key={t}>{t}</div>) : "—"}
+                      </td>
+                      <td className={cn(td, "whitespace-nowrap tabular-nums", i.estimatedFine === null ? "text-gray-400" : "text-gray-700")}>
+                        {i.estimatedFine === null ? "—" : formatCurrency(i.estimatedFine).replace(/\.00$/, "")}
                       </td>
                       <td className={cn(td, "text-gray-700")}>{i.createdBy?.name ?? "—"}</td>
                     </tr>

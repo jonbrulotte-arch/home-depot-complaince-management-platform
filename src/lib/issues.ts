@@ -97,6 +97,14 @@ const optionalText = (max: number) =>
     .transform((s) => s || null);
 
 export const MAX_HD_TICKETS = 20;
+export const MAX_ESTIMATED_FINE = 100_000_000;
+
+/** Parses a typed dollar amount as whole dollars ("$5,950" → 5950); null when empty, NaN when not a number. */
+export function parseWholeDollars(text: string): number | null {
+  const t = text.replace(/[$,\s]/g, "");
+  if (!t) return null;
+  return /^\d+$/.test(t) ? Number(t) : NaN;
+}
 
 /** HD Support ticket numbers from typed or pasted text (commas, semicolons, spaces or new lines between them), de-duplicated. */
 export function parseTickets(text: string): string[] {
@@ -140,8 +148,22 @@ export const issueInput = z.object({
   references: optionalText(2_000),
   resolution: optionalText(10_000),
   followUpDate: day.nullish().transform((d) => d ?? null),
+  // Whole dollars; empty = no estimate
+  estimatedFine: z
+    .number()
+    .int("must be whole dollars")
+    .min(0, "can't be negative")
+    .max(MAX_ESTIMATED_FINE, "is too large")
+    .nullish()
+    .transform((n) => n ?? null),
   pos: z
-    .array(z.object({ poNumber: z.string().max(60), poCreateDate: day.nullish().transform((d) => d ?? null) }))
+    .array(z.object({ poNumber: z.string().max(60), poCreateDate: day.nullish().transform((d) => d ?? null), estimatedFine: z
+      .number()
+      .int("must be whole dollars")
+      .min(0, "can't be negative")
+      .max(MAX_ESTIMATED_FINE, "is too large")
+      .nullish()
+      .transform((n) => n ?? null) }))
     .max(MAX_ISSUE_POS, `can list at most ${MAX_ISSUE_POS} POs`),
 });
 export type IssueInput = z.infer<typeof issueInput>;
@@ -150,15 +172,24 @@ const asDate = (d: string) => new Date(`${d}T00:00:00Z`);
 const isDay = (s: string | undefined): s is string => Boolean(s && /^\d{4}-\d{2}-\d{2}$/.test(s) && !Number.isNaN(asDate(s).getTime()) && asDate(s).toISOString().startsWith(s));
 
 /** Checked POs, de-duplicated, or the first one that isn't a PO number. */
-export function cleanPos(pos: IssueInput["pos"]): { pos: { poNumber: string; poCreateDate: Date | null }[]; error?: string } {
-  const out: { poNumber: string; poCreateDate: Date | null }[] = [];
+export function cleanPos(pos: IssueInput["pos"]): { pos: { poNumber: string; poCreateDate: Date | null; estimatedFine: number | null }[]; error?: string } {
+  const out: { poNumber: string; poCreateDate: Date | null; estimatedFine: number | null }[] = [];
   for (const p of pos) {
     const po = normalizePoNumber(p.poNumber);
     if (!po) return { pos: [], error: `"${p.poNumber}" is not a PO number` };
     const date = p.poCreateDate ? asDate(p.poCreateDate) : null;
-    if (!out.some((o) => o.poNumber === po && o.poCreateDate?.getTime() === date?.getTime())) out.push({ poNumber: po, poCreateDate: date });
+    if (!out.some((o) => o.poNumber === po && o.poCreateDate?.getTime() === date?.getTime())) out.push({ poNumber: po, poCreateDate: date, estimatedFine: p.estimatedFine ?? null });
   }
   return { pos: out };
+}
+
+/**
+ * The issue's estimated maximum fine: the total of its POs' estimates when any PO has one,
+ * otherwise the figure given for the whole issue.
+ */
+export function issueEstimate(issueFigure: number | null | undefined, pos: { estimatedFine?: number | null }[]): number | null {
+  const per = pos.filter((p) => p.estimatedFine !== null && p.estimatedFine !== undefined);
+  return per.length ? per.reduce((s, p) => s + (p.estimatedFine ?? 0), 0) : (issueFigure ?? null);
 }
 
 /** The scalar fields to write for an issue; resolvedAt is set when it first becomes Resolved or Closed. */
@@ -180,6 +211,8 @@ export function issueData(input: IssueInput, previous?: { status: string; resolv
     references: input.references,
     resolution: input.resolution,
     followUpDate: input.followUpDate ? asDate(input.followUpDate) : null,
+    // The total of the POs' estimates when any are given, else the whole-issue figure
+    estimatedFine: issueEstimate(input.estimatedFine, input.pos),
     resolvedAt: done ? (previous?.resolvedAt ?? new Date()) : null,
   } satisfies Prisma.IssueUncheckedUpdateInput;
 }

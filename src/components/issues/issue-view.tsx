@@ -62,6 +62,7 @@ export async function IssueBody({
     ["THD program", issue.program?.name ?? "—"],
     ["Team responsible", issue.team ? (teams[issue.team] ?? issue.team) : "—"],
     ["Follow-up date", issue.followUpDate ? formatUtcDate(issue.followUpDate) : "—"],
+    ["Estimated maximum fine", issue.estimatedFine === null ? "—" : formatCurrency(issue.estimatedFine).replace(/\.00$/, "")],
     ["Resolved", issue.resolvedAt ? formatDateTime(issue.resolvedAt, tz) : "—"],
   ];
 
@@ -108,7 +109,8 @@ export async function IssueBody({
             ? "No POs were listed for this issue."
             : `${linked.length} of ${pos.length} PO(s) found in the compliance data so far` +
               (violations.length ? ` · ${violations.length} violation(s), ${formatCurrency(offsets)} in offsets` : "") +
-              ". The others link automatically once THD's exports for them are imported."}
+              ". The others link automatically once THD's exports for them are imported." +
+              (issue.estimatedFine !== null ? ` Expected fines ${formatCurrency(issue.estimatedFine).replace(/\.00$/, "")}; assessed so far ${formatCurrency(offsets)}.` : "")}
         </p>
       </CardHeader>
       {pos.length > 0 && (
@@ -136,6 +138,7 @@ export async function IssueBody({
                         p.poNumber
                       )}
                       {(p.poCreateDate ?? p.record?.poCreateDate) && <div className="text-xs text-gray-500">Created {formatUtcDate(p.poCreateDate ?? p.record!.poCreateDate)}</div>}
+                      {p.estimatedFine !== null && <div className="text-xs text-gray-500">Est. fine {formatCurrency(p.estimatedFine).replace(/\.00$/, "")}</div>}
                     </td>
                   );
                   if (!p.record || p.lines.length === 0) {

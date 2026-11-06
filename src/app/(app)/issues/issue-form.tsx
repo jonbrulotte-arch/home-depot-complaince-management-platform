@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { apiFetch } from "@/lib/client-api";
-import { ISSUE_CATEGORIES, ISSUE_SEVERITIES, ISSUE_STATUSES, MAX_HD_TICKETS, MAX_ISSUE_POS, normalizePoNumber, parsePoList, parseTickets, type IssueSeverityKey, type IssueStatusKey } from "@/lib/issues";
+import { ISSUE_CATEGORIES, ISSUE_SEVERITIES, ISSUE_STATUSES, MAX_HD_TICKETS, MAX_ISSUE_POS, normalizePoNumber, parsePoList, parseTickets, parseWholeDollars, type IssueSeverityKey, type IssueStatusKey } from "@/lib/issues";
 import { pickerTeams, type TeamOption } from "@/lib/team-options";
 
 const NONE = "none";
@@ -30,7 +30,10 @@ export interface IssueFormValues {
   references: string;
   resolution: string;
   followUpDate: string;
-  pos: { poNumber: string; poCreateDate: string }[];
+  /** Whole dollars as typed; empty = no estimate */
+  estimatedFine: string;
+  /** estimatedFine: whole dollars as typed, "" = none */
+  pos: { poNumber: string; poCreateDate: string; estimatedFine: string }[];
 }
 
 function Field({ label, hint, htmlFor, children, className }: { label: string; hint?: string; htmlFor?: string; children: React.ReactNode; className?: string }) {
@@ -62,7 +65,7 @@ export function IssueForm({ issueId, initial, programs, teams: allTeams }: { iss
     const { pos, invalid } = parsePoList(paste);
     const have = new Set(v.pos.map((p) => normalizePoNumber(p.poNumber)));
     const added = pos.filter((po) => !have.has(po));
-    set("pos", [...v.pos.filter((p) => p.poNumber.trim()), ...added.map((poNumber) => ({ poNumber, poCreateDate: "" }))].slice(0, MAX_ISSUE_POS));
+    set("pos", [...v.pos.filter((p) => p.poNumber.trim()), ...added.map((poNumber) => ({ poNumber, poCreateDate: "", estimatedFine: "" }))].slice(0, MAX_ISSUE_POS));
     setPaste("");
     setPasteNote(
       [added.length ? `Added ${added.length} PO(s).` : "No new POs.", invalid.length ? `Not PO numbers: ${invalid.slice(0, 5).join(", ")}${invalid.length > 5 ? "…" : ""}` : ""].filter(Boolean).join(" "),
@@ -78,7 +81,8 @@ export function IssueForm({ issueId, initial, programs, teams: allTeams }: { iss
       programId: v.programId,
       team: v.team,
       followUpDate: v.followUpDate || null,
-      pos: v.pos.filter((p) => p.poNumber.trim()).map((p) => ({ poNumber: p.poNumber, poCreateDate: p.poCreateDate || null })),
+      estimatedFine: parseWholeDollars(v.estimatedFine),
+      pos: v.pos.filter((p) => p.poNumber.trim()).map((p) => ({ poNumber: p.poNumber, poCreateDate: p.poCreateDate || null, estimatedFine: parseWholeDollars(p.estimatedFine) })),
     };
     try {
       if (issueId) {
@@ -96,7 +100,11 @@ export function IssueForm({ issueId, initial, programs, teams: allTeams }: { iss
   }
 
   const teams = pickerTeams(allTeams, initial.team);
-  const valid = v.title.trim() && v.description.trim() && v.issueDate;
+  const poFines = v.pos.map((p) => parseWholeDollars(p.estimatedFine));
+  // When any PO has an estimate, the issue's estimate is their total
+  const poTotal = poFines.some((f) => f !== null && !Number.isNaN(f)) ? poFines.reduce<number>((t, f) => t + (f !== null && !Number.isNaN(f) ? f : 0), 0) : null;
+  const finesValid = !Number.isNaN(parseWholeDollars(v.estimatedFine)) && poFines.every((f) => !Number.isNaN(f));
+  const valid = v.title.trim() && v.description.trim() && v.issueDate && finesValid;
 
   return (
     <div className="space-y-6">
@@ -190,6 +198,13 @@ export function IssueForm({ issueId, initial, programs, teams: allTeams }: { iss
           <Field label="Follow-up date" hint="(optional)" htmlFor="issue-followup">
             <Input id="issue-followup" type="date" value={v.followUpDate} onChange={(e) => set("followUpDate", e.target.value)} />
           </Field>
+          <Field label="Estimated maximum fine" hint={poTotal === null ? "(whole $, optional)" : "(total of the POs' estimates)"} htmlFor="issue-fine">
+            {poTotal === null ? (
+              <DollarInput id="issue-fine" value={v.estimatedFine} onChange={(t) => set("estimatedFine", t)} label="Estimated maximum fine" placeholder="e.g. 5,950" />
+            ) : (
+              <p className="flex h-9 items-center text-sm font-medium text-gray-900">{`$${poTotal.toLocaleString("en-US")}`}</p>
+            )}
+          </Field>
         </CardContent>
       </Card>
 
@@ -205,15 +220,17 @@ export function IssueForm({ issueId, initial, programs, teams: allTeams }: { iss
             <div key={i} className="flex flex-wrap items-center gap-2">
               <Input value={p.poNumber} onChange={(e) => setPo(i, { poNumber: e.target.value })} placeholder="PO #" aria-label={`PO ${i + 1}`} className="w-48" />
               <Input type="date" value={p.poCreateDate} onChange={(e) => setPo(i, { poCreateDate: e.target.value })} aria-label={`PO ${i + 1} create date`} className="w-44" />
+              <DollarInput value={p.estimatedFine} onChange={(t) => setPo(i, { estimatedFine: t })} label={`PO ${i + 1} estimated fine`} placeholder="Est. fine" className="w-32" />
               <Button variant="ghost" size="sm" onClick={() => set("pos", v.pos.filter((_, n) => n !== i))} aria-label={`Remove PO ${i + 1}`}>
                 <X className="h-4 w-4" />
               </Button>
             </div>
           ))}
-          <Button variant="outline" size="sm" onClick={() => set("pos", [...v.pos, { poNumber: "", poCreateDate: "" }])} disabled={v.pos.length >= MAX_ISSUE_POS}>
+          <Button variant="outline" size="sm" onClick={() => set("pos", [...v.pos, { poNumber: "", poCreateDate: "", estimatedFine: "" }])} disabled={v.pos.length >= MAX_ISSUE_POS}>
             <Plus className="h-4 w-4 mr-1.5" />
             Add PO
           </Button>
+          {v.pos.length > 1 && <SameFineForAll onApply={(t) => set("pos", v.pos.map((p) => ({ ...p, estimatedFine: t })))} />}
           <div className="space-y-2 border-t border-gray-200 pt-3">
             <label htmlFor="issue-paste" className="block text-sm font-medium text-gray-700">
               Paste a list of POs <span className="font-normal text-gray-400">(one per line, or separated by commas or spaces)</span>
@@ -317,6 +334,35 @@ function TicketsInput({ tickets, onChange, text, setText }: { tickets: string[];
           ))}
         </div>
       )}
+    </div>
+  );
+}
+
+/** A whole-dollar amount with a $ sign; shows a note when it isn't whole dollars. */
+function DollarInput({ id, value, onChange, label, placeholder, className }: { id?: string; value: string; onChange: (text: string) => void; label: string; placeholder?: string; className?: string }) {
+  const bad = Number.isNaN(parseWholeDollars(value));
+  return (
+    <div className={className}>
+      <div className="relative">
+        <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-gray-500">$</span>
+        <Input id={id} inputMode="numeric" className="pl-6" value={value} onChange={(e) => onChange(e.target.value.replace(/[^\d,]/g, ""))} placeholder={placeholder} maxLength={13} aria-label={label} aria-invalid={bad} />
+      </div>
+      {bad && <p className="mt-1 text-xs text-red-700">Whole dollars only</p>}
+    </div>
+  );
+}
+
+/** Puts the same estimated fine on every PO, e.g. $100 each for invalid TMS Shipment IDs. */
+function SameFineForAll({ onApply }: { onApply: (text: string) => void }) {
+  const [text, setText] = useState("");
+  const amount = parseWholeDollars(text);
+  return (
+    <div className="flex flex-wrap items-center gap-2 text-sm text-gray-600">
+      <span>Same estimated fine for every PO:</span>
+      <DollarInput value={text} onChange={setText} label="Estimated fine for every PO" placeholder="e.g. 100" className="w-32" />
+      <Button type="button" variant="outline" size="sm" onClick={() => onApply(text)} disabled={amount === null || Number.isNaN(amount)}>
+        Apply to all
+      </Button>
     </div>
   );
 }

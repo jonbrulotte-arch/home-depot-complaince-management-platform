@@ -27,7 +27,7 @@ import {
 import { fiscalMonthOf, type Insights } from "@/lib/insights-data";
 import { cn, formatUtcDate } from "@/lib/utils";
 import { StatTiles } from "@/components/analytics/stat-tiles";
-import { Change, Section, Table, money, n, pct, type Col } from "./ui";
+import { Change, Section, Table, dollars, money, n, pct, signedMoney, type Col } from "./ui";
 
 // The tabs of Reports & Insights. Each takes the loaded data and what the viewer may open.
 
@@ -377,12 +377,14 @@ export function IssuesTab({ data, access }: { data: Insights; access: Access }) 
     ) : (
       issueLabel(i.number)
     );
-  const countCols = (header: string): Col<{ label: string; count: number; open: number; offsets: number }>[] => [
+  const countCols = (header: string): Col<{ label: string; count: number; open: number; offsets: number; estimated: number }>[] => [
     { header, cell: (r) => <span className="text-gray-900">{r.label}</span> },
     { header: "Issues", cell: (r) => n(r.count), align: "right" },
     { header: "Open", cell: (r) => n(r.open), align: "right" },
-    { header: "Offsets on their POs", cell: (r) => (r.offsets ? money(r.offsets) : "—"), align: "right" },
+    { header: "Expected fines", cell: (r) => (r.estimated ? dollars(r.estimated) : "—"), align: "right" },
+    { header: "Assessed on POs", cell: (r) => (r.offsets ? money(r.offsets) : "—"), align: "right" },
   ];
+  const est = ins.estimated;
 
   return (
     <div className="space-y-6">
@@ -391,8 +393,8 @@ export function IssuesTab({ data, access }: { data: Insights; access: Access }) 
           { label: "Issues logged", value: n(ins.total), hint: "by date of the issue" },
           { label: "Still open", value: n(ins.open), tone: ins.open ? "text-red-700" : undefined },
           { label: "Average days to resolve", value: ins.avgDaysToResolve === null ? "—" : ins.avgDaysToResolve.toFixed(1) },
-          { label: "Issues whose POs had violations", value: n(ins.withViolations) },
-          { label: "Offsets on issue POs", value: money(ins.linkedOffsets) },
+          { label: "Expected fines", value: dollars(est.expected), hint: `estimated on ${n(est.issues)} issue(s)` },
+          { label: "Assessed on their POs", value: money(est.assessed), hint: `${money(ins.linkedOffsets)} on all ${n(ins.withViolations)} issue(s) with violations` },
           { label: "Past follow-up date", value: n(ins.overdue.length), tone: ins.overdue.length ? "text-red-700" : undefined, hint: "open issues, any date" },
         ]}
       />
@@ -416,6 +418,34 @@ export function IssuesTab({ data, access }: { data: Insights; access: Access }) 
           <Table rows={ins.aging} cols={[{ header: "Age", cell: (r) => <span className="text-gray-900">{r.label}</span> }, { header: "Open issues", cell: (r) => n(r.count), align: "right" }]} bar={{ header: "Issues", value: (r) => r.count }} />
         </Section>
       </div>
+      <Section
+        title="Expected vs. assessed fines"
+        description="The estimated maximum fine on each issue against THD's offsets on its POs so far. Assessed fills in as THD's exports for the POs are imported; POs found shows how many THD's data covers yet."
+      >
+        <Table
+          rows={ins.fineRows}
+          empty="No issue in this time frame has an estimate or offsets on its POs yet."
+          cols={[
+            { header: "Issue", cell: (r) => link(r) },
+            { header: "Title", cell: (r) => <span className="text-gray-900">{r.title}</span> },
+            { header: "Status", cell: (r) => ISSUE_STATUSES[r.status].label },
+            { header: "POs found", cell: (r) => `${n(r.posFound)} of ${n(r.poCount)}`, align: "right" },
+            { header: "Expected", cell: (r) => (r.estimatedFine === null ? <span className="text-gray-400">No estimate</span> : dollars(r.estimatedFine)), align: "right" },
+            { header: "Assessed", cell: (r) => (r.offsets ? money(r.offsets) : "—"), align: "right" },
+            {
+              header: "Assessed − expected",
+              cell: (r) =>
+                r.estimatedFine === null ? (
+                  "—"
+                ) : (
+                  <span className={r.offsets > r.estimatedFine ? "text-red-700" : "text-gray-700"}>{signedMoney(r.offsets - r.estimatedFine)}</span>
+                ),
+              align: "right",
+            },
+          ]}
+          foot={["Issues with an estimate", "", "", "", dollars(est.expected), money(est.assessed), signedMoney(est.difference)]}
+        />
+      </Section>
       <Section title="Costliest issues" description="Issues whose POs carry the most offsets in the compliance data.">
         <Table
           rows={ins.costliest}

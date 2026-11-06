@@ -721,6 +721,8 @@ model Issue {
   /// BOL, PRO, customer order, tracking and other references
   references     String?
   resolution     String?
+  /// Most THD could charge for the issue, in whole dollars, as estimated when it was logged
+  estimatedFine  Int?
   followUpDate   DateTime?         @db.Date
   resolvedAt     DateTime?
   createdById    String?
@@ -746,6 +748,8 @@ model IssuePo {
   poNumber     String
   /// Picks the use of a reused PO number; without it, the use created on or before the issue date
   poCreateDate DateTime? @db.Date
+  /// Most THD could charge for this PO, in whole dollars; the issue's estimate is the total of these when any are given
+  estimatedFine Int?
 
   @@index([poNumber])
   @@index([issueId])

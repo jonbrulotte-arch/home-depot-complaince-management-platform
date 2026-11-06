@@ -7,6 +7,10 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 export const n = (v: number) => v.toLocaleString("en-US");
 export const money = (v: number) => formatCurrency(v);
+/** Whole dollars, e.g. $5,950 */
+export const dollars = (v: number) => formatCurrency(v).replace(/\.00$/, "");
+/** "+$250.00" / "−$4,250.00" */
+export const signedMoney = (v: number) => (v === 0 ? "$0.00" : `${v > 0 ? "+" : "−"}${formatCurrency(Math.abs(v))}`);
 export const pct = (v: number | null, digits = 1) => (v === null || !Number.isFinite(v) ? "—" : `${v.toFixed(digits)}%`);
 
 /** "+12%" / "−8%" for a change; `upIsBad` colours a rise red (offsets, violations) */

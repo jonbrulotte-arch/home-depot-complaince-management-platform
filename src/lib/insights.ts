@@ -373,6 +373,10 @@ export interface InsightIssue {
   resolvedAt: Date | null;
   followUpDate: Date | null;
   poCount: number;
+  /** POs found in the compliance data so far */
+  posFound: number;
+  /** Most THD could charge, as estimated on the issue (whole dollars), or null */
+  estimatedFine: number | null;
   /** Violations and offsets on the issue's POs, from the compliance data */
   violations: number;
   offsets: number;
@@ -380,16 +384,34 @@ export interface InsightIssue {
 
 const OPEN_ISSUE: IssueStatus[] = ["OPEN", "IN_PROGRESS"];
 
+/**
+ * Expected fines (the estimates on issues) against assessed fines (THD's offsets on the issues'
+ * POs so far). Only issues with an estimate count towards the comparison's totals, so an issue
+ * logged without one doesn't make the estimates look low.
+ */
+export function expectedVsAssessed(issues: InsightIssue[]) {
+  const withEstimate = issues.filter((i) => i.estimatedFine !== null);
+  const expected = withEstimate.reduce((s, i) => s + (i.estimatedFine ?? 0), 0);
+  const assessed = round(withEstimate.reduce((s, i) => s + i.offsets, 0));
+  return {
+    estimated: { issues: withEstimate.length, expected, assessed, difference: round(assessed - expected) },
+    fineRows: [...issues]
+      .filter((i) => i.estimatedFine !== null || i.offsets > 0)
+      .sort((a, b) => (b.estimatedFine ?? 0) - (a.estimatedFine ?? 0) || b.offsets - a.offsets),
+  };
+}
+
 export function issueInsights(issues: InsightIssue[], months: number[], monthOf: (d: Date) => number, now = new Date()) {
   const inFrame = issues.filter((i) => months.includes(monthOf(i.issueDate)));
   const count = <K extends string>(key: (i: InsightIssue) => K | null, labelOf: (k: K) => string = (k) => k) => {
-    const map = new Map<string, { key: string; label: string; count: number; open: number; offsets: number }>();
+    const map = new Map<string, { key: string; label: string; count: number; open: number; offsets: number; estimated: number }>();
     for (const i of inFrame) {
       const k = key(i) ?? "";
-      const g = map.get(k) ?? { key: k, label: k ? labelOf(k as K) : "Not set", count: 0, open: 0, offsets: 0 };
+      const g = map.get(k) ?? { key: k, label: k ? labelOf(k as K) : "Not set", count: 0, open: 0, offsets: 0, estimated: 0 };
       g.count++;
       if (OPEN_ISSUE.includes(i.status)) g.open++;
       g.offsets += i.offsets;
+      g.estimated += i.estimatedFine ?? 0;
       map.set(k, g);
     }
     return [...map.values()].map((g) => ({ ...g, offsets: round(g.offsets) })).sort((a, b) => b.count - a.count || a.label.localeCompare(b.label));
@@ -414,6 +436,7 @@ export function issueInsights(issues: InsightIssue[], months: number[], monthOf:
     open: inFrame.filter((i) => OPEN_ISSUE.includes(i.status)).length,
     withViolations: inFrame.filter((i) => i.violations > 0).length,
     linkedOffsets: round(inFrame.reduce((s, i) => s + i.offsets, 0)),
+    ...expectedVsAssessed(inFrame),
     avgDaysToResolve: resolvedDays.length ? resolvedDays.reduce((s, d) => s + d, 0) / resolvedDays.length : null,
     byStatus: count((i) => i.status),
     byCategory: count((i) => i.category),

@@ -118,7 +118,7 @@ export async function insightsWorkbook(data: Insights, siteName = DEFAULT_SITE_N
     wb,
     "Issues",
     `Issues logged · ${scope} · ${ins.total} issue(s), ${ins.open} open`,
-    [["Issue", 10], ["Date", 12], ["Title", 40], ["Status", 12], ["Severity", 10], ["Category", 22], ["Team", 20], ["POs", 6, "int"], ["Violations on POs", 10, "int"], ["Offsets on POs", 14, "money"], ["Follow-up", 12], ["Resolved", 12]],
+    [["Issue", 10], ["Date", 12], ["Title", 40], ["Status", 12], ["Severity", 10], ["Category", 22], ["Team", 20], ["POs", 6, "int"], ["Violations on POs", 10, "int"], ["Assessed on POs", 14, "money"], ["Expected fine", 14, "money"], ["POs found", 9, "int"], ["Follow-up", 12], ["Resolved", 12]],
     issuesInFrame.map((i) => [
       issueLabel(i.number),
       formatUtcDate(i.issueDate),
@@ -130,6 +130,8 @@ export async function insightsWorkbook(data: Insights, siteName = DEFAULT_SITE_N
       i.poCount,
       i.violations,
       i.offsets,
+      i.estimatedFine,
+      i.posFound,
       i.followUpDate ? formatUtcDate(i.followUpDate) : null,
       i.resolvedAt ? formatUtcDate(i.resolvedAt) : null,
     ]),

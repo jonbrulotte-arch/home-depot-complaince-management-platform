@@ -150,6 +150,7 @@ async function loadIssues(programCode: string | undefined, teamName: (key: strin
       createdAt: true,
       resolvedAt: true,
       followUpDate: true,
+      estimatedFine: true,
       program: { select: { code: true } },
       pos: { select: { poNumber: true, poCreateDate: true } },
     },
@@ -187,6 +188,8 @@ async function loadIssues(programCode: string | undefined, teamName: (key: strin
       resolvedAt: i.resolvedAt,
       followUpDate: i.followUpDate,
       poCount: i.pos.length,
+      posFound: records.size,
+      estimatedFine: i.estimatedFine,
       violations: sums.reduce((s, x) => s + x.count, 0),
       offsets: Math.round(sums.reduce((s, x) => s + x.offsets, 0) * 100) / 100,
     };

@@ -28,10 +28,10 @@ describe("Issue Log", () => {
     expect(parsed.title).toBe("Carrier missed pickup");
     expect(parsed.actionsTaken).toBeNull();
     expect(cleanPos(parsed.pos).pos).toEqual([
-      { poNumber: "98963592", poCreateDate: null },
-      { poNumber: "12345678", poCreateDate: d("2026-09-01") },
+      { poNumber: "98963592", poCreateDate: null, estimatedFine: null },
+      { poNumber: "12345678", poCreateDate: d("2026-09-01"), estimatedFine: null },
     ]);
-    expect(cleanPos([{ poNumber: "no good!", poCreateDate: null }]).error).toMatch(/not a PO number/);
+    expect(cleanPos([{ poNumber: "no good!", poCreateDate: null, estimatedFine: null }]).error).toMatch(/not a PO number/);
     expect(issueInput.safeParse({ ...base, issueDate: "2026-02-30" }).success).toBe(false);
     expect(issueInput.safeParse({ ...base, category: "Made up" }).success).toBe(false);
   });
@@ -77,5 +77,29 @@ describe("HD Support tickets", () => {
     expect(issueInput.parse({ ...base, hdTickets: ["7822873", " 7822521 ", "7822873", ""] }).hdTickets).toEqual(["7822873", "7822521"]);
     expect(issueInput.parse(base).hdTickets).toEqual([]);
     expect(issueInput.safeParse({ ...base, hdTickets: Array.from({ length: 21 }, (_, i) => String(i)) }).success).toBe(false);
+  });
+});
+
+describe("estimated maximum fine", () => {
+  it("reads typed whole dollars and checks the range", async () => {
+    const { parseWholeDollars, issueInput } = await import("@/lib/issues");
+    expect(parseWholeDollars("$5,950")).toBe(5950);
+    expect(parseWholeDollars("  ")).toBeNull();
+    expect(parseWholeDollars("12.50")).toBeNaN();
+    const base = { title: "t", issueDate: "2026-11-06", status: "OPEN", severity: "MEDIUM", category: "ASN / EDI", description: "d", pos: [] };
+    expect(issueInput.parse({ ...base, estimatedFine: 1700 }).estimatedFine).toBe(1700);
+    expect(issueInput.parse(base).estimatedFine).toBeNull();
+    expect(issueInput.safeParse({ ...base, estimatedFine: -5 }).success).toBe(false);
+    expect(issueInput.safeParse({ ...base, estimatedFine: 12.5 }).success).toBe(false);
+  });
+});
+
+describe("estimates per PO", () => {
+  it("totals the POs' estimates, or uses the whole-issue figure when no PO has one", async () => {
+    const { issueEstimate } = await import("@/lib/issues");
+    expect(issueEstimate(5950, [{ estimatedFine: 100 }, { estimatedFine: null }, { estimatedFine: 250 }])).toBe(350);
+    expect(issueEstimate(5950, [{ estimatedFine: null }, {}])).toBe(5950);
+    expect(issueEstimate(null, [])).toBeNull();
+    expect(issueEstimate(null, [{ estimatedFine: 0 }])).toBe(0);
   });
 });

@@ -54,6 +54,7 @@ export function issuePdf(found: Found, opts: { timeZone: string; siteName?: stri
     ["THD program", issue.program?.name ?? "—"],
     ["Team responsible", issue.team ? teamName(issue.team) : "—"],
     ["Follow-up date", issue.followUpDate ? formatUtcDate(issue.followUpDate) : "—"],
+    ["Estimated maximum fine", issue.estimatedFine === null ? "—" : money(issue.estimatedFine).replace(/\.00$/, "")],
     ["Resolved", issue.resolvedAt ? formatDateTime(issue.resolvedAt, tz) : "—"],
   ];
   const rows = Math.ceil(facts.length / 2);
@@ -114,7 +115,8 @@ export function issuePdf(found: Found, opts: { timeZone: string; siteName?: stri
       ],
       pos.flatMap((p) => {
         const created = p.poCreateDate ?? p.record?.poCreateDate;
-        const po = { text: `${p.poNumber}${created ? `\nCreated ${formatUtcDate(created)}` : ""}`, color: C.text };
+        const est = p.estimatedFine !== null ? `\nEst. fine ${money(p.estimatedFine).replace(/\.00$/, "")}` : "";
+        const po = { text: `${p.poNumber}${created ? `\nCreated ${formatUtcDate(created)}` : ""}${est}`, color: C.text };
         // The note goes in the wide Program · Metric column (the table has no merged cells)
         if (!p.record || !p.lines.length) return [[po, "", { text: p.record ? "In the PO records, with no compliance lines." : "Not in the compliance data yet.", color: C.muted }, "", "", "", "", ""]];
         return p.lines.map((l, i) => [

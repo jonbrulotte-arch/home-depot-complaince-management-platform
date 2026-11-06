@@ -41,16 +41,18 @@ export async function issuesWorkbook(filters: IssueFilters, siteName = DEFAULT_S
   const ws = sheet(wb, "Issues", [
     ["Issue", 10], ["Date", 12], ["Title", 36], ["Status", 12], ["Severity", 10], ["Category", 22], ["Program", 22], ["Team", 18],
     ["HD Support tickets", 20], ["POs", 30], ["What happened", 50], ["Actions taken", 40], ["Consequences", 40], ["People involved", 30],
-    ["References", 26], ["Resolution", 36], ["Follow-up", 12], ["Resolved", 12], ["Logged by", 18],
+    ["References", 26], ["Resolution", 36], ["Follow-up", 12], ["Resolved", 12], ["Estimated max fine", 16], ["Logged by", 18],
   ]);
   for (const i of issues) {
     ws.addRow([
       issueLabel(i.number), formatUtcDate(i.issueDate), i.title, ISSUE_STATUSES[i.status].label, ISSUE_SEVERITIES[i.severity], i.category,
       i.program?.name ?? null, i.team ? (teams[i.team] ?? i.team) : null, i.hdTickets.join(", ") || null, i.pos.map((p) => p.poNumber).join(", "),
       i.description, i.actionsTaken, i.consequences, i.peopleInvolved, i.references, i.resolution,
-      i.followUpDate ? formatUtcDate(i.followUpDate) : null, i.resolvedAt ? formatUtcDate(i.resolvedAt) : null, i.createdBy?.name ?? null,
+      i.followUpDate ? formatUtcDate(i.followUpDate) : null, i.resolvedAt ? formatUtcDate(i.resolvedAt) : null, i.estimatedFine, i.createdBy?.name ?? null,
     ]).alignment = { vertical: "top", wrapText: true };
   }
+
+  ws.getColumn(19).numFmt = '"$"#,##0'; // Estimated max fine
 
   const pos = issues.flatMap((i) => i.pos.map((p) => ({ issue: i, po: p })));
   const records = await matchIssuePos(pos.map(({ issue, po }) => ({ poNumber: po.poNumber, poCreateDate: po.poCreateDate, issueDate: issue.issueDate })));
@@ -59,7 +61,7 @@ export async function issuesWorkbook(filters: IssueFilters, siteName = DEFAULT_S
     ? await prisma.complianceLine.groupBy({ by: ["poRecordId", "isCompliant"], where: { poRecordId: { in: recordIds } }, _count: { _all: true }, _sum: { offsetAmount: true } })
     : [];
   const ps = sheet(wb, "Issue POs", [
-    ["Issue", 10], ["Date", 12], ["Title", 36], ["PO #", 14], ["PO create date", 14], ["In compliance data", 18], ["Compliance lines", 16], ["Violations", 12], ["Offsets", 12],
+    ["Issue", 10], ["Date", 12], ["Title", 36], ["PO #", 14], ["PO create date", 14], ["In compliance data", 18], ["Compliance lines", 16], ["Violations", 12], ["Offsets", 12], ["Est. fine", 12],
   ]);
   pos.forEach(({ issue, po }, n) => {
     const record = records[n];
@@ -68,9 +70,13 @@ export async function issuesWorkbook(filters: IssueFilters, siteName = DEFAULT_S
     const violations = rows.filter((t) => !t.isCompliant).reduce((s, t) => s + t._count._all, 0);
     const offsets = rows.reduce((s, t) => s + Number(t._sum.offsetAmount ?? 0), 0);
     const createDate = po.poCreateDate ?? record?.poCreateDate ?? null;
-    ps.addRow([issueLabel(issue.number), formatUtcDate(issue.issueDate), issue.title, po.poNumber, createDate ? formatUtcDate(createDate) : null, record ? "Yes" : "Not yet", lines, violations, offsets]);
+    ps.addRow([issueLabel(issue.number), formatUtcDate(issue.issueDate), issue.title, po.poNumber, createDate ? formatUtcDate(createDate) : null, record ? "Yes" : "Not yet", lines, violations, offsets, po.estimatedFine]);
   });
-  ps.eachRow((row, n) => n > 1 && (row.getCell(9).numFmt = MONEY));
+  ps.eachRow((row, n) => {
+    if (n === 1) return;
+    row.getCell(9).numFmt = MONEY;
+    row.getCell(10).numFmt = '"$"#,##0';
+  });
 
   return Buffer.from(await wb.xlsx.writeBuffer());
 }

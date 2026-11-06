@@ -46,7 +46,9 @@ export default async function EditIssuePage({ params }: { params: Promise<{ id: 
           references: issue.references ?? "",
           resolution: issue.resolution ?? "",
           followUpDate: day(issue.followUpDate),
-          pos: issue.pos.map((p) => ({ poNumber: p.poNumber, poCreateDate: day(p.poCreateDate) })),
+          // With PO estimates the issue's figure is their total, shown by the form; otherwise the whole-issue figure
+          estimatedFine: issue.estimatedFine === null || issue.pos.some((p) => p.estimatedFine !== null) ? "" : issue.estimatedFine.toLocaleString("en-US"),
+          pos: issue.pos.map((p) => ({ poNumber: p.poNumber, poCreateDate: day(p.poCreateDate), estimatedFine: p.estimatedFine === null ? "" : p.estimatedFine.toLocaleString("en-US") })),
         }}
       />
     </div>

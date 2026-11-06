@@ -16,6 +16,7 @@ import {
   repeatPos,
   resolveTimeFrame,
   rootCauses,
+  expectedVsAssessed,
   teamKey,
   winRate,
   type InsightIssue,
@@ -158,6 +159,8 @@ describe("issue insights", () => {
     resolvedAt: null,
     followUpDate: null,
     poCount: 1,
+    posFound: 1,
+    estimatedFine: null,
     violations: 0,
     offsets: 0,
     ...o,
@@ -181,5 +184,16 @@ describe("issue insights", () => {
     expect(ins.aging.map((a) => a.count)).toEqual([0, 0, 1, 1]);
     expect(ins.overdue.map((i) => i.id)).toEqual(["a"]);
     expect(ins.costliest.map((i) => i.id)).toEqual(["a"]);
+  });
+
+  it("compares expected fines with what THD assessed on the issues' POs", () => {
+    const e = expectedVsAssessed([
+      issue({ id: "a", estimatedFine: 5950, offsets: 1700 }),
+      issue({ id: "b", estimatedFine: 1000, offsets: 0 }),
+      issue({ id: "c", estimatedFine: null, offsets: 250 }),
+      issue({ id: "d", estimatedFine: null, offsets: 0 }),
+    ]);
+    expect(e.estimated).toEqual({ issues: 2, expected: 6950, assessed: 1700, difference: -5250 });
+    expect(e.fineRows.map((i) => i.id)).toEqual(["a", "b", "c"]);
   });
 });
