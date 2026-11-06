@@ -56,6 +56,7 @@ export const HELP_TOPICS: HelpTopic[] = [
           ["Viewer", "The dashboard, published scorecards, PO Lookup and the Issue Log, read-only."],
           ["Warehouse", "Scorecard Feedback (reads published violations and adds comments) and the Issue Log (logs and updates issues)."],
           ["Finance", "PO Lookup (including chargeback packages), Scorecard Feedback without commenting, the Issue Log and the Summarizer, all read-only."],
+          ["Director", "Everything the Warehouse has (Scorecard Feedback and the Issue Log), plus **Reports & Insights**."],
         ],
       },
       { h: "Months" },
@@ -319,6 +320,34 @@ export const HELP_TOPICS: HelpTopic[] = [
       { h: "Find and export" },
       {
         p: "Search by PO number, HD Support ticket #, issue number (ISS-0001) or any word, and filter by status, category and date. **Export to Excel** downloads the filtered issues, with a second sheet of their POs and what the compliance data holds for each.",
+      },
+    ],
+  },
+  {
+    id: "insights",
+    title: "Reports & Insights",
+    summary: "Program, time, team, issue, dispute and location insights over any time frame, with an Excel export.",
+    anyOf: ["insights.view"],
+    blocks: [
+      {
+        p: "**Reports & Insights** looks across all the compliance data, not one report. Choose a **Time frame** (the last 3, 6 or 12 months, fiscal year to date, the previous fiscal year, all time, or **Custom** months) and optionally one **Program**; every tab and the **Export to Excel** use them. Months follow the report period setting (month received or THD fiscal month). The address keeps your choices, so you can bookmark a view.",
+      },
+      {
+        p: "Throughout, a **violation** is a non-compliant line not reviewed as Cancelled / Resolved (as on scorecards), **offsets** are THD's charges on violations, **recovered** is what approved or partly approved disputes won back, and **net** is offsets less recovered. Work in progress is included: lines not yet reviewed have no team or root cause, and show as **Not set**.",
+      },
+      {
+        list: [
+          "**Overview**: the headline figures with the change from the previous period of the same length, written highlights (the costliest compliance type, the biggest increase, the team with the most offsets, dispute results, unreviewed violations, overdue issues), month by month, and the top compliance types and teams.",
+          "**Programs**: each program and each compliance type with offsets, recovered, net, disputes and the change from the previous period, and **Performance against goal**: each metric's post-dispute % from every published scorecard in the time frame, green when it met THD's goal and red when it missed, with how many months met it.",
+          "**Time**: this time frame against the previous period and the same months last year, month by month with the change from the month before, and fiscal quarters (Q1 = Feb–Apr).",
+          "**Teams**: violations and offsets by the team responsible, with the share and how many got warehouse feedback; team by month and team by program grids; and the most common root causes.",
+          "**Issues**: the Issue Log by category, team, severity and status, issues per month, open issues by age, average days to resolve, the issues whose POs carry the most offsets, and open issues past their follow-up date.",
+          "**Disputes**: the share of violations disputed, the win rate, the amount recovered and awaiting THD, the average days to a decision, Disputable violations never disputed, the dispute pipeline by status, and the win rate by compliance type and by reason code.",
+          "**Locations & carriers**: offsets by THD location and by carrier, the SKUs with the most violations, and POs with more than one violation.",
+        ],
+      },
+      {
+        p: "**Export to Excel** writes every view for the chosen time frame and program to one workbook, a sheet each. The **Director** role has Reports & Insights alongside Scorecard Feedback and the Issue Log; administrators can give it to other roles under Roles & Access (**View Reports & Insights**).",
       },
     ],
   },

@@ -20,11 +20,17 @@ describe("roles and landing pages", () => {
     expect(role("Warehouse").has("summarizer.use")).toBe(false);
   });
 
+  it("has a Director role with everything the Warehouse has plus Reports & Insights", () => {
+    expect([...role("Director")].sort()).toEqual([...role("Warehouse"), "insights.view"].sort());
+    expect(role("Warehouse").has("insights.view")).toBe(false);
+  });
+
   it("sends each user to the first page their role allows", () => {
     expect(homePath(role("Admin"))).toBe("/dashboard");
     expect(homePath(role("Viewer"))).toBe("/dashboard");
     expect(homePath(role("Warehouse"))).toBe("/feedback");
     expect(homePath(role("Finance"))).toBe("/feedback");
+    expect(homePath(role("Director"))).toBe("/insights");
     expect(homePath(new Set<Permission>(["view.polookup"]))).toBe("/po-lookup");
     expect(homePath(new Set<Permission>())).toBe("/no-access");
   });

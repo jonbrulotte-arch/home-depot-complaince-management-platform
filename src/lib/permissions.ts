@@ -12,6 +12,7 @@ export const PERMISSIONS = {
   "summarizer.use": "Build scorecard summaries and export them as PDF",
   "issues.view": "View the Issue Log",
   "issues.manage": "Log and update issues in the Issue Log",
+  "insights.view": "View Reports & Insights (program, time, team, issue, dispute and location insights)",
   "admin.users": "Manage users",
   "admin.rbac": "Manage roles and permissions",
   "admin.programs": "Manage programs, metrics, thresholds and column mappings",
@@ -53,6 +54,11 @@ export const DEFAULT_ROLES: { name: string; description: string; permissions: Pe
     permissions: ["feedback.view", "feedback.submit", "issues.view", "issues.manage"],
   },
   {
+    name: "Director",
+    description: "Directors: everything the Warehouse has, plus Reports & Insights",
+    permissions: ["feedback.view", "feedback.submit", "issues.view", "issues.manage", "insights.view"],
+  },
+  {
     name: "Finance",
     description: "Finance team: read-only PO Lookup, Scorecard Feedback, Issue Log and Summarizer",
     permissions: ["view.polookup", "feedback.view", "summarizer.use", "issues.view"],
@@ -63,6 +69,7 @@ export const DEFAULT_ROLES: { name: string; description: string; permissions: Pe
 const HOME_PAGES: [Permission, string][] = [
   ["view.dashboard", "/dashboard"],
   ["reports.view", "/reports"],
+  ["insights.view", "/insights"],
   ["feedback.view", "/feedback"],
   ["issues.view", "/issues"],
   ["view.polookup", "/po-lookup"],
