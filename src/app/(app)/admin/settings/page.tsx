@@ -5,11 +5,16 @@ import { ReportPeriodSettings } from "./report-period-settings";
 import { PublicDashboardSettings } from "./public-dashboard-settings";
 import { EmailSettings } from "./email-settings";
 import { mailConfig } from "@/lib/mail";
+import { SopSettings } from "./sop-settings";
 
 export default async function SettingsPage() {
   await requirePagePermission("admin.settings");
   const s = await prisma.siteSettings.findUnique({ where: { id: "site" }, select: { brandingEnabled: true, siteName: true, logoContentType: true, updatedAt: true, reportPeriodBasis: true, publicDashboardToken: true } });
   const mail = mailConfig();
+  const [sops, roles] = await Promise.all([
+    prisma.sopDocument.findMany({ orderBy: [{ sortOrder: "asc" }, { title: "asc" }], select: { id: true, title: true, fileName: true, size: true, roleIds: true, updatedAt: true } }),
+    prisma.role.findMany({ orderBy: { name: "asc" }, select: { id: true, name: true } }),
+  ]);
   return (
     <div className="p-6 max-w-7xl mx-auto space-y-6">
       <div>
@@ -18,6 +23,7 @@ export default async function SettingsPage() {
       </div>
       <ReportPeriodSettings initial={s?.reportPeriodBasis ?? "RECEIVED_MONTH"} />
       <PublicDashboardSettings initialToken={s?.publicDashboardToken ?? null} />
+      <SopSettings sops={sops.map((x) => ({ ...x, updatedAt: x.updatedAt.toISOString() }))} roles={roles} />
       <EmailSettings configured={Boolean(mail.config)} sender={mail.config?.sender ?? (process.env.MS_GRAPH_SENDER?.trim() || null)} missing={mail.missing} />
       <BrandingSettings
         initial={{

@@ -10,6 +10,7 @@ export interface CurrentUser {
   name: string;
   email: string;
   role: string;
+  roleId: string;
   /** The time zone the user picked, or null to follow their browser (see getTimeZone) */
   timeZone: string | null;
   permissions: Set<Permission>;
@@ -26,6 +27,7 @@ export const getCurrentUser = cache(async (): Promise<CurrentUser | null> => {
     name: user.name,
     email: user.email,
     role: user.role.name,
+    roleId: user.roleId,
     timeZone: user.timeZone,
     // The built-in Admin role always has every permission, including ones added after it was seeded
     permissions: new Set(user.role.system && user.role.name === "Admin" ? ALL_PERMISSIONS : user.role.permissions.filter(isPermission)),

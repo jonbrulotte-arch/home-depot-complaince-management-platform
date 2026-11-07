@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { Info, Search } from "lucide-react";
+import { FileDown, Info, Search } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { helpText, type HelpBlock, type HelpTopic } from "@/lib/help-content";
@@ -59,7 +59,52 @@ function Block({ block }: { block: HelpBlock }) {
   );
 }
 
-export function HelpBrowser({ topics, allShown, hiddenCount }: { topics: HelpTopic[]; allShown: boolean; hiddenCount: number }) {
+export interface HelpSop {
+  id: string;
+  title: string;
+  size: number;
+  /** Role names, shown to admins only */
+  roles: string[] | null;
+}
+
+const fileSize = (bytes: number) => (bytes >= 1024 * 1024 ? `${(bytes / 1024 / 1024).toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1024))} KB`);
+
+/** "SOPs" at the bottom of the contents: PDFs of the SOPs for the user's role */
+function SopList({ sops, isAdmin }: { sops: HelpSop[]; isAdmin: boolean }) {
+  return (
+    <section aria-labelledby="help-sops" className="space-y-1 border-t border-gray-200 pt-4">
+      <h2 id="help-sops" className="px-2 text-xs font-semibold uppercase tracking-wide text-gray-500">{isAdmin ? "SOPs" : "SOPs for your role"}</h2>
+      {sops.length === 0 ? (
+        <p className="px-2 text-xs text-gray-500">
+          {isAdmin ? (
+            <>No SOPs yet. Add them under <Link href="/admin/settings#sops" className="text-blue-600 hover:underline">Admin › Settings</Link>.</>
+          ) : (
+            "No SOP has been added for your role yet."
+          )}
+        </p>
+      ) : (
+        <ul className="space-y-0.5">
+          {sops.map((s) => (
+            <li key={s.id}>
+              <a href={`/api/sops/${s.id}`} download className="flex items-start gap-2 rounded-md px-2 py-1.5 text-sm text-gray-700 hover:bg-gray-100 hover:text-gray-900">
+                <FileDown className="mt-0.5 h-4 w-4 shrink-0 text-blue-600" />
+                <span className="min-w-0">
+                  <span className="block">{s.title}</span>
+                  <span className="block text-xs text-gray-500">
+                    PDF · {fileSize(s.size)}
+                    {s.roles && ` · ${s.roles.length ? s.roles.join(", ") : "no roles"}`}
+                  </span>
+                </span>
+              </a>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  );
+}
+
+export function HelpBrowser({ topics, allShown, hiddenCount, sops, isAdmin }: { topics: HelpTopic[]; allShown: boolean; hiddenCount: number; sops: HelpSop[]; isAdmin: boolean }) {
   const [query, setQuery] = useState("");
   const words = query.toLowerCase().split(/\s+/).filter(Boolean);
   const shown = words.length ? topics.filter((t) => { const text = helpText(t); return words.every((w) => text.includes(w)); }) : topics;
@@ -90,6 +135,7 @@ export function HelpBrowser({ topics, allShown, hiddenCount }: { topics: HelpTop
             )}
           </p>
         )}
+        <SopList sops={sops} isAdmin={isAdmin} />
       </aside>
 
       <div className="min-w-0 space-y-6">

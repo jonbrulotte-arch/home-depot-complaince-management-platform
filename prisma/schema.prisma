@@ -55,6 +55,7 @@ model User {
   invitesSent         UserInvite[]
   passwordResets      PasswordReset[]
   issueShares         IssueShare[]
+  sopDocuments        SopDocument[]
 }
 
 model AuditLog {
@@ -848,4 +849,20 @@ model Team {
   updatedAt   DateTime     @updatedAt
   reviews     LineReview[]
   issues      Issue[]
+}
+
+/// A standard operating procedure (PDF) offered in Help & Docs to the roles chosen (Admin › Settings)
+model SopDocument {
+  id           String   @id @default(cuid())
+  title        String
+  fileName     String
+  size         Int
+  data         Bytes
+  /// Role ids this SOP is for; admins see every SOP
+  roleIds      String[]
+  sortOrder    Int      @default(0)
+  uploadedById String?
+  uploadedBy   User?    @relation(fields: [uploadedById], references: [id], onDelete: SetNull)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 }
