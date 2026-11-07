@@ -211,7 +211,7 @@ export const HELP_TOPICS: HelpTopic[] = [
           "**Offsets**: flat offsets are a fixed amount per violation; Fill Rate and On Time offsets are a percentage of value. A percentage-based offset falls away after disputes when THD's own rate was below goal and your disputes or resolutions lift it to goal. If THD charged one while its own rate already met goal, it stays owed until you dispute it.",
         ],
       },
-      { note: "Changed something after publishing? Unpublish, regenerate, then publish again. The public link stays the same." },
+      { note: "Changed something after publishing, such as a THD dispute decision? **Refresh scorecards** on Compliance Reports rebuilds every published scorecard and replaces only the ones that changed, showing what moved (violations, offsets, recovered, post-dispute, awaiting THD). They stay published throughout; the publish date and public link are kept and the version goes up. To change one month by hand you can still Unpublish, regenerate and publish again." },
     ],
   },
   {
@@ -407,7 +407,7 @@ export const HELP_TOPICS: HelpTopic[] = [
       { h: "A metric shows “—” instead of a percentage" },
       { p: "The export lists only violations, so there's no total to divide by. Enter the program's **Lines** for that compliance period on the report." },
       { h: "My change doesn't show on the scorecard" },
-      { p: "Scorecards are snapshots. Regenerate it in the Scorecard stage, or Unpublish, regenerate and publish again. Warehouse feedback is the exception: it shows straight away." },
+      { p: "Scorecards are snapshots. Use **Refresh scorecards** on Compliance Reports to bring every published scorecard up to date, or regenerate one in the Scorecard stage. Warehouse feedback is the exception: it shows straight away." },
       { h: "The import says some sheets only update existing lines" },
       { p: "Those sheets belong to the report's other compliance period. Import them in that period's box (or in the report for that month) to add their lines." },
       { h: "A Copy button doesn't copy" },

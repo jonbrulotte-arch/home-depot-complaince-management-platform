@@ -303,7 +303,7 @@ A dispute carries its reason code, a document checklist from the dispute matrix,
 
 ### 5.4 Scorecards and sharing
 
-`buildScorecard` (`scorecard.ts`) gathers the metric statistics (§6), violations with their reviews and disputes, shipment counts and ranges, team influence and a 12-month trend, and `scorecard-store.ts` saves it as a new snapshot version. It can be regenerated only in `SCORECARD`. Downloads are generated per request: PDF (`scorecard-pdf.ts`) and Excel (`scorecard-export.ts`).
+`buildScorecard` (`scorecard.ts`) gathers the metric statistics (§6), violations with their reviews and disputes, shipment counts and ranges, team influence and a 12-month trend, and `scorecard-store.ts` saves it as a new snapshot version. It can be regenerated only in `SCORECARD`. **Refresh scorecards** (`scorecard-refresh.ts`; `POST /api/reports/scorecards/refresh`, `reports.advance`; `npm run refresh-scorecards` for cron) brings published scorecards up to date in place: each is rebuilt, compared with the stored snapshot ignoring `generatedAt` and key order (`comparable`), and replaced only when it differs. The report stays `PUBLISHED`, `publishedAt` and `shareToken` are kept, `version` goes up, and the App Log records each one (`scorecard.refresh`, with before and after totals) and the run (`scorecard.refreshAll`). The snapshot principle holds: a published scorecard changes only when someone refreshes it, never on its own. Downloads are generated per request: PDF (`scorecard-pdf.ts`) and Excel (`scorecard-export.ts`).
 
 Published scorecards get an unguessable `shareToken` (24 random bytes, base64url) on first view. `/s/<token>` and `/api/s/<token>/{pdf,export}` need no sign-in and check that the report is still published; unpublishing takes the page down and republishing brings the same link back.
 
@@ -508,6 +508,7 @@ Migrations are generated with `prisma migrate diff` and reviewed by hand; data c
 
 - Manual: **Back up now** in Admin › Backup & Restore.
 - Scheduled: `npm run backup -- --keep 30` from cron; `--label` keeps a separate set.
+- Optional: `npm run refresh-scorecards` from cron after the backup, to keep published scorecards current with dispute decisions.
 - Before each deploy: automatic.
 - Restore: from the admin page or `npm run restore -- <file> --yes`; one transaction, after a safety backup, refused if the schema migration differs.
 
@@ -525,7 +526,7 @@ Migrations are generated with `prisma migrate diff` and reviewed by hand; data c
 |---|---|
 | Lint | `npm run lint` (ESLint with Next.js rules, including `react-hooks/set-state-in-effect`) |
 | Types | `npm run typecheck` (strict TypeScript) |
-| Unit tests | `npm test` (Vitest, 121 tests): import transform against real SPM fixtures (DS, RDC, DFC, US Transportation quirks, summary-only, Fill Rate fractions, Invoice Timeliness), value parsing, catalog, scorecard rules (goals, Drop Ship Fill Rate, entered lines, pass/fail, offsets), shipment ranges, disputes, PO instance keys, permissions and landing pages, backups' table coverage, branding, Summarizer, Package IDs, help topics, App Log labels and filters, View Analytics, Issue Log (PO lists, validation, reused-PO matching, filters), Microsoft Graph email (token and send calls, errors, escaping), invitation tokens and states, time zones (validation, choice order, offsets, formatting), password reset links (expiry, one use, request limits), issue PDF text, Reports & Insights (time frames, figures, grouping, goal performance, issue insights), the Director role, team keys and pickers, estimated fines (whole dollars, per-PO totals, expected vs. assessed) |
+| Unit tests | `npm test` (Vitest, 122 tests): import transform against real SPM fixtures (DS, RDC, DFC, US Transportation quirks, summary-only, Fill Rate fractions, Invoice Timeliness), value parsing, catalog, scorecard rules (goals, Drop Ship Fill Rate, entered lines, pass/fail, offsets), shipment ranges, disputes, PO instance keys, permissions and landing pages, backups' table coverage, branding, Summarizer, Package IDs, help topics, App Log labels and filters, View Analytics, Issue Log (PO lists, validation, reused-PO matching, filters), Microsoft Graph email (token and send calls, errors, escaping), invitation tokens and states, time zones (validation, choice order, offsets, formatting), password reset links (expiry, one use, request limits), issue PDF text, Reports & Insights (time frames, figures, grouping, goal performance, issue insights), the Director role, team keys and pickers, estimated fines (whole dollars, per-PO totals, expected vs. assessed), scorecard refresh comparison |
 | Build | `npm run build` |
 | End to end | Playwright scripts run against a local build during development (imports, review, disputes, scorecards, sharing, feedback, roles, Summarizer, packages, help, analytics, App Log, Issue Log, invitations, time zones, password reset, sign-out, Reports & Insights) |
 | Data checks | Backfill reconciled against the workbook's YTD Offset Report (73 of 85 month cells by month received); migrations tested on copies of the archive database |

@@ -18,7 +18,8 @@
     "postinstall": "prisma generate",
     "backup": "tsx scripts/backup.ts",
     "restore": "tsx scripts/restore.ts",
-    "historical-reports": "tsx scripts/historical-reports.ts"
+    "historical-reports": "tsx scripts/historical-reports.ts",
+    "refresh-scorecards": "tsx scripts/refresh-scorecards.ts"
   },
   "dependencies": {
     "@prisma/adapter-pg": "^7.10.1",

@@ -8,6 +8,7 @@ import { ReportStatusBadge } from "@/components/shared/status-badges";
 import { NewReportDialog } from "./new-report-dialog";
 import { getPeriodBasis } from "@/lib/periods";
 import { HistoricalDialog } from "./historical-dialog";
+import { RefreshScorecardsDialog } from "./refresh-scorecards-dialog";
 import { Badge } from "@/components/ui/badge";
 import { getTimeZone } from "@/lib/time-zone-server";
 
@@ -36,6 +37,7 @@ export default async function ReportsPage() {
           <p className="text-sm text-gray-500 mt-1">Monthly compliance analysis: import SPM data, review each violation, then prepare disputes.</p>
         </div>
         <div className="flex gap-2">
+          {user.permissions.has("reports.advance") && <RefreshScorecardsDialog />}
           {user.permissions.has("reports.advance") && <HistoricalDialog />}
           {user.permissions.has("reports.create") && (
             <NewReportDialog periods={periods} defaultFiscalMonth={shiftFiscalMonth(current, -1)} programs={programs} basis={basis} />

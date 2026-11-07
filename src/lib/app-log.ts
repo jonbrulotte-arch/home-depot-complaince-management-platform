@@ -25,6 +25,8 @@ export const ACTION_LABELS: Record<string, string> = {
   "dispute.detach": "Removed a dispute document",
   "disputes.sync": "Created disputes for a report",
   "scorecard.generate": "Generated a scorecard",
+  "scorecard.refresh": "Refreshed a published scorecard",
+  "scorecard.refreshAll": "Refreshed the published scorecards",
   "scorecard.download": "Downloaded a scorecard",
   "feedback.create": "Gave scorecard feedback",
   "feedback.delete": "Deleted scorecard feedback",
