@@ -56,7 +56,7 @@ export const HELP_TOPICS: HelpTopic[] = [
           ["Viewer", "The dashboard, published scorecards, PO Lookup and the Issue Log, read-only."],
           ["Warehouse", "Scorecard Feedback (reads published violations and adds comments) and the Issue Log (logs and updates issues)."],
           ["Finance", "PO Lookup (including chargeback packages), Scorecard Feedback without commenting, the Issue Log and the Summarizer, all read-only."],
-          ["Director", "Everything the Warehouse has (Scorecard Feedback and the Issue Log), plus **Reports & Insights**."],
+          ["Director", "The dashboard and scorecards, PO Lookup (including chargeback packages), Scorecard Feedback, the Issue Log and **Reports & Insights**."],
         ],
       },
       { h: "Months" },
@@ -348,7 +348,7 @@ export const HELP_TOPICS: HelpTopic[] = [
         ],
       },
       {
-        p: "**Export to Excel** writes every view for the chosen time frame and program to one workbook, a sheet each. The **Director** role has Reports & Insights alongside Scorecard Feedback and the Issue Log; administrators can give it to other roles under Roles & Access (**View Reports & Insights**).",
+        p: "**Export to Excel** writes every view for the chosen time frame and program to one workbook, a sheet each. The **Director** role has Reports & Insights alongside the dashboard, scorecards, PO Lookup, Scorecard Feedback and the Issue Log; administrators can give it to other roles under Roles & Access (**View Reports & Insights**).",
       },
     ],
   },

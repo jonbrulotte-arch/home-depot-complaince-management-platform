@@ -61,7 +61,7 @@ Each month JS Products receives compliance results from The Home Depot (THD) thr
 | Viewer | Read-only results | `view.dashboard`, `view.polookup`, `issues.view` |
 | Warehouse | Comments on published violations, logs issues | `feedback.view`, `feedback.submit`, `issues.view`, `issues.manage` |
 | Finance | Read-only lookup and summaries, chargeback packages, issues | `view.polookup`, `feedback.view`, `summarizer.use`, `issues.view` |
-| Director | The Warehouse's access plus Reports & Insights | `feedback.view`, `feedback.submit`, `issues.view`, `issues.manage`, `insights.view` |
+| Director | The Warehouse's access plus the dashboard and scorecards, PO Lookup and Reports & Insights | `view.dashboard`, `view.polookup`, `feedback.view`, `feedback.submit`, `issues.view`, `issues.manage`, `insights.view` |
 
 Admins can create further roles. Permissions are listed in `src/lib/permissions.ts`.
 

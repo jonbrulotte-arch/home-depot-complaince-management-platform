@@ -56,8 +56,8 @@ export const DEFAULT_ROLES: { name: string; description: string; permissions: Pe
   },
   {
     name: "Director",
-    description: "Directors: everything the Warehouse has, plus Reports & Insights",
-    permissions: ["feedback.view", "feedback.submit", "issues.view", "issues.manage", "insights.view"],
+    description: "Directors: the dashboard and scorecards, PO Lookup, Scorecard Feedback, the Issue Log and Reports & Insights",
+    permissions: ["view.dashboard", "view.polookup", "feedback.view", "feedback.submit", "issues.view", "issues.manage", "insights.view"],
   },
   {
     name: "Finance",
