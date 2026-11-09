@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
   byMonth,
+  byQuarter,
   changePct,
+  comparisonWindows,
   crossTab,
   disputeGaps,
   figures,
@@ -17,6 +19,7 @@ import {
   resolveTimeFrame,
   rootCauses,
   expectedVsAssessed,
+  windowLabel,
   teamKey,
   winRate,
   type InsightIssue,
@@ -74,6 +77,25 @@ describe("time frames", () => {
     expect(fiscalQuarter(202601)).toBe("FY2026 Q1");
     expect(fiscalQuarter(202612)).toBe("FY2026 Q4");
   });
+
+  it("compares only the months THD has reported, against the same months of earlier periods", () => {
+    // Dec 2025 – Nov 2026, with THD's data running to Sep 2026
+    const f = resolveTimeFrame("custom", 202610, 202307, { from: "202511", to: "202610" });
+    expect(f.label).toBe("Dec 2025 – Nov 2026");
+    const w = comparisonWindows(f, 202307, 202608);
+    expect(windowLabel(w.current)).toBe("Dec 2025 – Sep 2026");
+    expect(windowLabel(w.previous)).toBe("Dec 2024 – Sep 2025");
+    expect(windowLabel(w.priorYear)).toBe("Dec 2024 – Sep 2025");
+    // all of the frame reported: the whole previous 12 months
+    expect(windowLabel(comparisonWindows(f, 202307, 202610).previous)).toBe("Dec 2024 – Nov 2025");
+    // a 3-month frame: the 3 months before it, and the same 3 months a year earlier
+    const q = comparisonWindows(resolveTimeFrame("3", 202608, 202301), 202301, 202608);
+    expect(q).toEqual({ current: { from: 202606, to: 202608 }, previous: { from: 202603, to: 202605 }, priorYear: { from: 202506, to: 202508 } });
+    // nothing to compare with before the first month of data
+    expect(comparisonWindows(f, 202501, 202608)).toMatchObject({ previous: null, priorYear: null });
+    expect(comparisonWindows(f, 202301, 202509).current).toBeNull();
+    expect(comparisonWindows(resolveTimeFrame("12", null, null), null, null).current).toBeNull();
+  });
 });
 
 describe("figures", () => {
@@ -113,7 +135,9 @@ describe("grouping", () => {
   });
 
   it("lays out months, cross-tabs and root causes", () => {
-    expect(byMonth(lines, [202607, 202608, 202609]).map((m) => m.offsets)).toEqual([100, 75, 0]);
+    // newest month first
+    expect(byMonth(lines, [202607, 202608, 202609]).map((m) => [m.label, m.offsets])).toEqual([["Oct 2026", 0], ["Sep 2026", 75], ["Aug 2026", 100]]);
+    expect(byQuarter(lines, [202607, 202608, 202609, 202610]).map((q) => [q.label, q.offsets])).toEqual([["FY2026 Q4", 0], ["FY2026 Q3", 175]]);
     const x = crossTab(lines, { key: teamKey, label: (k) => k }, { key: programKey, label: (_k, l) => l.programName });
     expect(x.cell("EDI", "US_RDC").offsets).toBe(100);
     expect(x.cell("EDI", "US_DS").offsets).toBe(50);

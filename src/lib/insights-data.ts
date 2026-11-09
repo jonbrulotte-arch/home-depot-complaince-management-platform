@@ -4,7 +4,7 @@ import { getPeriodField, linesInPeriod, periodOf } from "@/lib/periods";
 import { matchIssuePos } from "@/lib/issues-data";
 import { teamNames } from "@/lib/teams";
 import { scorecardData } from "@/lib/scorecard-store";
-import { previousFrame, priorYearFrame, resolveTimeFrame, type GoalSnapshot, type InsightIssue, type InsightLine, type TimeFrame } from "@/lib/insights";
+import { comparisonWindows, resolveTimeFrame, type GoalSnapshot, type InsightIssue, type InsightLine, type TimeFrame } from "@/lib/insights";
 
 // Loads what Reports & Insights counts (src/lib/insights.ts does the counting): the compliance
 // lines of the time frame (and of the frames it is compared with), published scorecards, and the
@@ -41,8 +41,10 @@ export async function loadInsights(filters: InsightFilters) {
   const latest = months.length ? Math.max(...months) : null;
   const earliest = months.length ? Math.min(...months) : null;
   const frame = resolveTimeFrame(filters.range, latest, earliest, { from: filters.from, to: filters.to });
-  const prev = previousFrame(frame);
-  const prior = priorYearFrame(frame);
+  // Comparisons cover only the months THD has reported for the program(s) shown
+  const programBounds = programCode ? await prisma.complianceLine.aggregate({ where: programWhere, _min: { [field]: true }, _max: { [field]: true } }) : bounds;
+  const compliance = { first: (programBounds._min as Record<string, number | null>)[field] ?? null, last: (programBounds._max as Record<string, number | null>)[field] ?? null };
+  const { current: compared, previous: prev, priorYear: prior } = comparisonWindows(frame, compliance.first, compliance.last);
   const loadFrom = Math.min(frame.from, prev?.from ?? frame.from, prior?.from ?? frame.from);
 
   const names = await teamNames();
@@ -127,6 +129,10 @@ export async function loadInsights(filters: InsightFilters) {
     programs,
     programCode,
     lines: lines.filter((l) => within(l, frame)),
+    /** The months of the frame that comparisons cover (up to the last month with compliance data) */
+    compared,
+    /** Last month with compliance data for the program(s) shown */
+    complianceLatest: compliance.last,
     previous: prev ? { ...prev, lines: lines.filter((l) => within(l, prev)) } : null,
     priorYear: prior ? { ...prior, lines: lines.filter((l) => within(l, prior)) } : null,
     goalSnapshots,

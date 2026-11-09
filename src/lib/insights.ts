@@ -77,6 +77,9 @@ export function resolveTimeFrame(key: string | undefined, latest: number | null,
     from = validMonth(f) ? f : shiftFiscalMonth(last, -11);
     to = validMonth(t) ? t : last;
     if (from > to) [from, to] = [to, from];
+    // Within the months there is anything for (the pickers offer only those)
+    from = Math.min(Math.max(from, first), last);
+    to = Math.min(Math.max(to, first), last);
   }
   if (!last) return { key: k, from: 0, to: 0, months: [], label: "No data yet" };
   const months = monthsBetween(from, to);
@@ -95,6 +98,33 @@ export function previousFrame(frame: TimeFrame): { from: number; to: number } | 
 export function priorYearFrame(frame: TimeFrame): { from: number; to: number } | null {
   if (!frame.months.length) return null;
   return { from: shiftFiscalMonth(frame.from, -12), to: shiftFiscalMonth(frame.to, -12) };
+}
+
+export type MonthWindow = { from: number; to: number };
+
+export const windowLabel = (w: MonthWindow | null) => (!w ? "" : w.from === w.to ? fiscalLabel(w.from) : `${fiscalLabel(w.from)} – ${fiscalLabel(w.to)}`);
+
+/**
+ * The windows the time frame is compared over. THD's data runs behind the frame's end (the frame
+ * reaches the latest logged issue), and months it hasn't reported yet would count as zero, so the
+ * comparison covers only the frame's months up to the last month with compliance data
+ * (`current`), against the same months of the previous period (`previous`, the same number of
+ * months just before the frame) and of the year before (`priorYear`). A comparison window that
+ * starts before the first month with data is left out (null): it would be compared with nothing.
+ */
+export function comparisonWindows(frame: TimeFrame, dataFirst: number | null, dataLast: number | null): { current: MonthWindow | null; previous: MonthWindow | null; priorYear: MonthWindow | null } {
+  const none = { current: null, previous: null, priorYear: null };
+  if (!frame.months.length || dataFirst === null || dataLast === null) return none;
+  const coveredTo = Math.min(frame.to, dataLast);
+  if (coveredTo < frame.from) return none;
+  const covered = monthsBetween(frame.from, coveredTo).length;
+  const prevFrom = shiftFiscalMonth(frame.from, -frame.months.length);
+  const yearFrom = shiftFiscalMonth(frame.from, -12);
+  return {
+    current: { from: frame.from, to: coveredTo },
+    previous: prevFrom >= dataFirst ? { from: prevFrom, to: shiftFiscalMonth(prevFrom, covered - 1) } : null,
+    priorYear: yearFrom >= dataFirst ? { from: yearFrom, to: shiftFiscalMonth(coveredTo, -12) } : null,
+  };
 }
 
 /** "FY2026 Q3" for a fiscal month (Q1 = Feb–Apr). */
@@ -211,11 +241,17 @@ export function groupBy(lines: InsightLine[], key: (l: InsightLine) => string | 
 }
 
 
-/** Month-by-month figures for every month in the frame (months without violations included). */
+/** Month-by-month figures for every month in the frame (months without violations included), newest month first. */
 export function byMonth(lines: InsightLine[], months: number[]): ({ month: number; label: string; quarter: string } & Figures)[] {
   const per = new Map<number, InsightLine[]>(months.map((m) => [m, []]));
   for (const l of lines) per.get(l.month)?.push(l);
-  return months.map((m) => ({ month: m, label: fiscalLabel(m), quarter: fiscalQuarter(m), ...figures(per.get(m) ?? []) }));
+  return [...months].sort((a, b) => b - a).map((m) => ({ month: m, label: fiscalLabel(m), quarter: fiscalQuarter(m), ...figures(per.get(m) ?? []) }));
+}
+
+/** Figures per fiscal quarter of the months given, newest quarter first. */
+export function byQuarter(lines: InsightLine[], months: number[]): ({ label: string } & Figures)[] {
+  const quarters = [...new Set([...months].sort((a, b) => b - a).map(fiscalQuarter))];
+  return quarters.map((q) => ({ label: q, ...figures(lines.filter((l) => months.includes(l.month) && fiscalQuarter(l.month) === q)) }));
 }
 
 /** Rows × months grid of offsets (and violation counts) for the groups given. */
@@ -442,7 +478,7 @@ export function issueInsights(issues: InsightIssue[], months: number[], monthOf:
     byCategory: count((i) => i.category),
     bySeverity: count((i) => i.severity),
     byTeam: count((i) => i.team),
-    byMonth: months.map((m) => ({ month: m, label: fiscalLabel(m), count: inFrame.filter((i) => monthOf(i.issueDate) === m).length })),
+    byMonth: [...months].sort((a, b) => b - a).map((m) => ({ month: m, label: fiscalLabel(m), count: inFrame.filter((i) => monthOf(i.issueDate) === m).length })),
     aging,
     overdue,
     costliest: [...inFrame].filter((i) => i.offsets > 0).sort((a, b) => b.offsets - a.offsets).slice(0, 10),

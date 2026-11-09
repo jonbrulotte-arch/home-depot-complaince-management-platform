@@ -5,6 +5,7 @@ import { DISPUTE_STATUS_LABELS } from "@/lib/disputes";
 import {
   averageDecisionDays,
   byMonth,
+  byQuarter,
   changePct,
   crossTab,
   disputeGaps,
@@ -20,6 +21,7 @@ import {
   repeatPos,
   rootCauses,
   teamKey,
+  windowLabel,
   winRate,
   type Figures,
   type GroupRow,
@@ -38,7 +40,22 @@ export interface Access {
   issues: boolean;
 }
 
-const compareLabel = (f: { from: number; to: number } | null) => (f ? (f.from === f.to ? fiscalLabel(f.from) : `${fiscalLabel(f.from)} – ${fiscalLabel(f.to)}`) : "");
+const compareLabel = windowLabel;
+
+/** Whether the comparisons stop before the frame's last month (THD hasn't reported the rest yet) */
+const comparedShort = (data: Insights) => Boolean(data.compared && data.compared.to < data.frame.to);
+/** "Dec 2025 – Sep 2026 (the months with THD data so far)" or the frame's own label */
+const comparedLabel = (data: Insights) => (comparedShort(data) ? `${compareLabel(data.compared)} (the months with THD data so far)` : data.frame.label);
+/** A month THD hasn't reported yet: its zeros mean "not known yet", not "no violations" */
+const notReported = (data: Insights, month: number) => data.complianceLatest === null || month > data.complianceLatest;
+function MonthLabel({ data, month, label }: { data: Insights; month: number; label: string }) {
+  return (
+    <span className="text-gray-900">
+      {label}
+      {notReported(data, month) && <span className="ml-2 text-xs text-gray-400">No THD data yet</span>}
+    </span>
+  );
+}
 
 function figureCols<R extends Figures>(): Col<R>[] {
   return [
@@ -70,6 +87,7 @@ export function OverviewTab({ data }: { data: Insights }) {
   const metrics = groupBy(data.lines, metricKey, (_k, l) => `${l.programName} · ${l.metricName}`);
   const teams = groupBy(data.lines, teamKey, (k) => k);
   const issues = issueInsights(data.issues, data.frame.months, fiscalMonthOf);
+  // "−64% vs Dec 2024 – Nov 2025": this frame's figure against the previous period's
   const vs = before ? `vs ${compareLabel(data.previous)}` : undefined;
 
   return (
@@ -85,10 +103,10 @@ export function OverviewTab({ data }: { data: Insights }) {
         ]}
       />
       <Highlights data={data} now={now} before={before} metrics={metrics} teams={teams} overdue={issues.overdue.length} />
-      <Section title="Month by month" description="Violations and offsets in each month of the time frame.">
+      <Section title="Month by month" description="Violations and offsets in each month of the time frame, newest first.">
         <Table
           rows={months}
-          cols={[{ header: "Month", cell: (r) => <span className="text-gray-900">{r.label}</span> }, ...figureCols<(typeof months)[number]>()]}
+          cols={[{ header: "Month", cell: (r) => <MonthLabel data={data} month={r.month} label={r.label} /> }, ...figureCols<(typeof months)[number]>()]}
           bar={{ header: "Offsets", value: (r) => r.offsets }}
           foot={["Total", ...footFigures(now)]}
         />
@@ -112,13 +130,16 @@ function Highlights({ data, now, before, metrics, teams, overdue }: { data: Insi
   if (!now.violations) items.push("No violations in this time frame.");
   if (before && now.violations) {
     const c = changePct(now.offsets, before.offsets);
-    if (c !== null) items.push(`Offsets ${c >= 0 ? "rose" : "fell"} ${Math.abs(Math.round(c))}% compared with ${compareLabel(data.previous)} (${money(before.offsets)} → ${money(now.offsets)}).`);
+    if (c !== null)
+      items.push(
+        `Offsets ${c >= 0 ? "rose" : "fell"} ${Math.abs(Math.round(c))}%: ${money(now.offsets)} in ${comparedLabel(data)}, ${c >= 0 ? "up" : "down"} from ${money(before.offsets)} in the previous period, ${compareLabel(data.previous)}.`,
+      );
   }
   if (metrics[0]) items.push(`${metrics[0].label} is the costliest compliance type: ${money(metrics[0].offsets)}, ${pct(metrics[0].share, 0)} of all offsets.`);
   if (before) {
     const prevMetrics = new Map(groupBy(data.previous!.lines, metricKey).map((r) => [r.key, r.offsets]));
     const rises = metrics.map((m) => ({ m, rise: m.offsets - (prevMetrics.get(m.key) ?? 0) })).filter((x) => x.rise > 0).sort((a, b) => b.rise - a.rise);
-    if (rises[0]) items.push(`The biggest increase is ${rises[0].m.label}: up ${money(rises[0].rise)} on the previous period.`);
+    if (rises[0]) items.push(`The biggest increase is ${rises[0].m.label}: up ${money(rises[0].rise)} on the previous period (${compareLabel(data.previous)}).`);
   }
   const team = teams.find((t) => t.key);
   if (team) items.push(`${team.label} accounts for the most offsets among teams (${money(team.offsets)}, ${n(team.violations)} violation(s)).`);
@@ -127,6 +148,8 @@ function Highlights({ data, now, before, metrics, teams, overdue }: { data: Insi
   if (now.unreviewed) items.push(`${n(now.unreviewed)} violation(s) haven't been reviewed yet, so their team and root cause are still unknown.`);
   if (now.violations) items.push(`Feedback was given on ${n(now.withFeedback)} of ${n(now.violations)} violation(s) (${pct((now.withFeedback / now.violations) * 100, 0)}).`);
   if (overdue) items.push(`${n(overdue)} open issue(s) are past their follow-up date.`);
+  if (comparedShort(data) && data.complianceLatest)
+    items.push(`THD's data runs to ${fiscalLabel(data.complianceLatest)} so far; the months after it have no compliance data yet and are left out of the comparisons.`);
   return (
     <Section title="Highlights">
       <ul className="list-disc space-y-1.5 px-10 pb-6 text-sm text-gray-700">
@@ -235,40 +258,43 @@ export function ProgramsTab({ data }: { data: Insights }) {
 
 export function TimeTab({ data }: { data: Insights }) {
   const months = byMonth(data.lines, data.frame.months);
-  const quarters = [...new Set(months.map((m) => m.quarter))].map((q) => ({ label: q, ...figures(data.lines.filter((l) => months.find((m) => m.month === l.month)?.quarter === q)) }));
+  const quarters = byQuarter(data.lines, data.frame.months);
   const now = figures(data.lines);
   const compare = [
-    { label: `This time frame (${data.frame.label})`, ...now },
+    { label: comparedShort(data) ? `This time frame, months with THD data so far (${compareLabel(data.compared)})` : `This time frame (${data.frame.label})`, ...now },
     ...(data.previous ? [{ label: `Previous period (${compareLabel(data.previous)})`, ...figures(data.previous.lines) }] : []),
     ...(data.priorYear ? [{ label: `Same months last year (${compareLabel(data.priorYear)})`, ...figures(data.priorYear.lines) }] : []),
   ];
 
   return (
     <div className="space-y-6">
-      <Section title="Compared with earlier periods" description="The previous period is the same number of months just before this time frame.">
+      <Section
+        title="Compared with earlier periods"
+        description={`The previous period is the same number of months just before this time frame; the same months last year are a year earlier.${comparedShort(data) ? " Only the months THD has reported so far are compared." : ""}`}
+      >
         <Table
           rows={compare}
           cols={[
             { header: "Period", cell: (r) => <span className="text-gray-900">{r.label}</span> },
             ...figureCols<(typeof compare)[number]>(),
-            { header: "Offsets vs this frame", cell: (r) => (r === compare[0] ? "—" : <Change value={changePct(now.offsets, r.offsets)} />), align: "right" },
+            { header: "This frame's offsets vs it", cell: (r) => (r === compare[0] ? "—" : <Change value={changePct(now.offsets, r.offsets)} />), align: "right" },
           ]}
         />
       </Section>
-      <Section title="Month by month" description="Change is against the month before.">
+      <Section title="Month by month" description="Newest month first; the change is against the month before.">
         <Table
           rows={months}
           cols={[
-            { header: "Month", cell: (r) => <span className="text-gray-900">{r.label}</span> },
+            { header: "Month", cell: (r) => <MonthLabel data={data} month={r.month} label={r.label} /> },
             { header: "Quarter", cell: (r) => r.quarter },
             ...figureCols<(typeof months)[number]>(),
-            { header: "Offsets change", cell: (r) => { const i = months.indexOf(r); return i ? <Change value={changePct(r.offsets, months[i - 1].offsets)} /> : "—"; }, align: "right" },
+            { header: "Offsets change", cell: (r) => { const i = months.indexOf(r); return i < months.length - 1 && !notReported(data, r.month) ? <Change value={changePct(r.offsets, months[i + 1].offsets)} /> : "—"; }, align: "right" },
             { header: "Win rate", cell: (r) => pct(winRate(r), 0), align: "right" },
           ]}
           bar={{ header: "Offsets", value: (r) => r.offsets }}
         />
       </Section>
-      <Section title="By fiscal quarter" description="THD's fiscal year starts in February (Q1 = Feb–Apr).">
+      <Section title="By fiscal quarter" description="Newest first. THD's fiscal year starts in February (Q1 = Feb–Apr).">
         <Table rows={quarters} cols={[{ header: "Quarter", cell: (r) => <span className="text-gray-900">{r.label}</span> }, ...figureCols<(typeof quarters)[number]>()]} bar={{ header: "Offsets", value: (r) => r.offsets }} />
       </Section>
     </div>
@@ -411,7 +437,7 @@ export function IssuesTab({ data, access }: { data: Insights; access: Access }) 
         <Section title="By status">
           <Table rows={ins.byStatus.map((r) => ({ ...r, label: ISSUE_STATUSES[r.key as keyof typeof ISSUE_STATUSES]?.label ?? r.label }))} cols={countCols("Status")} />
         </Section>
-        <Section title="Issues logged per month">
+        <Section title="Issues logged per month" description="Newest month first.">
           <Table rows={ins.byMonth} cols={[{ header: "Month", cell: (r) => <span className="text-gray-900">{r.label}</span> }, { header: "Issues", cell: (r) => n(r.count), align: "right" }]} bar={{ header: "Issues", value: (r) => r.count }} />
         </Section>
         <Section title="Open issues by age" description="Every open or in-progress issue, by days since the issue date.">
