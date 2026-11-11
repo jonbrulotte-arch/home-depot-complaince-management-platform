@@ -237,7 +237,7 @@ export const HELP_TOPICS: HelpTopic[] = [
   {
     id: "summarizer",
     title: "Summarizer",
-    summary: "One summary of several published reports, as a PDF.",
+    summary: "One summary of several published reports, or an Issues report for a date range, as a PDF.",
     anyOf: ["summarizer.use"],
     blocks: [
       {
@@ -249,6 +249,16 @@ export const HELP_TOPICS: HelpTopic[] = [
       },
       {
         p: "The summary shows totals (violations, offsets, recovered, post-dispute offsets and the amount **awaiting THD decision**), each report with links to its scorecard, the violations grouped by compliance type with PO #, offset and team responsible, and totals by team. “Awaiting THD decision” is the amount on disputes submitted in SPM and not yet decided, using each dispute's current status. The address keeps your selection, so you can bookmark or share a summary.",
+      },
+      { h: "Issues report" },
+      {
+        steps: [
+          "Under **Issues report**, pick the **From** and **To** dates, or a quick range (**Last 7 days**, **Last 30 days**, **This month**, **Last month**, **Year to date**).",
+          "Click **Build issues report**, review it, then click **Export PDF**.",
+        ],
+      },
+      {
+        p: "The report covers every issue dated in the range: totals (issues logged and still open, issues resolved in the period, POs and how many are in the compliance data, violations and THD's offsets on those POs, estimated maximum fines), **expected vs. assessed** fines, counts by category, team, severity and status, a table of the issues, and each issue in full with the violations on its POs and the updates made during the period. **Earlier issues with activity in the period** lists issues dated before the range that were logged, updated or resolved during it. Roles need the Issue Log as well as the Summarizer to see it.",
       },
     ],
   },

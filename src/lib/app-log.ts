@@ -32,6 +32,7 @@ export const ACTION_LABELS: Record<string, string> = {
   "feedback.delete": "Deleted scorecard feedback",
   "package.export": "Exported a chargeback package",
   "summary.export": "Exported a Summarizer PDF",
+  "summary.issuesExport": "Exported a Summarizer Issues report PDF",
   "appLog.export": "Exported the App Log",
   "issue.create": "Logged an issue",
   "issue.update": "Updated an issue",

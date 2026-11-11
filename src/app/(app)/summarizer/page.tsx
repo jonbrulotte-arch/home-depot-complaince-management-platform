@@ -7,22 +7,37 @@ import { loadSummary } from "@/lib/summarizer-data";
 import { cn, formatCurrency } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { parseReportRange, rangePresets } from "@/lib/issue-report";
+import { loadIssueReport } from "@/lib/issue-report-data";
+import { getTimeZone } from "@/lib/time-zone-server";
 import { ReportPicker } from "./report-picker";
+import { IssueRangePicker } from "./issue-range-picker";
+import { IssueReportView } from "./issue-report-view";
 
 const th = "px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider";
 const td = "px-4 py-2.5 text-sm";
 
-export default async function SummarizerPage({ searchParams }: { searchParams: Promise<{ r?: string | string[] }> }) {
+export default async function SummarizerPage({ searchParams }: { searchParams: Promise<{ r?: string | string[]; from?: string; to?: string }> }) {
   const user = await requirePagePermission("summarizer.use");
-  const { r } = await searchParams;
+  const { r, from, to } = await searchParams;
   const requested = parseReportIds(r);
-  const [published, { summary, dashboardPath }] = await Promise.all([recentPublishedReports(500), loadSummary(requested)]);
+  // The Issues report needs the Issue Log as well
+  const canIssues = user.permissions.has("issues.view");
+  const range = canIssues ? parseReportRange(from, to) : null;
+  const [published, { summary, dashboardPath }, issueReport, timeZone] = await Promise.all([
+    recentPublishedReports(500),
+    loadSummary(requested),
+    range ? loadIssueReport(range) : null,
+    getTimeZone(),
+  ]);
 
   return (
     <div className="p-6 max-w-7xl mx-auto space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-gray-900">Summarizer</h1>
-        <p className="text-sm text-gray-500 mt-1">Pick one or more published compliance reports to summarize their violations for the team, then export the summary as a PDF.</p>
+        <p className="text-sm text-gray-500 mt-1">
+          Pick one or more published compliance reports to summarize their violations for the team{canIssues ? ", or a date range for an Issues report" : ""}, then export it as a PDF.
+        </p>
       </div>
 
       <Card>
@@ -34,6 +49,22 @@ export default async function SummarizerPage({ searchParams }: { searchParams: P
           <ReportPicker reports={published} selected={summary ? summary.reports.map((s) => s.reportId) : []} />
         </CardContent>
       </Card>
+
+      {canIssues && (
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle>Issues report</CardTitle>
+            <CardDescription>Pick a date range to summarize the Issue Log for it: every issue dated in the range, the compliance data on its POs, and the updates made.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <IssueRangePicker from={range?.fromKey ?? ""} to={range?.toKey ?? ""} presets={rangePresets(new Date())} />
+          </CardContent>
+        </Card>
+      )}
+
+      {canIssues && (from || to) && !range && <p className="text-sm text-gray-500">Pick a start and end date (at most three years apart) for the Issues report.</p>}
+
+      {issueReport && <IssueReportView report={issueReport} timeZone={timeZone} canOpenIssues />}
 
       {requested.length > 0 && !summary && <p className="text-sm text-gray-500">None of the chosen reports is published any more. Pick reports above.</p>}
 
