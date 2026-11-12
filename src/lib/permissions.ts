@@ -64,6 +64,12 @@ export const DEFAULT_ROLES: { name: string; description: string; permissions: Pe
     description: "Finance team: read-only PO Lookup, Scorecard Feedback, Issue Log and Summarizer",
     permissions: ["view.polookup", "feedback.view", "summarizer.use", "issues.view"],
   },
+  {
+    // Starts with no access: admins choose its permissions in Roles & Access
+    name: "Logistics",
+    description: "Logistics team",
+    permissions: [],
+  },
 ];
 
 /** Landing pages in order of preference; a user starts on the first one their role allows. */

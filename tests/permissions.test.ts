@@ -10,6 +10,9 @@ describe("roles and landing pages", () => {
 
   it("has a read-only Finance role for PO Lookup, Scorecard Feedback, the Issue Log and the Summarizer", () => {
     expect([...role("Finance")].sort()).toEqual(["feedback.view", "issues.view", "summarizer.use", "view.polookup"]);
+    // Logistics starts empty; an admin gives it access in Roles & Access
+    expect([...role("Logistics")]).toEqual([]);
+    expect(homePath(role("Logistics"))).toBe("/no-access");
     expect(role("Finance").has("feedback.submit")).toBe(false);
     expect(role("Finance").has("issues.manage")).toBe(false);
   });

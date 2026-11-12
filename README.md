@@ -52,7 +52,7 @@ Monthly compliance analysis for our Home Depot programs. Import the raw SPM expo
 - **Forgot password:** the sign-in page's **Forgot password?** emails a one-time reset link (valid 1 hour; `PasswordReset`, only the token's sha256 stored). The answer is the same whether or not the email has an account; requests are limited per user and per address and logged in the App Log. Changing a password any other way cancels open links. Admins send the same reset email from the key icon in Admin › Users (or set a temporary password).
 - **Admin**:
   - Users (invite, add, roles, passwords, deactivate)
-  - Roles & Access (role × permission matrix; built-in Admin, Analyst, Viewer, Warehouse and Finance roles)
+  - Roles & Access (role × permission matrix; built-in Admin, Analyst, Viewer, Warehouse, Director, Finance and Logistics roles; Logistics starts with no permissions until an admin ticks them)
   - Programs & Rules: metrics, threshold/offset rules by effective fiscal month, dispute reason codes, and SPM column mappings
 
 

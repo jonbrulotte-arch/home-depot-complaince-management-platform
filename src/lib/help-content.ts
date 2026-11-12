@@ -56,6 +56,7 @@ export const HELP_TOPICS: HelpTopic[] = [
           ["Viewer", "The dashboard, published scorecards, PO Lookup and the Issue Log, read-only."],
           ["Warehouse", "Scorecard Feedback (reads published violations and adds comments) and the Issue Log (logs and updates issues)."],
           ["Finance", "PO Lookup (including chargeback packages), Scorecard Feedback without commenting, the Issue Log and the Summarizer, all read-only."],
+          ["Logistics", "The logistics team. Its access is set by an administrator in Roles & Access."],
           ["Director", "The dashboard and scorecards, PO Lookup (including chargeback packages), Scorecard Feedback, the Issue Log and **Reports & Insights**."],
         ],
       },
