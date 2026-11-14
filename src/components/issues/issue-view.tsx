@@ -39,6 +39,7 @@ export async function IssueBody({
   canOpenPo,
   updatesFooter,
   files,
+  logistics,
 }: {
   found: IssueFound;
   tz: string;
@@ -48,6 +49,8 @@ export async function IssueBody({
   updatesFooter?: ReactNode;
   /** The Files card's content */
   files: ReactNode;
+  /** Logistics for the issue's POs (signed-in viewers with Logistics only) */
+  logistics?: ReactNode;
 }) {
   const { issue, pos } = found;
   const teams = await teamNames();
@@ -189,6 +192,8 @@ export async function IssueBody({
         </CardContent>
       )}
     </Card>
+
+    {logistics}
 
     <div className="grid gap-6 lg:grid-cols-2">
       <Card>

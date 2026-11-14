@@ -13,6 +13,7 @@ import { IssueAttachments } from "./issue-attachments";
 import { DeleteIssueButton } from "./delete-issue-button";
 import { ShareIssueButton } from "./share-issue-button";
 import { prisma } from "@/lib/prisma";
+import { PoLogisticsCard } from "@/components/logistics/po-logistics-card";
 
 export default async function IssuePage({ params }: { params: Promise<{ id: string }> }) {
   const tz = await getTimeZone();
@@ -66,6 +67,7 @@ export default async function IssuePage({ params }: { params: Promise<{ id: stri
         found={found}
         tz={tz}
         canOpenPo={canOpenPo}
+        logistics={user.permissions.has("logistics.view") && found.pos.length ? <PoLogisticsCard poNumbers={found.pos.map((p) => p.poNumber)} /> : null}
         updatesFooter={canEdit ? <AddIssueNote issueId={issue.id} /> : null}
         files={
           <IssueAttachments

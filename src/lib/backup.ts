@@ -51,6 +51,13 @@ export const TABLE_ORDER = [
   "UserInvite",
   "PasswordReset",
   "SopDocument",
+  "LogisticsImport",
+  "WmsCarton",
+  "TmsShipment",
+  "TmsPurchaseOrder",
+  "ParcelTracking",
+  "LogisticsNote",
+  "CarrierLink",
   "SiteSettings",
 ] as const;
 

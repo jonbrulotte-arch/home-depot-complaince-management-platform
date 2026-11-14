@@ -56,6 +56,8 @@ model User {
   passwordResets      PasswordReset[]
   issueShares         IssueShare[]
   sopDocuments        SopDocument[]
+  logisticsImports    LogisticsImport[]
+  logisticsNotes      LogisticsNote[]
 }
 
 model AuditLog {
@@ -865,4 +867,164 @@ model SopDocument {
   uploadedBy   User?    @relation(fields: [uploadedById], references: [id], onDelete: SetNull)
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
+}
+
+// ─── Logistics ────────────────────────────────────────────────────
+// WMS carton lines and TMS (Logistics Gateway) shipments and purchase orders, imported from files,
+// with UPS tracking, notes and carrier tracking links (src/lib/logistics/).
+
+enum LogisticsSource {
+  WMS
+  TMS_SHIPMENTS
+  TMS_POS
+}
+
+/// One imported or fetched logistics file
+model LogisticsImport {
+  id           String          @id @default(cuid())
+  source       LogisticsSource
+  fileName     String
+  rows         Int
+  created      Int
+  updated      Int
+  /// Rows skipped and why
+  warnings     Json?
+  /// Pulled from the WMS report link rather than uploaded
+  fetched      Boolean         @default(false)
+  importedById String?
+  importedBy   User?           @relation(fields: [importedById], references: [id], onDelete: SetNull)
+  importedAt   DateTime        @default(now())
+
+  @@index([source, importedAt])
+}
+
+/// One line of a shipped carton from the WMS "shipped last 60 days" report: a carton label (GS1-128 /
+/// SSCC) and product; a mixed carton has a line per product
+model WmsCarton {
+  id             String   @id @default(cuid())
+  /// label|product
+  lineKey        String   @unique
+  label          String
+  orderNum       String
+  orderNumber    String?
+  customer       String?
+  /// TMS shipment ID, UPS 1Z number or PRO, as the WMS has it
+  trackingNumber String?
+  secondTrack    String?
+  totLabel       String?
+  product        String?
+  quantity       Int?
+  poNumber       String
+  /// Warehouse wall-clock time, stored as UTC like other imported timestamps
+  shippedAt      DateTime
+  shipCity       String?
+  shipState      String?
+  shipZip        String?
+  importId       String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([label])
+  @@index([poNumber])
+  @@index([trackingNumber])
+  @@index([secondTrack])
+}
+
+/// A TMS (Logistics Gateway) shipment
+model TmsShipment {
+  id             String   @id @default(cuid())
+  shipmentNumber String   @unique
+  status         String
+  scac           String?
+  pickupAt       DateTime?
+  /// As TMS shows it, e.g. "9/22/26 00:01 EDT"
+  pickupLocal    String?
+  deliveryAt     DateTime?
+  deliveryLocal  String?
+  originFacility String?
+  originCity     String?
+  originState    String?
+  destFacility   String?
+  destCity       String?
+  destState      String?
+  poNumbers      String[]
+  appointment    String?
+  /// The TMS columns set to Yes (Errors, Warnings, Alerts, Notes, Event Notification Indicator)
+  tmsFlags       String[]
+  raw            Json
+  importId       String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([scac])
+}
+
+/// A TMS (Logistics Gateway) purchase order
+model TmsPurchaseOrder {
+  id              String   @id @default(cuid())
+  poNumber        String   @unique
+  status          String
+  originFacility  String?
+  originCity      String?
+  originState     String?
+  destFacility    String?
+  destCity        String?
+  destState       String?
+  businessPartner String?
+  appointment     String?
+  tmsFlags        String[]
+  raw             Json
+  importId        String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+/// Latest UPS tracking for a 1Z number from the WMS
+model ParcelTracking {
+  id             String    @id @default(cuid())
+  trackingNumber String    @unique
+  carrier        String    @default("UPS")
+  status         String?
+  statusCode     String?
+  /// UPS status type: D delivered, I in transit, X exception, P pickup, M manifest…
+  statusType     String?
+  delivered      Boolean   @default(false)
+  deliveredAt    DateTime?
+  expectedAt     DateTime?
+  lastActivity   String?
+  lastLocation   String?
+  activityAt     DateTime?
+  error          String?
+  checkedAt      DateTime?
+  raw            Json?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+}
+
+/// A note on a PO or a TMS shipment
+model LogisticsNote {
+  id             String   @id @default(cuid())
+  poNumber       String?
+  shipmentNumber String?
+  body           String
+  authorId       String?
+  author         User?    @relation(fields: [authorId], references: [id], onDelete: SetNull)
+  createdAt      DateTime @default(now())
+
+  @@index([poNumber])
+  @@index([shipmentNumber])
+}
+
+/// A carrier by SCAC, with the page to track its shipments
+model CarrierLink {
+  id          String   @id @default(cuid())
+  scac        String   @unique
+  name        String
+  /// LTL, TL or Parcel
+  mode        String?
+  /// Tracking page; {pro}, {shipment} and {po} are filled in when known
+  trackingUrl String?
+  notes       String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 }

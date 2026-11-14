@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { requirePagePermission } from "@/lib/auth-guard";
 import { scorecardData } from "@/lib/scorecard-store";
 import { formatDate } from "@/lib/utils";
+import { withPoContext } from "@/lib/scorecard-context";
 import { ScorecardView } from "@/components/scorecard/scorecard-view";
 import { ScorecardToolbar } from "@/components/scorecard/scorecard-toolbar";
 import { ScorecardShareBar } from "@/components/scorecard/scorecard-share-bar";
@@ -35,7 +36,7 @@ export default async function PublishedScorecardPage({ params }: { params: Promi
         <ScorecardToolbar reportId={reportId} canRegenerate={false} canExport />
       </div>
       <ScorecardShareBar sharePath={shareToken ? `/s/${shareToken}` : null} feedbackHref={canFeedback ? `/feedback/${reportId}` : null} feedbackCount={feedbackCount} />
-      <ScorecardView data={await withFeedback(reportId, scorecardData(scorecard.data))} tz={tz} />
+      <ScorecardView data={await withPoContext(await withFeedback(reportId, scorecardData(scorecard.data)), user.permissions)} tz={tz} />
       <ScorecardHitBeacon reportId={reportId} />
     </div>
   );

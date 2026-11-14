@@ -365,6 +365,64 @@ export const HELP_TOPICS: HelpTopic[] = [
     ],
   },
   {
+    id: "logistics",
+    title: "Logistics",
+    summary: "Every PO and shipment from the WMS and TMS, tied together, with delivery problems flagged.",
+    anyOf: ["logistics.view"],
+    blocks: [
+      {
+        p: "**Logistics** joins three sources: the WMS **shipped lines** report (one line per carton and product, the last 60 days), and two exports from the TMS (Logistics Gateway): **Shipments** and **Purchase Orders**. Each PO then shows what the warehouse shipped, which TMS shipment and carrier it went on, the pickup and delivery dates, UPS tracking for parcel shipments, and anything that doesn't add up.",
+      },
+      { h: "Importing" },
+      {
+        steps: [
+          "Open **Logistics › Imports**.",
+          "Drop the three files on the box (or **Choose files**). They can go in any order, together or separately: each is recognised by its columns.",
+          "When the WMS report link is set up, **Pull the WMS report now** fetches it directly; it can also be pulled on a schedule.",
+        ],
+      },
+      { note: "Importing again updates what changed and adds what's new; nothing older is removed, so the history outlives the WMS report's 60 days." },
+      { h: "Flags" },
+      {
+        terms: [
+          ["Invalid TMS ID", "The WMS has a TMS shipment ID that isn't nine digits (for example 23307363). THD fines invalid TMS IDs ($100)."],
+          ["TMS ID mismatch", "The WMS cartons carry a different TMS shipment ID from the shipment TMS has the PO on, so labels and ASNs carry the wrong ID."],
+          ["No TMS shipment", "The WMS shipped the PO, but no TMS shipment lists it and the cartons have no TMS ID."],
+          ["TMS ID not in TMS file", "The cartons' TMS ID isn't in the Shipments export (import a newer one, or check the ID)."],
+          ["Canceled PO shipped", "TMS shows the PO canceled, but it shipped or is on a shipment."],
+          ["Wrong destination", "The WMS shipped to a different city or state than the PO's destination DC."],
+          ["Ship-to city misspelled", "The WMS ship-to city is a near spelling of the DC's city: a typo in the WMS ship-to address."],
+          ["Pickup date passed", "The pickup date has passed and TMS still shows Accepted, Tendered or Available."],
+          ["Delivery overdue", "The delivery date has passed and TMS doesn't show it delivered."],
+          ["Shipped after pickup date", "The WMS shipped it after the TMS pickup date."],
+          ["On several shipments", "The PO is on more than one TMS shipment."],
+          ["No carrier", "The TMS shipment has no carrier (SCAC) assigned."],
+          ["UPS exception / UPS past expected date", "From UPS tracking: an exception, or not delivered by the expected date."],
+          ["Different ship-from (info)", "TMS has the PO shipping from one of your facilities, but the shipment left another."],
+          ["PO not in TMS file (info)", "The WMS shipped a PO that isn't in the Purchase Orders export, usually because it's older than the export."],
+        ],
+      },
+      { h: "Tracking" },
+      {
+        list: [
+          "Click a **SCAC** to open the carrier's tracking page in a new tab. Where the carrier's link takes a PRO, shipment or PO number, it's filled in. SCACs with no page set search the web; add them under **Logistics › Carriers**.",
+          "UPS numbers (1Z…) link to ups.com. When UPS tracking is set up, the **UPS parcels** tab shows UPS's latest status, last activity and delivery date; **Refresh UPS tracking** asks UPS again.",
+        ],
+      },
+      { h: "Notes, issues and scorecards" },
+      {
+        list: [
+          "Each PO and shipment has **Notes**: what happened, who you spoke to, what's next.",
+          "A PO's page lists the **Issue Log** issues for it, with **Log an issue** to start one with the PO filled in, and THD's compliance data (violations and offsets) with a link to the PO record.",
+          "An issue's page shows the **Logistics** of its POs, and the violations on in-app scorecards show the PO's logistics status, carrier link, flags and issues. Published scorecards themselves don't change; this is shown alongside them.",
+        ],
+      },
+      {
+        p: "The **POs** tab searches by PO, shipment, tracking or PRO number, order or DC, and filters by status, flag and carrier; **Export to Excel** downloads the POs shown with their shipments and WMS lines.",
+      },
+    ],
+  },
+  {
     id: "dashboards",
     title: "Dashboards",
     summary: "The internal dashboard, the rolling 12-month chart and the public dashboard.",

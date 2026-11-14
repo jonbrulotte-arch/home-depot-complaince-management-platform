@@ -56,6 +56,19 @@ export interface ScorecardViolation {
   notes: string | null;
   /** Scorecard Feedback on this line, added when the scorecard is shown (`withFeedback`); never stored in the snapshot */
   feedback?: ScorecardFeedbackNote[];
+  /** Logistics for the PO, added when an in-app scorecard is shown (`withPoContext`); never stored */
+  logistics?: ScorecardPoLogistics;
+  /** Issue Log issues listing the PO, added like `logistics`; never stored */
+  issues?: { id: string; number: number; title: string; status: string }[];
+}
+
+export interface ScorecardPoLogistics {
+  poNumber: string;
+  status: string;
+  shipped: string | null;
+  shipments: { number: string; scac: string | null; url: string | null; status: string }[];
+  ups: string[];
+  flags: { label: string; severity: string; message: string }[];
 }
 
 export interface ScorecardFeedbackNote {

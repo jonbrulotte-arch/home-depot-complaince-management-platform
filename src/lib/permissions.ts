@@ -13,6 +13,8 @@ export const PERMISSIONS = {
   "issues.view": "View the Issue Log",
   "issues.manage": "Log and update issues in the Issue Log",
   "insights.view": "View Reports & Insights (program, time, team, issue, dispute and location insights)",
+  "logistics.view": "View Logistics (POs, shipments, tracking and flags) and add notes",
+  "logistics.manage": "Import logistics files, refresh WMS and UPS tracking, and edit carrier links",
   "admin.users": "Manage users",
   "admin.rbac": "Manage roles and permissions",
   "admin.programs": "Manage programs, metrics, thresholds and column mappings",
@@ -80,6 +82,7 @@ const HOME_PAGES: [Permission, string][] = [
   ["feedback.view", "/feedback"],
   ["issues.view", "/issues"],
   ["view.polookup", "/po-lookup"],
+  ["logistics.view", "/logistics"],
   ["admin.users", "/admin/users"],
   ["admin.settings", "/admin/settings"],
 ];

@@ -15,6 +15,8 @@ import { withFeedback } from "@/lib/feedback";
 import { ScorecardHitBeacon } from "@/components/scorecard/scorecard-hit-beacon";
 import { getTimeZone } from "@/lib/time-zone-server";
 
+import { withPoContext } from "@/lib/scorecard-context";
+
 export default async function ReportScorecardPage({ params }: { params: Promise<{ id: string }> }) {
   const tz = await getTimeZone();
   const user = await requirePagePermission("reports.view");
@@ -27,7 +29,7 @@ export default async function ReportScorecardPage({ params }: { params: Promise<
 
   // Before generation, show a live preview of what the scorecard will contain
   const scorecard = report.scorecard;
-  const data = scorecard ? await withFeedback(id, scorecardData(scorecard.data)) : await buildScorecard(id);
+  const data = await withPoContext(scorecard ? await withFeedback(id, scorecardData(scorecard.data)) : await buildScorecard(id), user.permissions);
   const shareToken = await ensureShareToken(id);
   const canFeedback = Boolean(scorecard?.publishedAt) && user.permissions.has("feedback.view");
   const feedbackCount = canFeedback ? await prisma.scorecardFeedback.count({ where: { reportId: id } }) : 0;

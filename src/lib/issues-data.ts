@@ -93,3 +93,20 @@ export async function issueCounts() {
   ]);
   return { count: (s: keyof typeof ISSUE_STATUSES) => byStatus.find((b) => b.status === s)?._count._all ?? 0, recent };
 }
+
+/** Issues listing each of these PO numbers (with or without leading zeros), keyed by the number given. */
+export async function issuesForPoNumbers(numbers: string[]): Promise<Map<string, IssueSummary[]>> {
+  const out = new Map<string, IssueSummary[]>();
+  const wanted = [...new Set(numbers.map((n) => n.trim().toUpperCase()).filter(Boolean))];
+  if (!wanted.length) return out;
+  const issuePos = await prisma.issuePo.findMany({
+    where: { poNumber: { in: [...new Set(wanted.flatMap(poNumberVariants))] } },
+    include: { issue: { select: { id: true, number: true, title: true, issueDate: true, status: true, category: true, hdTickets: true } } },
+  });
+  for (const n of wanted) {
+    const names = poNumberVariants(n);
+    const list = [...new Map(issuePos.filter((p) => names.includes(p.poNumber)).map((p) => [p.issue.id, p.issue])).values()].sort((a, b) => b.issueDate.getTime() - a.issueDate.getTime());
+    if (list.length) out.set(n, list);
+  }
+  return out;
+}

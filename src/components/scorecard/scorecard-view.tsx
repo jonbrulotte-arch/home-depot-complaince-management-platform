@@ -1,5 +1,6 @@
 import { Fragment } from "react";
-import { CheckCircle2, MessageSquare, XCircle } from "lucide-react";
+import Link from "next/link";
+import { CheckCircle2, ExternalLink, MessageSquare, NotebookPen, Truck, XCircle } from "lucide-react";
 import type { ScorecardData, ScorecardShipments } from "@/lib/scorecard";
 import { shipmentRows } from "@/lib/scorecard-rules";
 import { formatDateRange, SHIPMENT_RANGES } from "@/lib/shipment-ranges";
@@ -176,7 +177,15 @@ export function ScorecardView({ data, showViolations = true, tz }: { data: Score
                       <Fragment key={i}>
                         <tr className="border-t border-gray-200 align-top print:break-inside-avoid">
                           <td className={cn(td, "text-gray-900")}>{v.program}<div className="text-xs text-gray-500">{v.metric}</div></td>
-                          <td className={cn(td, "text-gray-900")}>{v.poNumber ?? "—"}</td>
+                          <td className={cn(td, "text-gray-900")}>
+                            {v.logistics ? (
+                              <Link href={`/logistics/po/${encodeURIComponent(v.logistics.poNumber)}`} className="text-blue-600 hover:underline print:text-gray-900">
+                                {v.poNumber}
+                              </Link>
+                            ) : (
+                              (v.poNumber ?? "—")
+                            )}
+                          </td>
                           <td className={cn(td, "text-gray-700")}>{v.dcNumber ?? "—"}</td>
                           <td className={cn(td, "text-gray-900")}>{formatCurrency(v.offset)}</td>
                           <td className={cn(td, "text-gray-700")}>{v.teamInfluence ?? "—"}</td>
@@ -190,6 +199,47 @@ export function ScorecardView({ data, showViolations = true, tz }: { data: Score
                             {v.notes}
                           </td>
                         </tr>
+                        {(v.logistics || v.issues?.length) && (
+                          <tr className="print:hidden">
+                            <td colSpan={8} className="px-3 pb-2 pt-0">
+                              <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-gray-600">
+                                {v.logistics && (
+                                  <span className="inline-flex flex-wrap items-center gap-1.5">
+                                    <Truck className="h-3.5 w-3.5 text-gray-400" />
+                                    <span className="font-medium text-gray-700">{v.logistics.status}</span>
+                                    {v.logistics.shipped && <span>· shipped {v.logistics.shipped}</span>}
+                                    {v.logistics.shipments.map((sh) => (
+                                      <span key={sh.number}>
+                                        ·{" "}
+                                        {sh.url ? (
+                                          <a href={sh.url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-0.5 font-mono text-blue-600 hover:underline">
+                                            {sh.scac}
+                                            <ExternalLink className="h-3 w-3" />
+                                          </a>
+                                        ) : (
+                                          sh.scac
+                                        )}{" "}
+                                        {sh.number} ({sh.status})
+                                      </span>
+                                    ))}
+                                    {v.logistics.ups.length > 0 && <span>· UPS {v.logistics.ups.length} parcel(s)</span>}
+                                    {v.logistics.flags.map((f) => (
+                                      <Badge key={f.label} variant={f.severity === "high" ? "destructive" : "warning"} title={f.message}>
+                                        {f.label}
+                                      </Badge>
+                                    ))}
+                                  </span>
+                                )}
+                                {v.issues?.map((i) => (
+                                  <Link key={i.id} href={`/issues/${i.id}`} className="inline-flex items-center gap-1 text-blue-600 hover:underline">
+                                    <NotebookPen className="h-3.5 w-3.5" />
+                                    ISS-{String(i.number).padStart(4, "0")}: {i.title}
+                                  </Link>
+                                ))}
+                              </div>
+                            </td>
+                          </tr>
+                        )}
                         {v.feedback && v.feedback.length > 0 && (
                           <tr className="print:break-inside-avoid">
                             <td colSpan={8} className="px-3 pb-3 pt-0">
