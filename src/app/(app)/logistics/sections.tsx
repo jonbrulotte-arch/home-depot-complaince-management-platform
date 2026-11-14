@@ -14,6 +14,28 @@ import { UpsRefreshButton } from "./ups-refresh-button";
 const PAGE = 300;
 const day = (d: Date | null) => (d ? formatUtcDate(d) : "—");
 
+/** Pickup over delivery, as TMS writes them */
+export function Dates({ pickup, delivery }: { pickup: string | null; delivery: string | null }) {
+  return (
+    <span className="block whitespace-nowrap text-xs leading-5">
+      <span className="text-gray-500">Pickup</span> <span className="text-gray-900">{pickup ?? "—"}</span>
+      <br />
+      <span className="text-gray-500">Delivery</span> <span className="text-gray-900">{delivery ?? "—"}</span>
+    </span>
+  );
+}
+
+/** Origin over destination */
+export function Route({ from, to }: { from: string; to: string }) {
+  return (
+    <span className="block min-w-36 text-xs leading-5">
+      <span className="text-gray-500">From</span> <span className="text-gray-900">{from || "—"}</span>
+      <br />
+      <span className="text-gray-500">To</span> <span className="text-gray-900">{to || "—"}</span>
+    </span>
+  );
+}
+
 export function OverviewTab({ l }: { l: LoadedLogistics }) {
   const o = logisticsOverview(l);
   const count = (s: string) => o.byStatus.find((b) => b.status === s)?.count ?? 0;
@@ -51,7 +73,7 @@ export function OverviewTab({ l }: { l: LoadedLogistics }) {
               { header: "Shipments", cell: (c) => n(c.shipments), align: "right" },
               { header: "Delivered", cell: (c) => n(c.delivered), align: "right" },
               { header: "Open", cell: (c) => n(c.open), align: "right" },
-              { header: "Late or not picked up", cell: (c) => (c.overdue ? <Link href={`/logistics?tab=shipments&scac=${c.scac}&late=1`} className="text-red-700 hover:underline">{n(c.overdue)}</Link> : "—"), align: "right" },
+              { header: "Late", cell: (c) => (c.overdue ? <Link href={`/logistics?tab=shipments&scac=${c.scac}&late=1`} className="text-red-700 hover:underline">{n(c.overdue)}</Link> : "—"), align: "right" },
             ]}
           />
         </Section>
@@ -86,7 +108,7 @@ export function PosTab({ l, filters, notes }: { l: LoadedLogistics; filters: PoF
           cols={[
             { header: "PO #", cell: (p) => <PoLink po={p.poNumber} /> },
             { header: "Status", cell: (p) => <PoStatusBadge status={p.status} /> },
-            { header: "Destination", cell: (p) => <span className="whitespace-nowrap">{p.destination}</span> },
+            { header: "Destination", cell: (p) => <span className="block min-w-32">{p.destination}</span> },
             { header: "Shipped (WMS)", cell: (p) => <span className="whitespace-nowrap">{day(p.firstShipped)}</span> },
             { header: "Cartons", cell: (p) => (p.cartonCount ? `${n(p.cartonCount)} · ${n(p.units)} u` : "—"), align: "right" },
             {
@@ -95,7 +117,7 @@ export function PosTab({ l, filters, notes }: { l: LoadedLogistics; filters: PoF
                 p.shipments.length ? (
                   <span className="space-y-0.5">
                     {p.shipments.map((s) => (
-                      <span key={s.shipmentNumber} className="flex items-center gap-1.5 whitespace-nowrap">
+                      <span key={s.shipmentNumber} className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5">
                         <ShipmentLink number={s.shipmentNumber} />
                         <ScacLink scac={s.scac} {...(s.scac ? scacLink(l, s.scac, { shipment: s.shipmentNumber, po: p.poNumber, pro: p.pros[0] }) : {})} />
                         <TmsStatusBadge status={s.status} />
@@ -147,13 +169,11 @@ export function ShipmentsTab({ l, scac, late }: { l: LoadedLogistics; scac?: str
           { header: "Shipment #", cell: (s) => <ShipmentLink number={s.shipmentNumber} /> },
           { header: "Status", cell: (s) => <TmsStatusBadge status={s.status} /> },
           { header: "SCAC", cell: (s) => <ScacLink scac={s.scac} {...(s.scac ? scacLink(l, s.scac, { shipment: s.shipmentNumber, po: s.poNumbers[0], pro: s.pros[0] }) : {})} /> },
-          { header: "Pickup", cell: (s) => <span className="whitespace-nowrap">{s.pickupLocal ?? "—"}</span> },
-          { header: "Delivery", cell: (s) => <span className="whitespace-nowrap">{s.deliveryLocal ?? "—"}</span> },
-          { header: "From", cell: (s) => <span className="whitespace-nowrap">{[s.originCity, s.originState].filter(Boolean).join(", ") || "—"}</span> },
-          { header: "To", cell: (s) => <span className="whitespace-nowrap">{[s.destFacility, [s.destCity, s.destState].filter(Boolean).join(", ")].filter(Boolean).join(" · ") || "—"}</span> },
-          { header: "POs", cell: (s) => (s.poNumbers.length > 2 ? `${s.poNumbers.slice(0, 2).join(", ")} +${s.poNumbers.length - 2}` : s.poNumbers.join(", ") || "—") },
+          { header: "Pickup / delivery", cell: (s) => <Dates pickup={s.pickupLocal} delivery={s.deliveryLocal} /> },
+          { header: "Route", cell: (s) => <Route from={[s.originCity, s.originState].filter(Boolean).join(", ")} to={[s.destFacility, [s.destCity, s.destState].filter(Boolean).join(", ")].filter(Boolean).join(" · ")} /> },
+          { header: "POs", cell: (s) => (s.poNumbers.length ? <span title={s.poNumbers.join(", ")}>{s.poNumbers[0]}{s.poNumbers.length > 1 && <span className="block text-xs text-gray-500">+{s.poNumbers.length - 1} more</span>}</span> : "—") },
           { header: "Cartons", cell: (s) => (s.cartonCount ? n(s.cartonCount) : "—"), align: "right" },
-          { header: "Flags", cell: (s) => <FlagBadges flags={s.flags} /> },
+          { header: "Flags", cell: (s) => <FlagBadges flags={s.flags} max={2} /> },
         ]}
       />
     </Section>

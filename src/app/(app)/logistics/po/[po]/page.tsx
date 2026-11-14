@@ -17,6 +17,7 @@ import { LogisticsNotes } from "@/components/logistics/notes";
 import { ComplianceCard, IssuesCard } from "@/components/logistics/related";
 import { Section, Table, n } from "@/app/(app)/insights/ui";
 import { UpsRefreshButton } from "../../ups-refresh-button";
+import { Dates, Route } from "../../sections";
 
 export default async function LogisticsPoPage({ params }: { params: Promise<{ po: string }> }) {
   const user = await requirePagePermission("logistics.view");
@@ -72,10 +73,24 @@ export default async function LogisticsPoPage({ params }: { params: Promise<{ po
                 { header: "Shipment #", cell: (s) => <ShipmentLink number={s.shipmentNumber} /> },
                 { header: "Status", cell: (s) => <TmsStatusBadge status={s.status} /> },
                 { header: "SCAC", cell: (s) => <ScacLink scac={s.scac} {...(s.scac ? scacLink(l, s.scac, { shipment: s.shipmentNumber, po: p.poNumber, pro: p.pros[0] }) : {})} /> },
-                { header: "Pickup", cell: (s) => s.pickupLocal ?? "—" },
-                { header: "Delivery", cell: (s) => s.deliveryLocal ?? "—" },
-                { header: "Route", cell: (s) => `${[s.originCity, s.originState].filter(Boolean).join(", ")} → ${[s.destFacility, s.destCity].filter(Boolean).join(" ")}` },
-                { header: "Stops / appointment", cell: (s) => <span className="text-xs text-gray-600">{s.appointment ?? "—"}</span> },
+                { header: "Pickup / delivery", cell: (s) => <Dates pickup={s.pickupLocal} delivery={s.deliveryLocal} /> },
+                {
+                  header: "Route / stops",
+                  cell: (s) => (
+                    <>
+                      <Route from={[s.originCity, s.originState].filter(Boolean).join(", ")} to={[s.destFacility, [s.destCity, s.destState].filter(Boolean).join(", ")].filter(Boolean).join(" · ")} />
+                      {s.appointment && (
+                        <span className="mt-1 block text-xs text-gray-500">
+                          {s.appointment.split(/,\s*(?=Stop)/).map((x, i) => (
+                            <span key={i} className="block">
+                              {x}
+                            </span>
+                          ))}
+                        </span>
+                      )}
+                    </>
+                  ),
+                },
               ]}
             />
           </Section>
@@ -98,13 +113,11 @@ export default async function LogisticsPoPage({ params }: { params: Promise<{ po
               rows={p.cartons}
               empty="The WMS hasn't shipped this PO (or it's older than the reports imported)."
               cols={[
-                { header: "Label (GS1-128)", cell: (c) => <span className="font-mono text-xs">{c.label}</span> },
-                { header: "Order", cell: (c) => c.orderNum },
+                { header: "Label / order", cell: (c) => <span className="block text-xs"><span className="font-mono text-gray-900">{c.label}</span><span className="block text-gray-500">{c.orderNum}</span></span> },
                 { header: "Tracking", cell: (c) => { const r = cartonRefs(c.trackingNumber, c.secondTrack); return r.ups ? <UpsLink number={r.ups} /> : <span className="font-mono text-xs">{[c.trackingNumber, c.secondTrack !== c.trackingNumber ? c.secondTrack : null].filter(Boolean).join(" / ") || "—"}</span>; } },
                 { header: "Product", cell: (c) => c.product ?? "—" },
                 { header: "Qty", cell: (c) => (c.quantity === null ? "—" : n(c.quantity)), align: "right" },
-                { header: "Shipped", cell: (c) => <span className="whitespace-nowrap">{formatUtcDateTime(c.shippedAt)}</span> },
-                { header: "Ship-to", cell: (c) => [c.shipCity, c.shipState, c.shipZip].filter(Boolean).join(", ") || "—" },
+                { header: "Shipped / ship-to", cell: (c) => <span className="block text-xs"><span className="block whitespace-nowrap text-gray-900">{formatUtcDateTime(c.shippedAt)}</span><span className="text-gray-500">{[c.shipCity, c.shipState, c.shipZip].filter(Boolean).join(", ") || "—"}</span></span> },
               ]}
             />
           </Section>
