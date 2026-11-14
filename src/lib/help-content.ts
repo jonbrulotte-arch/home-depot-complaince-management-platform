@@ -398,6 +398,7 @@ export const HELP_TOPICS: HelpTopic[] = [
           ["On several shipments", "The PO is on more than one TMS shipment."],
           ["No carrier", "The TMS shipment has no carrier (SCAC) assigned."],
           ["UPS exception / UPS past expected date", "From UPS tracking: an exception, or not delivered by the expected date."],
+          ["Crossdock (IFC) (info)", "The shipment goes to a THD crossdock (its Dest. Facility starts with **XD**), where THD consolidates the POs under its own shipment. A TMS ID on the WMS cartons that doesn't match, or isn't valid, is expected there, so it isn't flagged as a problem."],
           ["Different ship-from (info)", "TMS has the PO shipping from one of your facilities, but the shipment left another."],
           ["PO not in TMS file (info)", "The WMS shipped a PO that isn't in the Purchase Orders export, usually because it's older than the export."],
         ],

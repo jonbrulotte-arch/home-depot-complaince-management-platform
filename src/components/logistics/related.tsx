@@ -9,7 +9,7 @@ import type { CompliancePo } from "@/lib/logistics/links";
 import { formatCurrency, formatUtcDate } from "@/lib/utils";
 
 /** Issue Log issues for the POs shown, with a button to log one */
-export function IssuesCard({ issues, newIssuePo, canManage }: { issues: (IssueSummary & { po?: string })[]; newIssuePo: string | null; canManage: boolean }) {
+export function IssuesCard({ issues, newIssuePo, canManage }: { issues: (IssueSummary & { pos?: string[] })[]; newIssuePo: string | null; canManage: boolean }) {
   return (
     <Card>
       <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3">
@@ -32,7 +32,7 @@ export function IssuesCard({ issues, newIssuePo, canManage }: { issues: (IssueSu
         ) : (
           <ul className="space-y-2 text-sm">
             {issues.map((i) => (
-              <li key={`${i.id}-${i.po ?? ""}`} className="flex flex-wrap items-center gap-2">
+              <li key={i.id} className="flex flex-wrap items-center gap-2">
                 <Link href={`/issues/${i.id}`} className="font-medium text-blue-600 hover:underline">
                   {issueLabel(i.number)}
                 </Link>
@@ -40,7 +40,7 @@ export function IssuesCard({ issues, newIssuePo, canManage }: { issues: (IssueSu
                 <Badge variant={ISSUE_STATUSES[i.status].variant}>{ISSUE_STATUSES[i.status].label}</Badge>
                 <span className="text-xs text-gray-500">
                   {formatUtcDate(i.issueDate)}
-                  {i.po ? ` · PO ${i.po}` : ""}
+                  {i.pos?.length ? ` · PO${i.pos.length > 1 ? "s" : ""} ${i.pos.join(", ")}` : ""}
                 </span>
               </li>
             ))}

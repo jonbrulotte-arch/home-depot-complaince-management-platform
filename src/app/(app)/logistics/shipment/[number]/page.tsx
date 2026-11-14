@@ -106,7 +106,13 @@ export default async function LogisticsShipmentPage({ params }: { params: Promis
         <div className="space-y-6">
           {canIssues && (
             <IssuesCard
-              issues={ours.flatMap((po) => (issues.get(po) ?? []).map((i) => ({ ...i, po })))}
+              issues={[
+                // One row per issue, with the shipment's POs it lists
+                ...ours
+                  .flatMap((po) => (issues.get(po) ?? []).map((i) => ({ ...i, po })))
+                  .reduce((m, i) => m.set(i.id, { ...i, pos: [...(m.get(i.id)?.pos ?? []), i.po] }), new Map<string, IssueSummary & { pos: string[] }>())
+                  .values(),
+              ]}
               newIssuePo={ours.length === 1 ? ours[0] : null}
               canManage={user.permissions.has("issues.manage")}
             />

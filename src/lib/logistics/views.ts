@@ -86,6 +86,7 @@ export const FLAGS = {
   CITY_SPELLING: { severity: "medium", label: "Ship-to city misspelled" },
   ORIGIN_MISMATCH: { severity: "info", label: "Different ship-from" },
   NOT_IN_TMS: { severity: "info", label: "PO not in TMS file" },
+  CROSSDOCK: { severity: "info", label: "Crossdock (IFC)" },
   DATES_REVERSED: { severity: "info", label: "Delivery before pickup" },
   TMS_FLAGGED: { severity: "info", label: "TMS errors or alerts" },
 } as const satisfies Record<string, { severity: Severity; label: string }>;
@@ -104,6 +105,8 @@ export type PoStatus = "Canceled" | "Delivered" | "In transit" | "Shipped" | "Sc
 export const PO_STATUSES: PoStatus[] = ["Open", "Scheduled", "Shipped", "In transit", "Delivered", "Canceled"];
 
 const norm = (s: string | null | undefined) => (s ?? "").trim().toUpperCase();
+/** A THD crossdock (IFC): its facility ID starts with XD */
+export const isCrossdock = (facility: string | null | undefined) => /^XD/i.test(facility?.trim() ?? "");
 const isCanceled = (status: string) => /^cancel/i.test(status);
 const isDelivered = (status: string) => /^deliver/i.test(status);
 const isMoving = (status: string) => /transit|picked|dispatch|out for/i.test(status);
@@ -136,6 +139,7 @@ function shipmentFlags(s: Shipment, today: string): Flag[] {
   if (!isDelivered(s.status) && delivery && delivery < today) out.push(flag("DELIVERY_OVERDUE", `Shipment ${s.shipmentNumber} was due for delivery on ${delivery}; TMS still shows ${s.status}.`));
   else if (notYetMoving(s.status) && pickup && pickup < today) out.push(flag("PICKUP_PASSED", `Pickup for shipment ${s.shipmentNumber} was ${pickup}; TMS still shows ${s.status}.`));
   if (pickup && delivery && delivery < pickup) out.push(flag("DATES_REVERSED", `Shipment ${s.shipmentNumber} shows delivery (${delivery}) before pickup (${pickup}).`));
+  if (isCrossdock(s.destFacility)) out.push(flag("CROSSDOCK", `Shipment ${s.shipmentNumber} goes to crossdock ${s.destFacility} (an IFC), where THD consolidates its POs; TMS IDs on the WMS cartons that don't match it are expected.`));
   if (s.tmsFlags.length) out.push(flag("TMS_FLAGGED", `TMS marks shipment ${s.shipmentNumber}: ${s.tmsFlags.join(", ")}.`));
   return out;
 }
@@ -216,18 +220,33 @@ export function buildLogistics(data: LogisticsData, today: string) {
 
     if (tms && isCanceled(tms.status) && (cartons.length || live.length))
       flags.push(flag("CANCELED_SHIPPED", `TMS shows this PO as ${tms.status}, but ${cartons.length ? `the WMS shipped ${new Set(cartons.map((c) => c.label)).size} carton(s)` : `it is on shipment ${live[0].shipmentNumber}`}.`));
-    for (const v of suspect) flags.push(flag("SUSPECT_TMS_ID", `The WMS has "${v}" as the TMS shipment ID, which isn't a valid 9-digit ID. THD fines invalid TMS IDs ($100).`));
+    // A shipment to a crossdock (IFC, Dest. Facility XD…) is consolidated by THD under its own TMS
+    // shipment, so the WMS's TMS ID not matching it is expected there
+    const crossdock = live.find((s) => isCrossdock(s.destFacility));
+    const idNotes: string[] = [];
+    for (const v of suspect) {
+      if (crossdock) idNotes.push(`"${v}"`);
+      else flags.push(flag("SUSPECT_TMS_ID", `The WMS has "${v}" as the TMS shipment ID, which isn't a valid 9-digit ID. THD fines invalid TMS IDs ($100).`));
+    }
     if (cartons.length && !live.length && !wmsTms.length && !ups.length && !suspect.length)
       flags.push(flag("NO_TMS_SHIPMENT", `The WMS shipped this PO on ${isoDate(firstShipped!)}, but no TMS shipment lists it.`));
     for (const id of wmsTms) {
       const s = shipmentsByNumber.get(id);
-      if (!s && live.length && !live.some((x) => x.shipmentNumber === id))
+      if (crossdock && !live.some((x) => x.shipmentNumber === id)) idNotes.push(id);
+      else if (!s && live.length && !live.some((x) => x.shipmentNumber === id))
         flags.push(flag("TMS_ID_MISMATCH", `The WMS cartons carry TMS shipment ${id}, but TMS has this PO on ${live.map((x) => x.shipmentNumber).join(", ")}. Labels and ASNs with the WMS's ID would carry the wrong TMS ID.`));
       else if (!s) {
         if (data.shipments.length && (!tmsFrom || isoDate(firstShipped!) >= tmsFrom))
           flags.push(flag("TMS_ID_NOT_FOUND", `The WMS cartons carry TMS shipment ${id}, which isn't in the TMS shipments file.`));
       } else if (!s.poNumbers.includes(poNumber)) flags.push(flag("TMS_ID_MISMATCH", `The WMS cartons carry TMS shipment ${id}, but that shipment lists ${s.poNumbers.join(", ") || "no POs"}, not this PO.`));
     }
+    if (crossdock && idNotes.length)
+      flags.push(
+        flag(
+          "CROSSDOCK",
+          `TMS has this PO on shipment ${crossdock.shipmentNumber} to crossdock ${crossdock.destFacility}${crossdock.destCity ? ` (${[crossdock.destCity, crossdock.destState].filter(Boolean).join(", ")})` : ""}, where THD consolidates it; the WMS's TMS ID (${idNotes.join(", ")}) not matching is expected.`,
+        ),
+      );
     if (live.length > 1) flags.push(flag("MULTIPLE_SHIPMENTS", `This PO is on ${live.length} TMS shipments: ${live.map((s) => `${s.shipmentNumber} (${s.status})`).join(", ")}.`));
     const destCity = norm(tms?.destCity ?? live[0]?.destCity);
     const destState = norm(tms?.destState ?? live[0]?.destState);
@@ -249,7 +268,7 @@ export function buildLogistics(data: LogisticsData, today: string) {
         if (late > 0) flags.push(flag("SHIPPED_AFTER_PICKUP", `The WMS shipped it ${late} day(s) after the TMS pickup date (${pickup}) of shipment ${s.shipmentNumber}.`));
       }
     }
-    for (const s of live) for (const f of flagsOf(s)) if (!flags.some((x) => x.message === f.message)) flags.push(f);
+    for (const s of live) for (const f of flagsOf(s)) if (!flags.some((x) => x.message === f.message || (f.code === "CROSSDOCK" && x.code === "CROSSDOCK"))) flags.push(f);
     for (const p of parcels) {
       if (p.statusType === "X") flags.push(flag("UPS_EXCEPTION", `UPS ${p.trackingNumber}: ${p.status ?? "exception"}${p.lastActivity ? ` (${p.lastActivity})` : ""}.`));
       else if (!p.delivered && p.expectedAt && isoDate(p.expectedAt) < today) flags.push(flag("UPS_LATE", `UPS ${p.trackingNumber} was expected ${isoDate(p.expectedAt)} and isn't delivered (${p.status ?? "no status"}).`));
