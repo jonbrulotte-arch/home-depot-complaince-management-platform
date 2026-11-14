@@ -144,7 +144,7 @@ function shipmentFlags(s: Shipment, today: string): Flag[] {
   else if (notYetMoving(s.status) && pickup && pickup < today) out.push(flag("PICKUP_PASSED", `Pickup for shipment ${s.shipmentNumber} was ${pickup}; TMS still shows ${s.status}.`));
   if (pickup && delivery && delivery < pickup) out.push(flag("DATES_REVERSED", `Shipment ${s.shipmentNumber} shows delivery (${delivery}) before pickup (${pickup}).`));
   if (isCrossdock(s.destFacility)) {
-    out.push(flag("CROSSDOCK", `Shipment ${s.shipmentNumber} goes to crossdock ${s.destFacility} (an IFC), where THD consolidates its POs; TMS IDs on the WMS cartons that don't match it are expected.`));
+    out.push(flag("CROSSDOCK", `Shipment ${s.shipmentNumber} goes to crossdock ${s.destFacility} (an IFC), where THD consolidates its POs with other shipments.`));
     // The ship-to sent over EDI is the PO's DC, not the crossdock: check where it really goes
     out.push(
       flag(
@@ -245,36 +245,19 @@ export function buildLogistics(data: LogisticsData, today: string) {
 
     if (tms && isCanceled(tms.status) && (cartons.length || live.length))
       flags.push(flag("CANCELED_SHIPPED", `TMS shows this PO as ${tms.status}, but ${cartons.length ? `the WMS shipped ${new Set(cartons.map((c) => c.label)).size} carton(s)` : `it is on shipment ${live[0].shipmentNumber}`}.`));
-    // A shipment to a crossdock (IFC, Dest. Facility XD…) is consolidated by THD under its own TMS
-    // shipment, so the WMS's TMS ID not matching it is expected there
-    const crossdock = live.find((s) => isCrossdock(s.destFacility));
-    const idNotes: string[] = [];
-    // A malformed ID is still flagged at a crossdock, as information: THD's consolidation replaces it
-    for (const v of suspect)
-      flags.push(
-        crossdock
-          ? flag("SUSPECT_TMS_ID", `The WMS has "${v}" as the TMS shipment ID, which isn't a valid 9-digit ID. The PO went to crossdock ${crossdock.destFacility}, where THD consolidates it under its own shipment, but the WMS entry should still be corrected.`, "info")
-          : flag("SUSPECT_TMS_ID", `The WMS has "${v}" as the TMS shipment ID, which isn't a valid 9-digit ID. THD fines invalid TMS IDs ($100).`),
-      );
+    // TMS ID problems are flagged the same whether or not the shipment goes to a crossdock (IFC)
+    for (const v of suspect) flags.push(flag("SUSPECT_TMS_ID", `The WMS has "${v}" as the TMS shipment ID, which isn't a valid 9-digit ID. THD fines invalid TMS IDs ($100).`));
     if (cartons.length && !live.length && !wmsTms.length && !ups.length && !suspect.length)
       flags.push(flag("NO_TMS_SHIPMENT", `The WMS shipped this PO on ${isoDate(firstShipped!)}, but no TMS shipment lists it.`));
     for (const id of wmsTms) {
       const s = shipmentsByNumber.get(id);
-      if (crossdock && !live.some((x) => x.shipmentNumber === id)) idNotes.push(id);
-      else if (!s && live.length && !live.some((x) => x.shipmentNumber === id))
+      if (!s && live.length && !live.some((x) => x.shipmentNumber === id))
         flags.push(flag("TMS_ID_MISMATCH", `The WMS cartons carry TMS shipment ${id}, but TMS has this PO on ${live.map((x) => x.shipmentNumber).join(", ")}. Labels and ASNs with the WMS's ID would carry the wrong TMS ID.`));
       else if (!s) {
         if (data.shipments.length && (!tmsFrom || isoDate(firstShipped!) >= tmsFrom))
           flags.push(flag("TMS_ID_NOT_FOUND", `The WMS cartons carry TMS shipment ${id}, which isn't in the TMS shipments file.`));
       } else if (!s.poNumbers.includes(poNumber)) flags.push(flag("TMS_ID_MISMATCH", `The WMS cartons carry TMS shipment ${id}, but that shipment lists ${s.poNumbers.join(", ") || "no POs"}, not this PO.`));
     }
-    if (crossdock && idNotes.length)
-      flags.push(
-        flag(
-          "CROSSDOCK",
-          `TMS has this PO on shipment ${crossdock.shipmentNumber} to crossdock ${crossdock.destFacility}${crossdock.destCity ? ` (${[crossdock.destCity, crossdock.destState].filter(Boolean).join(", ")})` : ""}, where THD consolidates it; the WMS's TMS ID (${idNotes.join(", ")}) not matching is expected.`,
-        ),
-      );
     if (live.length > 1) flags.push(flag("MULTIPLE_SHIPMENTS", `This PO is on ${live.length} TMS shipments: ${live.map((s) => `${s.shipmentNumber} (${s.status})`).join(", ")}.`));
     const destCity = norm(tms?.destCity ?? live[0]?.destCity);
     const destState = norm(tms?.destState ?? live[0]?.destState);

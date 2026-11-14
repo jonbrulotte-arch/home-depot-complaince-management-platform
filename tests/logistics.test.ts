@@ -75,15 +75,14 @@ describe("logistics views of the sample files", () => {
     const { views } = await sample();
     const po = (n: string) => views.pos.find((p) => p.poNumber === n)!;
     const codes = (n: string) => po(n).flags.map((f) => f.code);
-    // Crossdock (XD05): THD consolidates these POs, so a TMS ID that doesn't match is expected (info)
-    // …but a malformed ID stays flagged, as information
-    expect(po("1191142969").flags.find((f) => f.code === "SUSPECT_TMS_ID")!.severity).toBe("info");
+    // TMS ID problems are flagged at crossdocks (XD05) too
+    expect(po("1191142969").flags.find((f) => f.code === "SUSPECT_TMS_ID")!.severity).toBe("high");
     expect(codes("1191142969")).toContain("CROSSDOCK");
     // Crossdock shipments: check the destination in PlanEx (a warning until delivered)
     expect(po("1191515251").flags.find((f) => f.code === "CHECK_PLANEX")!.severity).toBe("medium");
     expect(po("1191142969").flags.find((f) => f.code === "CHECK_PLANEX")!.severity).toBe("info");
     // WMS cartons carry 233565631; TMS has the PO on 233586508, to XD05
-    expect(codes("1191515251")).not.toContain("TMS_ID_MISMATCH");
+    expect(po("1191515251").flags.find((f) => f.code === "TMS_ID_MISMATCH")!.severity).toBe("high");
     expect(po("1191515251").flags.filter((f) => f.code === "CROSSDOCK")).toHaveLength(1);
     expect(po("1191515251").flags.find((f) => f.code === "CROSSDOCK")!.severity).toBe("info");
     expect(codes("1191515132")).toContain("MULTIPLE_SHIPMENTS");
@@ -107,9 +106,10 @@ describe("logistics views of the sample files", () => {
     expect(o.carriers[0]).toMatchObject({ scac: "EXLA", shipments: 53 });
     expect(filterPos(views.pos, { q: "233584383" }).map((p) => p.poNumber)).toEqual(["1191515132"]);
     expect(filterPos(views.pos, { flag: "SUSPECT_TMS_ID" })).toHaveLength(1);
-    expect(filterPos(views.pos, { flag: "SUSPECT_TMS_ID", severity: "high" })).toHaveLength(0);
-    expect(filterPos(views.pos, { flag: "SUSPECT_TMS_ID", severity: "info" })).toHaveLength(1);
-    expect(o.flags.find((f) => f.code === "SUSPECT_TMS_ID")).toMatchObject({ severity: "info", pos: 1 });
+    expect(filterPos(views.pos, { flag: "SUSPECT_TMS_ID", severity: "high" })).toHaveLength(1);
+    expect(filterPos(views.pos, { flag: "SUSPECT_TMS_ID", severity: "info" })).toHaveLength(0);
+    expect(o.flags.find((f) => f.code === "SUSPECT_TMS_ID")).toMatchObject({ severity: "high", pos: 1 });
+    expect(filterPos(views.pos, { flag: "CHECK_PLANEX", severity: "medium" }).length).toBeGreaterThan(0);
   });
 });
 
@@ -119,7 +119,7 @@ describe("TMS IDs and crossdocks", () => {
     originFacility: "875062OH001", originCity: "GROVEPORT", originState: "OH", destFacility: dest, destCity: "X", destState: "OH", poNumbers: pos, appointment: null, tmsFlags: [],
   });
   const carton = (po: string, tracking: string) => ({ label: `L-${po}-${tracking}`, poNumber: po, orderNum: "O", customer: null, trackingNumber: tracking, secondTrack: tracking, product: "1", quantity: 1, shippedAt: new Date("2026-11-19T10:00:00Z"), shipCity: null, shipState: null, shipZip: null });
-  it("flags a mismatched TMS ID except on a shipment to a crossdock (XD…), where a malformed one is informational", () => {
+  it("flags mismatched and malformed TMS IDs at crossdocks (XD…) too, and warns to check PlanEx", () => {
     const v = buildLogistics(
       {
         cartons: [carton("100", "233000001"), carton("200", "233000002"), carton("300", "23300000")],
@@ -132,8 +132,8 @@ describe("TMS IDs and crossdocks", () => {
     const codes = (po: string) => v.pos.find((p) => p.poNumber === po)!.flags.map((f) => [f.code, f.severity].join(":"));
     expect(codes("100")).toContain("TMS_ID_MISMATCH:high");
     expect(codes("200")).toContain("CROSSDOCK:info");
-    expect(codes("200").some((c) => c.startsWith("TMS_ID_MISMATCH"))).toBe(false);
-    expect(codes("300")).toContain("SUSPECT_TMS_ID:info");
+    expect(codes("200")).toContain("TMS_ID_MISMATCH:high");
+    expect(codes("300")).toContain("SUSPECT_TMS_ID:high");
     expect(codes("300")).toContain("CHECK_PLANEX:medium");
     expect(codes("100").some((c) => c.startsWith("CHECK_PLANEX"))).toBe(false);
     expect(v.shipments.find((s) => s.shipmentNumber === "233000008")!.flags.map((f) => f.code)).toEqual(expect.arrayContaining(["CROSSDOCK", "CHECK_PLANEX"]));
