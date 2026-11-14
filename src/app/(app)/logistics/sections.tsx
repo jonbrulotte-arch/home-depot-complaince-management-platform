@@ -56,7 +56,7 @@ export function OverviewTab({ l }: { l: LoadedLogistics }) {
           rows={o.flags}
           empty="Nothing flagged."
           cols={[
-            { header: "Flag", cell: (f) => <Link href={`/logistics?tab=pos&flag=${f.code}`} className="font-medium text-blue-600 hover:underline">{f.label}</Link> },
+            { header: "Flag", cell: (f) => <Link href={`/logistics?tab=pos&flag=${f.code}&severity=${f.severity}`} className="font-medium text-blue-600 hover:underline">{f.label}</Link> },
             { header: "Priority", cell: (f) => (f.severity === "high" ? <span className="text-red-700">High</span> : f.severity === "medium" ? <span className="text-amber-700">Medium</span> : <span className="text-gray-500">Info</span>) },
             { header: "POs", cell: (f) => n(f.pos), align: "right" },
           ]}
@@ -100,7 +100,7 @@ export function PosTab({ l, filters, notes }: { l: LoadedLogistics; filters: PoF
   const scacs = [...new Set(l.shipments.map((s) => s.scac).filter((s): s is string => Boolean(s)))].sort();
   return (
     <div className="space-y-4">
-      <PoFiltersBar filters={filters} statuses={PO_STATUSES} flags={o.flags.map((f) => ({ code: f.code, label: f.label, pos: f.pos }))} scacs={scacs} />
+      <PoFiltersBar filters={filters} statuses={PO_STATUSES} flags={[...o.flags.reduce((m, f) => m.set(f.code, { code: f.code, label: f.label, pos: (m.get(f.code)?.pos ?? 0) + f.pos }), new Map<string, { code: string; label: string; pos: number }>()).values()]} scacs={scacs} />
       <Section title={`${n(rows.length)} PO(s)`} description={rows.length > PAGE ? `Showing the latest ${PAGE}; narrow the search or export to Excel for all of them.` : "Latest shipped first."}>
         <Table
           rows={rows.slice(0, PAGE)}

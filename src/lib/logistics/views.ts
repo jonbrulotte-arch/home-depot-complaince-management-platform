@@ -86,6 +86,7 @@ export const FLAGS = {
   CITY_SPELLING: { severity: "medium", label: "Ship-to city misspelled" },
   ORIGIN_MISMATCH: { severity: "info", label: "Different ship-from" },
   NOT_IN_TMS: { severity: "info", label: "PO not in TMS file" },
+  CHECK_PLANEX: { severity: "medium", label: "Check destination in PlanEx" },
   CROSSDOCK: { severity: "info", label: "Crossdock (IFC)" },
   DATES_REVERSED: { severity: "info", label: "Delivery before pickup" },
   TMS_FLAGGED: { severity: "info", label: "TMS errors or alerts" },
@@ -97,7 +98,8 @@ export interface Flag {
   severity: Severity;
   message: string;
 }
-const flag = (code: FlagCode, message: string): Flag => ({ code, severity: FLAGS[code].severity, message });
+/** A flag at its usual priority, or another where the situation calls for it */
+const flag = (code: FlagCode, message: string, severity: Severity = FLAGS[code].severity): Flag => ({ code, severity, message });
 const SEVERITY_ORDER: Severity[] = ["high", "medium", "info"];
 const bySeverity = (a: Flag, b: Flag) => SEVERITY_ORDER.indexOf(a.severity) - SEVERITY_ORDER.indexOf(b.severity);
 
@@ -139,7 +141,17 @@ function shipmentFlags(s: Shipment, today: string): Flag[] {
   if (!isDelivered(s.status) && delivery && delivery < today) out.push(flag("DELIVERY_OVERDUE", `Shipment ${s.shipmentNumber} was due for delivery on ${delivery}; TMS still shows ${s.status}.`));
   else if (notYetMoving(s.status) && pickup && pickup < today) out.push(flag("PICKUP_PASSED", `Pickup for shipment ${s.shipmentNumber} was ${pickup}; TMS still shows ${s.status}.`));
   if (pickup && delivery && delivery < pickup) out.push(flag("DATES_REVERSED", `Shipment ${s.shipmentNumber} shows delivery (${delivery}) before pickup (${pickup}).`));
-  if (isCrossdock(s.destFacility)) out.push(flag("CROSSDOCK", `Shipment ${s.shipmentNumber} goes to crossdock ${s.destFacility} (an IFC), where THD consolidates its POs; TMS IDs on the WMS cartons that don't match it are expected.`));
+  if (isCrossdock(s.destFacility)) {
+    out.push(flag("CROSSDOCK", `Shipment ${s.shipmentNumber} goes to crossdock ${s.destFacility} (an IFC), where THD consolidates its POs; TMS IDs on the WMS cartons that don't match it are expected.`));
+    // The ship-to sent over EDI is the PO's DC, not the crossdock: check where it really goes
+    out.push(
+      flag(
+        "CHECK_PLANEX",
+        `Shipment ${s.shipmentNumber} goes to crossdock ${s.destFacility}${s.destCity ? ` (${[s.destCity, s.destState].filter(Boolean).join(", ")})` : ""}: the shipping address received over EDI may not be accurate. Check the destination in Vendor PlanEx.`,
+        isDelivered(s.status) ? "info" : "medium",
+      ),
+    );
+  }
   if (s.tmsFlags.length) out.push(flag("TMS_FLAGGED", `TMS marks shipment ${s.shipmentNumber}: ${s.tmsFlags.join(", ")}.`));
   return out;
 }
@@ -224,10 +236,13 @@ export function buildLogistics(data: LogisticsData, today: string) {
     // shipment, so the WMS's TMS ID not matching it is expected there
     const crossdock = live.find((s) => isCrossdock(s.destFacility));
     const idNotes: string[] = [];
-    for (const v of suspect) {
-      if (crossdock) idNotes.push(`"${v}"`);
-      else flags.push(flag("SUSPECT_TMS_ID", `The WMS has "${v}" as the TMS shipment ID, which isn't a valid 9-digit ID. THD fines invalid TMS IDs ($100).`));
-    }
+    // A malformed ID is still flagged at a crossdock, as information: THD's consolidation replaces it
+    for (const v of suspect)
+      flags.push(
+        crossdock
+          ? flag("SUSPECT_TMS_ID", `The WMS has "${v}" as the TMS shipment ID, which isn't a valid 9-digit ID. The PO went to crossdock ${crossdock.destFacility}, where THD consolidates it under its own shipment, but the WMS entry should still be corrected.`, "info")
+          : flag("SUSPECT_TMS_ID", `The WMS has "${v}" as the TMS shipment ID, which isn't a valid 9-digit ID. THD fines invalid TMS IDs ($100).`),
+      );
     if (cartons.length && !live.length && !wmsTms.length && !ups.length && !suspect.length)
       flags.push(flag("NO_TMS_SHIPMENT", `The WMS shipped this PO on ${isoDate(firstShipped!)}, but no TMS shipment lists it.`));
     for (const id of wmsTms) {
@@ -336,8 +351,9 @@ export type LogisticsViews = ReturnType<typeof buildLogistics>;
 
 /** Overview counts: POs by status, flags by type (POs affected), and per carrier. */
 export function logisticsOverview(views: LogisticsViews) {
-  const flagCounts = new Map<FlagCode, number>();
-  for (const p of views.pos) for (const code of new Set(p.flags.map((f) => f.code))) flagCounts.set(code, (flagCounts.get(code) ?? 0) + 1);
+  // POs per flag and priority: a flag can be informational in one case (e.g. at a crossdock) and not another
+  const flagCounts = new Map<string, number>();
+  for (const p of views.pos) for (const key of new Set(p.flags.map((f) => `${f.code}|${f.severity}`))) flagCounts.set(key, (flagCounts.get(key) ?? 0) + 1);
   const carriers = new Map<string, { scac: string; shipments: number; delivered: number; open: number; overdue: number; flagged: number }>();
   for (const s of views.shipments) {
     if (isCanceled(s.status)) continue;
@@ -366,7 +382,10 @@ export function logisticsOverview(views: LogisticsViews) {
     withMedium: views.pos.filter((p) => !p.flags.some((f) => f.severity === "high") && p.flags.some((f) => f.severity === "medium")).length,
     shipments: views.shipments.filter((s) => !isCanceled(s.status)).length,
     openShipments: views.shipments.filter((s) => !isCanceled(s.status) && !isDelivered(s.status)).length,
-    flags: (Object.keys(FLAGS) as FlagCode[]).map((code) => ({ code, ...FLAGS[code], pos: flagCounts.get(code) ?? 0 })).filter((f) => f.pos > 0),
+    flags: (Object.keys(FLAGS) as FlagCode[])
+      .flatMap((code) => SEVERITY_ORDER.map((severity) => ({ code, label: FLAGS[code].label, severity, pos: flagCounts.get(`${code}|${severity}`) ?? 0 })))
+      .filter((f) => f.pos > 0)
+      .sort((a, b) => SEVERITY_ORDER.indexOf(a.severity) - SEVERITY_ORDER.indexOf(b.severity)),
     carriers: [...carriers.values()].sort((a, b) => b.shipments - a.shipments),
     destinations: [...dests.values()].sort((a, b) => b.flagged - a.flagged || b.pos - a.pos).slice(0, 15),
   };
@@ -385,9 +404,11 @@ export function filterPos(pos: PoView[], f: PoFilters): PoView[] {
   const q = f.q?.trim().toUpperCase();
   return pos.filter((p) => {
     if (f.status && p.status !== f.status) return false;
-    if (f.flag && !p.flags.some((x) => x.code === f.flag)) return false;
-    if (f.severity === "any" && !p.flags.some((x) => x.severity !== "info")) return false;
-    if (f.severity && f.severity !== "any" && !p.flags.some((x) => x.severity === f.severity)) return false;
+    // With a flag, the priority applies to that flag; on its own, to any flag
+    const pool = f.flag ? p.flags.filter((x) => x.code === f.flag) : p.flags;
+    if (f.flag && !pool.length) return false;
+    if (f.severity === "any" && !pool.some((x) => x.severity !== "info")) return false;
+    if (f.severity && f.severity !== "any" && !pool.some((x) => x.severity === f.severity)) return false;
     if (f.scac && !p.shipments.some((s) => s.scac === f.scac)) return false;
     if (!q) return true;
     const hay = [p.poNumber, p.destination, p.origin, ...p.wmsTms, ...p.ups, ...p.pros, ...p.shipments.map((s) => s.shipmentNumber), ...p.cartons.map((c) => c.orderNum), ...p.cartons.map((c) => c.label)].join(" ").toUpperCase();

@@ -61,7 +61,7 @@ export function PoFiltersBar({ filters, statuses, flags, scacs }: { filters: PoF
         <Input id="log-q" value={q} onChange={(e) => setQ(e.target.value)} placeholder="PO, shipment, tracking, PRO, order, DC" />
       </div>
       {pick("log-status", "Status", filters.status, [[ALL, "Any status"], ...statuses.map((s): [string, string] => [s, s])], "status", "w-40")}
-      {pick("log-sev", "Needs attention", filters.severity, [[ALL, "All POs"], ["any", "Flagged (high or medium)"], ["high", "High"], ["medium", "Medium"]], "severity", "w-52")}
+      {pick("log-sev", "Needs attention", filters.severity, [[ALL, "All POs"], ["any", "Flagged (high or medium)"], ["high", "High"], ["medium", "Medium"], ["info", "Info"]], "severity", "w-52")}
       {pick("log-flag", "Flag", filters.flag, [[ALL, "Any flag"], ...flags.map((f): [string, string] => [f.code, `${f.label} (${f.pos})`])], "flag", "w-60")}
       {pick("log-scac", "Carrier", filters.scac, [[ALL, "Any carrier"], ...scacs.map((s): [string, string] => [s, s])], "scac", "w-36")}
       <Button type="submit" variant="outline">
