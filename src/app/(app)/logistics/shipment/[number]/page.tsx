@@ -6,8 +6,10 @@ import { prisma } from "@/lib/prisma";
 import { issuesForPoNumbers, type IssueSummary } from "@/lib/issues-data";
 import { loadLogistics, scacLink } from "@/lib/logistics/data";
 import { complianceForPos } from "@/lib/logistics/links";
+import { cartonRefs } from "@/lib/logistics/refs";
 import { formatUtcDateTime } from "@/lib/utils";
 import { StatTiles } from "@/components/analytics/stat-tiles";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { FlagBadges, FlagList, PoLink, PoStatusBadge, TmsStatusBadge } from "@/components/logistics/parts";
@@ -31,6 +33,12 @@ export default async function LogisticsShipmentPage({ params }: { params: Promis
   const link = s.scac ? scacLink(l, s.scac, { shipment: s.shipmentNumber, po: s.ourPos[0], pro: s.pros[0] }) : null;
   const carrier = s.scac ? l.carrierBy.get(s.scac) : undefined;
   const ours = s.ourPos;
+  // The TMS ID the WMS has for a carton (or the malformed one it typed)
+  const wmsId = (c: { trackingNumber: string | null; secondTrack: string | null }) => {
+    const r = cartonRefs(c.trackingNumber, c.secondTrack);
+    return r.tms ?? r.suspectTms ?? null;
+  };
+  const byPo = s.cartons.filter((c) => wmsId(c) !== s.shipmentNumber).length;
 
   return (
     <div className="p-6 max-w-7xl mx-auto space-y-6">
@@ -95,14 +103,33 @@ export default async function LogisticsShipmentPage({ params }: { params: Promis
               ]}
             />
           </Section>
-          <Section title="WMS cartons">
+          <Section
+            title="WMS cartons"
+            description={
+              byPo
+                ? `${n(byPo)} carton line(s) carry a different TMS ID in the WMS (highlighted); they're shown here because TMS has their PO on this shipment.`
+                : undefined
+            }
+          >
             <Table
               rows={s.cartons}
-              empty="No WMS cartons carry this shipment number."
+              empty="No WMS cartons for this shipment's POs."
               cols={[
-                { header: "Label (GS1-128)", cell: (c) => <span className="font-mono text-xs">{c.label}</span> },
+                { header: "Label / order", cell: (c) => <span className="block text-xs"><span className="font-mono text-gray-900">{c.label}</span><span className="block text-gray-500">{c.orderNum}</span></span> },
                 { header: "PO", cell: (c) => <PoLink po={c.poNumber} /> },
-                { header: "Order", cell: (c) => c.orderNum },
+                {
+                  header: "WMS TMS ID",
+                  cell: (c) => {
+                    const id = wmsId(c);
+                    return id === s.shipmentNumber ? (
+                      <span className="font-mono text-xs text-gray-700">{id}</span>
+                    ) : (
+                      <Badge variant="destructive" className="font-mono" title="The WMS has this carton under a different TMS ID">
+                        {id ?? "none"}
+                      </Badge>
+                    );
+                  },
+                },
                 { header: "Product", cell: (c) => c.product ?? "—" },
                 { header: "Qty", cell: (c) => (c.quantity === null ? "—" : n(c.quantity)), align: "right" },
                 { header: "Shipped", cell: (c) => formatUtcDateTime(c.shippedAt) },

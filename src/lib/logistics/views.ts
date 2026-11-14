@@ -318,9 +318,13 @@ export function buildLogistics(data: LogisticsData, today: string) {
   const poByNumber = new Map(pos.map((p) => [p.poNumber, p]));
   const shipments: ShipmentView[] = data.shipments
     .map((s) => {
+      // The cartons carrying this shipment's TMS ID, and those of its POs whose WMS TMS ID is missing,
+      // malformed or a shipment that doesn't list the PO (a TMS ID mismatch): matched by PO instead
       const cartons = data.cartons.filter((c) => {
         const r = cartonRefs(c.trackingNumber, c.secondTrack);
-        return r.tms === s.shipmentNumber || (s.poNumbers.includes(c.poNumber) && !r.tms && !r.ups);
+        if (r.tms === s.shipmentNumber) return true;
+        if (!s.poNumbers.includes(c.poNumber) || r.ups) return false;
+        return !r.tms || !shipmentsByNumber.get(r.tms)?.poNumbers.includes(c.poNumber);
       });
       const flags = [...flagsOf(s)];
       for (const po of s.poNumbers) {

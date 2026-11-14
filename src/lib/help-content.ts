@@ -387,7 +387,7 @@ export const HELP_TOPICS: HelpTopic[] = [
       {
         terms: [
           ["Invalid TMS ID", "The WMS has a TMS shipment ID that isn't nine digits (for example 23307363). THD fines invalid TMS IDs ($100)."],
-          ["TMS ID mismatch", "The WMS cartons carry a different TMS shipment ID from the shipment TMS has the PO on, so labels and ASNs carry the wrong ID."],
+          ["TMS ID mismatch", "The WMS cartons carry a different TMS shipment ID from the shipment TMS has the PO on, so labels and ASNs carry the wrong ID. The shipment's page still lists those cartons (matched by PO), with the WMS's ID highlighted."],
           ["No TMS shipment", "The WMS shipped the PO, but no TMS shipment lists it and the cartons have no TMS ID."],
           ["TMS ID not in TMS file", "The cartons' TMS ID isn't in the Shipments export (import a newer one, or check the ID)."],
           ["Canceled PO shipped", "TMS shows the PO canceled, but it shipped or is on a shipment."],

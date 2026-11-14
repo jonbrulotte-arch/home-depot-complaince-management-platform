@@ -100,6 +100,15 @@ describe("logistics views of the sample files", () => {
     // Other suppliers' POs on shared trucks aren't listed as this supplier's POs
     expect(views.pos.some((p) => p.poNumber === "1195611355")).toBe(false);
     expect(views.shipments.find((s) => s.shipmentNumber === "233593184")).toMatchObject({ ourPos: ["1195586897"], otherPos: ["1195611355"] });
+    // TMS ID mismatch: the WMS has these POs' cartons under 233565631, TMS has the POs on 233586508.
+    // The shipment shows them, matched by PO
+    const mismatched = views.shipments.find((s) => s.shipmentNumber === "233586508")!;
+    expect(mismatched.cartons.length).toBeGreaterThan(0);
+    expect(new Set(mismatched.cartons.map((c) => c.trackingNumber))).toEqual(new Set(["233565631"]));
+    expect(mismatched.cartonCount).toBe(po("1191515201").cartonCount + po("1191515216").cartonCount + po("1191515251").cartonCount + po("1191515253").cartonCount + po("1191515309").cartonCount + po("1191515344").cartonCount + po("1191515376").cartonCount + po("1191515391").cartonCount);
+    // Cartons whose TMS ID is another shipment that lists their PO stay with that shipment
+    const elsewhere = views.shipments.find((s) => s.shipmentNumber === "233564346")!;
+    expect(elsewhere.cartons.every((c) => c.trackingNumber === "233564346")).toBe(true);
     expect(views.shipments.find((s) => s.shipmentNumber === "233523374")!.flags.map((f) => f.code)).toEqual(expect.arrayContaining(["NO_CARRIER", "DELIVERY_OVERDUE"]));
     const o = logisticsOverview(views);
     expect(o.pos).toBe(171);
