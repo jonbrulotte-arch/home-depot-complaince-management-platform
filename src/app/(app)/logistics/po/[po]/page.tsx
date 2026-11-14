@@ -80,7 +80,7 @@ export default async function LogisticsPoPage({ params }: { params: Promise<{ po
             />
           </Section>
           {p.ups.length > 0 && (
-            <Section title="UPS parcels" action={upsConfigured() ? <UpsRefreshButton numbers={p.ups.slice(0, 50)} label="Refresh" /> : undefined}>
+            <Section title="UPS parcels" action={(await upsConfigured()) ? <UpsRefreshButton numbers={p.ups.slice(0, 50)} label="Refresh" /> : undefined}>
               <Table
                 rows={p.ups}
                 cols={[

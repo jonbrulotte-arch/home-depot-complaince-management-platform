@@ -6,23 +6,40 @@ import { parseUpsTrack, type UpsStatus } from "@/lib/logistics/ups-parse";
 
 export { parseUpsTrack };
 
-// UPS tracking through the UPS Track API (OAuth client credentials). Settings come from .env
-// (UPS_CLIENT_ID, UPS_CLIENT_SECRET, optional UPS_API_BASE), never the database, like email.
+// UPS tracking through the UPS Track API (OAuth client credentials). The client ID and secret are
+// set under Admin › Settings (SiteSettings); the secret never goes back to the browser.
 
-const base = () => (process.env.UPS_API_BASE?.trim() || "https://onlinetools.ups.com").replace(/\/+$/, "");
-export const upsConfigured = () => Boolean(process.env.UPS_CLIENT_ID?.trim() && process.env.UPS_CLIENT_SECRET?.trim());
+export const UPS_PRODUCTION = "https://onlinetools.ups.com";
+export const UPS_TEST = "https://wwwcie.ups.com";
+
+interface UpsConfig {
+  clientId: string;
+  clientSecret: string;
+  base: string;
+}
+
+export async function upsConfig(): Promise<UpsConfig | null> {
+  const s = await prisma.siteSettings.findUnique({ where: { id: "site" }, select: { upsClientId: true, upsClientSecret: true, upsTestMode: true } });
+  const clientId = s?.upsClientId?.trim();
+  const clientSecret = s?.upsClientSecret?.trim();
+  return clientId && clientSecret ? { clientId, clientSecret, base: s?.upsTestMode ? UPS_TEST : UPS_PRODUCTION } : null;
+}
+
+export const upsConfigured = async () => Boolean(await upsConfig());
 
 /** How long a check stays fresh before a refresh asks UPS again */
 export const UPS_RECHECK_MINUTES = 60;
 /** Most numbers one refresh asks UPS about */
 export const UPS_BATCH = 150;
 
-let token: { value: string; expires: number } | null = null;
+// Cached per set of credentials, so a change in Settings takes effect at once
+let token: { key: string; value: string; expires: number } | null = null;
 
-async function accessToken(): Promise<string> {
-  if (token && token.expires > Date.now() + 60_000) return token.value;
-  const basic = Buffer.from(`${process.env.UPS_CLIENT_ID!.trim()}:${process.env.UPS_CLIENT_SECRET!.trim()}`).toString("base64");
-  const res = await fetch(`${base()}/security/v1/oauth/token`, {
+async function accessToken(cfg: UpsConfig): Promise<string> {
+  const key = `${cfg.base}|${cfg.clientId}|${cfg.clientSecret}`;
+  if (token && token.key === key && token.expires > Date.now() + 60_000) return token.value;
+  const basic = Buffer.from(`${cfg.clientId}:${cfg.clientSecret}`).toString("base64");
+  const res = await fetch(`${cfg.base}/security/v1/oauth/token`, {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded", Authorization: `Basic ${basic}` },
     body: "grant_type=client_credentials",
@@ -30,13 +47,21 @@ async function accessToken(): Promise<string> {
   });
   const body = (await res.json().catch(() => ({}))) as { access_token?: string; expires_in?: string | number; response?: { errors?: { message?: string }[] } };
   if (!res.ok || !body.access_token) throw new Error(`UPS sign-in failed (${res.status}${body.response?.errors?.[0]?.message ? `: ${body.response.errors[0].message}` : ""})`);
-  token = { value: body.access_token, expires: Date.now() + Number(body.expires_in ?? 3600) * 1000 };
+  token = { key, value: body.access_token, expires: Date.now() + Number(body.expires_in ?? 3600) * 1000 };
   return token.value;
 }
 
-async function trackOne(n: string): Promise<{ status: UpsStatus; raw: unknown }> {
-  const res = await fetch(`${base()}/api/track/v1/details/${encodeURIComponent(n)}?locale=en_US&returnSignature=false`, {
-    headers: { Authorization: `Bearer ${await accessToken()}`, transId: randomUUID().replace(/-/g, "").slice(0, 32), transactionSrc: "hd-compliance" },
+/** Signs in to UPS with the given (or saved) credentials, for Settings' Test connection. */
+export async function testUpsCredentials(cfg?: UpsConfig | null): Promise<void> {
+  const c = cfg ?? (await upsConfig());
+  if (!c) throw new Error("Enter the UPS client ID and secret first");
+  token = null;
+  await accessToken(c);
+}
+
+async function trackOne(cfg: UpsConfig, n: string): Promise<{ status: UpsStatus; raw: unknown }> {
+  const res = await fetch(`${cfg.base}/api/track/v1/details/${encodeURIComponent(n)}?locale=en_US&returnSignature=false`, {
+    headers: { Authorization: `Bearer ${await accessToken(cfg)}`, transId: randomUUID().replace(/-/g, "").slice(0, 32), transactionSrc: "hd-compliance" },
     signal: AbortSignal.timeout(20_000),
   });
   const raw = await res.json().catch(() => null);
@@ -57,7 +82,8 @@ async function upsNumbers(): Promise<string[]> {
  * `force`), oldest check first, at most UPS_BATCH per run.
  */
 export async function refreshUpsTracking(opts: { force?: boolean; numbers?: string[] } = {}) {
-  if (!upsConfigured()) throw new Error("UPS tracking isn't set up (UPS_CLIENT_ID and UPS_CLIENT_SECRET in .env)");
+  const cfg = await upsConfig();
+  if (!cfg) throw new Error("UPS tracking isn't set up (Admin › Settings › UPS tracking)");
   const all = opts.numbers ?? (await upsNumbers());
   const known = new Map((await prisma.parcelTracking.findMany({ where: { trackingNumber: { in: all } } })).map((p) => [p.trackingNumber, p]));
   const stale = Date.now() - UPS_RECHECK_MINUTES * 60_000;
@@ -72,7 +98,7 @@ export async function refreshUpsTracking(opts: { force?: boolean; numbers?: stri
   let errors = 0;
   for (const n of due) {
     try {
-      const { status, raw } = await trackOne(n);
+      const { status, raw } = await trackOne(cfg, n);
       const data = { ...status, checkedAt: new Date(), raw: (raw ?? undefined) as Prisma.InputJsonValue | undefined };
       await prisma.parcelTracking.upsert({ where: { trackingNumber: n }, create: { trackingNumber: n, carrier: "UPS", ...data }, update: data });
       if (status.error) errors++;

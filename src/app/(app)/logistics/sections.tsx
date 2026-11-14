@@ -175,7 +175,7 @@ export function ParcelsTab({ l, upsReady, canManage, tz }: { l: LoadedLogistics;
   return (
     <Section
       title={`${n(rows.length)} UPS parcel(s)`}
-      description={upsReady ? "Status from the UPS tracking API. Numbers are rechecked when refreshed, until delivered." : "UPS tracking isn't set up yet (UPS_CLIENT_ID and UPS_CLIENT_SECRET in .env); the numbers link to ups.com."}
+      description={upsReady ? "Status from the UPS tracking API. Numbers are rechecked when refreshed, until delivered." : "UPS tracking isn't set up yet (an administrator adds the UPS credentials under Admin › Settings); the numbers link to ups.com."}
       action={upsReady && canManage ? <UpsRefreshButton /> : undefined}
     >
       <Table

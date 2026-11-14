@@ -378,7 +378,7 @@ export const HELP_TOPICS: HelpTopic[] = [
         steps: [
           "Open **Logistics › Imports**.",
           "Drop the three files on the box (or **Choose files**). They can go in any order, together or separately: each is recognised by its columns.",
-          "When the WMS report link is set up, **Pull the WMS report now** fetches it directly; it can also be pulled on a schedule.",
+          "Or press **Sync WMS lines** at the top of Logistics: it retrieves the WMS report straight from its link and imports it (the link is set under Admin › Settings › WMS report link).",
         ],
       },
       { note: "Importing again updates what changed and adds what's new; nothing older is removed, so the history outlives the WMS report's 60 days." },
@@ -406,7 +406,7 @@ export const HELP_TOPICS: HelpTopic[] = [
       {
         list: [
           "Click a **SCAC** to open the carrier's tracking page in a new tab. Where the carrier's link takes a PRO, shipment or PO number, it's filled in. SCACs with no page set search the web; add them under **Logistics › Carriers**.",
-          "UPS numbers (1Z…) link to ups.com. When UPS tracking is set up, the **UPS parcels** tab shows UPS's latest status, last activity and delivery date; **Refresh UPS tracking** asks UPS again.",
+          "UPS numbers (1Z…) link to ups.com. When UPS tracking is set up (an administrator adds the UPS credentials under Admin › Settings › UPS tracking), the **UPS parcels** tab shows UPS's latest status, last activity and delivery date; **Refresh UPS tracking** asks UPS again.",
         ],
       },
       { h: "Notes, issues and scorecards" },
@@ -453,7 +453,7 @@ export const HELP_TOPICS: HelpTopic[] = [
           ["Roles & Access", "A grid of roles and permissions. The built-in Admin role always has everything; add roles for other teams as needed."],
           ["Teams", "The **Team responsible** choices for violation reviews and issues. **Add team**, rename it or give it a description (the pencil), change the order with the arrows, and **Turn off** a team you no longer use: it leaves the pickers but stays on the reviews and issues that have it. A new name shows everywhere at once, except on published scorecards, which keep the name they were generated with until regenerated. Only a team nothing uses can be deleted."],
           ["Programs & Rules", "Each program's metrics, goals and offset rules (with the fiscal month they take effect, so past months keep their rules), dispute reason codes with required documents, the SPM sheet names, and **Column mappings** from THD's column names to the platform's fields."],
-          ["Settings", "**Report periods** (month received or THD fiscal month), the **Public dashboard**, **Email Configuration (MS Graph)** (whether email is set up for invitations and password resets, the sender, and **Send Test**) and **Custom Branding** (site name and logo) and **SOP documents** (the SOP PDFs: **Add SOP** with a title, the PDF and the roles it is for; **Replace PDF** when an SOP is updated, keeping its title and roles; each role finds its SOPs at the bottom of the Help & Docs contents)."],
+          ["Settings", "**Report periods** (month received or THD fiscal month), the **Public dashboard**, **Email Configuration (MS Graph)** (whether email is set up for invitations and password resets, the sender, and **Send Test**) and **Custom Branding** (site name and logo) and **SOP documents** (the SOP PDFs: **Add SOP** with a title, the PDF and the roles it is for; **Replace PDF** when an SOP is updated, keeping its title and roles; each role finds its SOPs at the bottom of the Help & Docs contents). **WMS report link**: the address **Sync WMS lines** in Logistics retrieves. **UPS tracking**: the UPS Developer Portal client ID and secret for UPS parcel tracking (the secret is never shown again; **Test connection** checks them with UPS)."],
           ["Backup & Restore", "**Back up now** saves everything, attachments included, on the server; download any backup, or restore one (type RESTORE to confirm; a safety backup is taken first)."],
           ["View Analytics", "Hits on each published scorecard, in the app and through its public link: **Hits** (views plus PDF and Excel downloads), **Unique sessions** (a session is one browser's visit and ends after 30 minutes without activity), **Signed-in users**, and **Public-link hits**. Open a scorecard for hits per day, the signed-in users who opened it, and the latest hits. Choose the period at the top right."],
           ["App Log", "Every event in the platform, newest first: sign-ins, **failed sign-ins** (with the email typed and the reason), report work, imports, reviews, disputes, scorecards, feedback, exports, and changes to users, roles, configuration and backups. Filter by search text, user, category and dates; **Show all** opens an event's full details; **Export CSV** downloads what the filters show."],

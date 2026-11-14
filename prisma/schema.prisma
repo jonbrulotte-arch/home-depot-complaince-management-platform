@@ -673,6 +673,13 @@ model SiteSettings {
   reportPeriodBasis    PeriodBasis @default(RECEIVED_MONTH)
   /// Token for the public dashboard (/d/<token>); null while it is turned off
   publicDashboardToken String?     @unique
+  /// The WMS "shipped last 60 days" report link that Logistics › Sync WMS lines retrieves; null when not set
+  wmsReportUrl         String?
+  /// UPS Tracking API credentials (Admin › Settings); the secret is never sent back to the browser
+  upsClientId          String?
+  upsClientSecret      String?
+  /// Use UPS's test environment (wwwcie.ups.com) instead of production
+  upsTestMode          Boolean     @default(false)
   updatedAt            DateTime    @updatedAt
   updatedById          String?
 }

@@ -79,19 +79,35 @@ export async function importLogisticsFile(bytes: Uint8Array, fileName: string, u
   return { importId: log.id, kind: file.kind, label: LOGISTICS_KIND_LABELS[file.kind], fileName, rows: file.parsed.rows.length, created, updated, skipped };
 }
 
-/** The WMS "shipped last 60 days" report address (.env WMS_REPORT_URL), or null when not set. */
-export const wmsReportUrl = () => process.env.WMS_REPORT_URL?.trim() || null;
+/** The WMS report link set under Admin › Settings, or null when it isn't set. */
+export async function wmsReportUrl(): Promise<string | null> {
+  const s = await prisma.siteSettings.findUnique({ where: { id: "site" }, select: { wmsReportUrl: true } });
+  return s?.wmsReportUrl?.trim() || null;
+}
+
+/** A WMS report link must be an http(s) address; null when it isn't. */
+export function cleanReportUrl(v: string | null | undefined): string | null {
+  const s = v?.trim();
+  if (!s) return null;
+  try {
+    const u = new URL(s);
+    return u.protocol === "http:" || u.protocol === "https:" ? u.toString() : null;
+  } catch {
+    return null;
+  }
+}
 
 /** Pulls the WMS report from its link and imports it. */
 export async function fetchWmsReport(userId: string | null): Promise<ImportResult> {
-  const url = wmsReportUrl();
-  if (!url) throw new Error("The WMS report link isn't set up (WMS_REPORT_URL in .env)");
+  const url = await wmsReportUrl();
+  if (!url) throw new Error("The WMS report link isn't set (Admin › Settings › WMS report link)");
   const res = await fetch(url, { signal: AbortSignal.timeout(120_000), cache: "no-store" }).catch((e: Error) => {
-    throw new Error(`Couldn't reach the WMS report (${e.message})`);
+    throw new Error(`Couldn't reach the WMS report at ${url} (${e.message}). Check that the server can reach it.`);
   });
   if (!res.ok) throw new Error(`The WMS report answered ${res.status} ${res.statusText}`);
   const bytes = new Uint8Array(await res.arrayBuffer());
-  const result = await importLogisticsFile(bytes, `WMS report ${new Date().toISOString().slice(0, 16).replace("T", " ")} UTC`, userId, { fetched: true });
+  if (!bytes.byteLength) throw new Error("The WMS report came back empty");
+  const result = await importLogisticsFile(bytes, `WMS sync ${new Date().toISOString().slice(0, 16).replace("T", " ")} UTC`, userId, { fetched: true });
   if (result.kind !== "WMS") throw new Error("The WMS report link returned a file that isn't the WMS shipped-lines report");
   return result;
 }

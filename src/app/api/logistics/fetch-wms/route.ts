@@ -3,7 +3,7 @@ import { requireApiPermission } from "@/lib/auth-guard";
 import { audit } from "@/lib/audit";
 import { fetchWmsReport } from "@/lib/logistics/import";
 
-/** Pulls the WMS "shipped last 60 days" report from WMS_REPORT_URL and imports it. */
+/** Pulls the WMS "shipped last 60 days" report from the link set under Admin › Settings and imports it. */
 export async function POST() {
   const guard = await requireApiPermission("logistics.manage");
   if (guard.error) return guard.error;
