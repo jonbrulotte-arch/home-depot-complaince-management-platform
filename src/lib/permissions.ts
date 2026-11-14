@@ -1,0 +1,96 @@
+export const PERMISSIONS = {
+  "view.dashboard": "View dashboard and scorecards",
+  "view.polookup": "Use PO Lookup",
+  "reports.view": "View compliance reports",
+  "reports.create": "Create compliance reports",
+  "reports.import": "Import SPM data into reports",
+  "reports.advance": "Advance report status",
+  "lines.triage": "Review and triage non-compliant lines",
+  "disputes.manage": "Manage disputes",
+  "feedback.view": "View published scorecards and their violation feedback",
+  "feedback.submit": "Give feedback on scorecard violations",
+  "summarizer.use": "Build scorecard summaries and export them as PDF",
+  "issues.view": "View the Issue Log",
+  "issues.manage": "Log and update issues in the Issue Log",
+  "insights.view": "View Reports & Insights (program, time, team, issue, dispute and location insights)",
+  "logistics.view": "View Logistics (POs, shipments, tracking and flags) and add notes",
+  "logistics.manage": "Import logistics files, refresh WMS and UPS tracking, and edit carrier links",
+  "admin.users": "Manage users",
+  "admin.rbac": "Manage roles and permissions",
+  "admin.programs": "Manage programs, metrics, thresholds and column mappings",
+  "admin.teams": "Manage the teams responsible for violations and issues",
+  "admin.backup": "Backup and restore",
+  "admin.settings": "Manage site settings and branding",
+  "admin.audit": "View the App Log (every event in the platform)",
+  "admin.analytics": "View scorecard analytics (hits, sessions and viewers)",
+} as const;
+
+export type Permission = keyof typeof PERMISSIONS;
+
+export const ALL_PERMISSIONS = Object.keys(PERMISSIONS) as Permission[];
+
+export const DEFAULT_ROLES: { name: string; description: string; permissions: Permission[] }[] = [
+  { name: "Admin", description: "Full access", permissions: ALL_PERMISSIONS },
+  {
+    name: "Analyst",
+    description: "Creates reports, imports data and triages lines",
+    permissions: [
+      "view.dashboard",
+      "view.polookup",
+      "reports.view",
+      "reports.create",
+      "reports.import",
+      "reports.advance",
+      "lines.triage",
+      "disputes.manage",
+      "feedback.view",
+      "feedback.submit",
+      "summarizer.use",
+      "issues.view",
+      "issues.manage",
+    ],
+  },
+  { name: "Viewer", description: "Read-only dashboard, PO Lookup and Issue Log", permissions: ["view.dashboard", "view.polookup", "issues.view"] },
+  {
+    name: "Warehouse",
+    description: "Warehouse team: reviews published scorecards, gives feedback on violations and logs issues",
+    permissions: ["feedback.view", "feedback.submit", "issues.view", "issues.manage"],
+  },
+  {
+    name: "Director",
+    description: "Directors: the dashboard and scorecards, PO Lookup, Scorecard Feedback, the Issue Log and Reports & Insights",
+    permissions: ["view.dashboard", "view.polookup", "feedback.view", "feedback.submit", "issues.view", "issues.manage", "insights.view"],
+  },
+  {
+    name: "Finance",
+    description: "Finance team: read-only PO Lookup, Scorecard Feedback, Issue Log and Summarizer",
+    permissions: ["view.polookup", "feedback.view", "summarizer.use", "issues.view"],
+  },
+  {
+    // Starts with no access: admins choose its permissions in Roles & Access
+    name: "Logistics",
+    description: "Logistics team",
+    permissions: [],
+  },
+];
+
+/** Landing pages in order of preference; a user starts on the first one their role allows. */
+const HOME_PAGES: [Permission, string][] = [
+  ["view.dashboard", "/dashboard"],
+  ["reports.view", "/reports"],
+  ["insights.view", "/insights"],
+  ["feedback.view", "/feedback"],
+  ["issues.view", "/issues"],
+  ["view.polookup", "/po-lookup"],
+  ["logistics.view", "/logistics"],
+  ["admin.users", "/admin/users"],
+  ["admin.settings", "/admin/settings"],
+];
+
+export function homePath(permissions: Set<Permission>): string {
+  return HOME_PAGES.find(([p]) => permissions.has(p))?.[1] ?? "/no-access";
+}
+
+export function isPermission(value: string): value is Permission {
+  return value in PERMISSIONS;
+}
