@@ -44,11 +44,11 @@ export async function logisticsWorkbook(l: LoadedLogistics, pos: PoView[], siteN
       l.notes.po.get(p.poNumber) ?? 0,
     ]),
   );
-  const shipments = l.shipments.filter((s) => s.poNumbers.some((po) => poSet.has(po)));
+  const shipments = l.shipments.filter((s) => s.ourPos.some((po) => poSet.has(po)));
   sheet(
     wb,
     "Shipments",
-    [["Shipment #", 13], ["Status", 11], ["SCAC", 8], ["Pickup", 20], ["Delivery", 20], ["Origin", 30], ["Destination", 30], ["POs", 30], ["Cartons", 9], ["Units", 9], ["Flags", 30], ["Flag details", 70]],
+    [["Shipment #", 13], ["Status", 11], ["SCAC", 8], ["Pickup", 20], ["Delivery", 20], ["Origin", 30], ["Destination", 30], ["Our POs", 30], ["Other suppliers' POs", 30], ["Cartons", 9], ["Units", 9], ["Flags", 30], ["Flag details", 70]],
     shipments.map((s) => [
       s.shipmentNumber,
       s.status,
@@ -57,7 +57,8 @@ export async function logisticsWorkbook(l: LoadedLogistics, pos: PoView[], siteN
       s.deliveryLocal,
       [s.originFacility, s.originCity, s.originState].filter(Boolean).join(" · "),
       [s.destFacility, s.destCity, s.destState].filter(Boolean).join(" · "),
-      s.poNumbers.join(", "),
+      s.ourPos.join(", "),
+      s.otherPos.join(", ") || null,
       s.cartonCount,
       s.units,
       s.flags.map((f) => FLAGS[f.code].label).join(", ") || null,

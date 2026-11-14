@@ -382,6 +382,7 @@ export const HELP_TOPICS: HelpTopic[] = [
         ],
       },
       { note: "Importing again updates what changed and adds what's new; nothing older is removed, so the history outlives the WMS report's 60 days." },
+      { note: "THD books shipments that pick up from several suppliers, so a TMS shipment can list other suppliers' POs. A PO on a shipment counts as ours only when the rest of our data has it: the TMS Purchase Orders export, the WMS lines, THD's compliance data or the Issue Log. The others show on the shipment as **other suppliers'** and are left out of the PO list and flags." },
       { h: "Flags" },
       {
         terms: [

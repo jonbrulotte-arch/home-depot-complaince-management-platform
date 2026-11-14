@@ -24,13 +24,13 @@ export default async function LogisticsShipmentPage({ params }: { params: Promis
   const canIssues = user.permissions.has("issues.view");
   const poViews = new Map(l.pos.map((p) => [p.poNumber, p]));
   const [issues, compliance, notes] = await Promise.all([
-    canIssues ? issuesForPoNumbers(s.poNumbers) : new Map<string, IssueSummary[]>(),
-    complianceForPos(s.poNumbers),
+    canIssues ? issuesForPoNumbers(s.ourPos) : new Map<string, IssueSummary[]>(),
+    complianceForPos(s.ourPos),
     prisma.logisticsNote.findMany({ where: { shipmentNumber: number }, orderBy: { createdAt: "asc" }, include: { author: { select: { name: true } } } }),
   ]);
-  const link = s.scac ? scacLink(l, s.scac, { shipment: s.shipmentNumber, po: s.poNumbers[0], pro: s.pros[0] }) : null;
+  const link = s.scac ? scacLink(l, s.scac, { shipment: s.shipmentNumber, po: s.ourPos[0], pro: s.pros[0] }) : null;
   const carrier = s.scac ? l.carrierBy.get(s.scac) : undefined;
-  const ours = s.poNumbers.filter((po) => poViews.has(po));
+  const ours = s.ourPos;
 
   return (
     <div className="p-6 max-w-7xl mx-auto space-y-6">
@@ -75,9 +75,16 @@ export default async function LogisticsShipmentPage({ params }: { params: Promis
               <FlagList flags={s.flags} />
             </CardContent>
           </Card>
-          <Section title="Purchase orders" description={ours.length < s.poNumbers.length ? "POs not in your TMS purchase orders belong to other suppliers sharing the truck." : undefined}>
+          <Section
+            title="Purchase orders"
+            description={
+              s.otherPos.length
+                ? `${ours.length} of ${s.poNumbers.length} are ours. THD books shipments that pick up from several suppliers: POs that appear nowhere else in our data (TMS purchase orders, WMS, THD compliance data or the Issue Log) are other suppliers'.`
+                : undefined
+            }
+          >
             <Table
-              rows={s.poNumbers}
+              rows={[...ours, ...s.otherPos]}
               empty="TMS lists no POs on this shipment."
               cols={[
                 { header: "PO #", cell: (po) => (poViews.has(po) ? <PoLink po={po} /> : <span className="text-gray-500">{po}</span>) },

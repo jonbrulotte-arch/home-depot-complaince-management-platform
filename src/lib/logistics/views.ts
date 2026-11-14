@@ -109,6 +109,8 @@ export const PO_STATUSES: PoStatus[] = ["Open", "Scheduled", "Shipped", "In tran
 const norm = (s: string | null | undefined) => (s ?? "").trim().toUpperCase();
 /** A THD crossdock (IFC): its facility ID starts with XD */
 export const isCrossdock = (facility: string | null | undefined) => /^XD/i.test(facility?.trim() ?? "");
+/** A PO number without leading zeros, for matching numbers typed elsewhere */
+const bareNumber = (po: string) => po.trim().toUpperCase().replace(/^0+(?=\d)/, "");
 const isCanceled = (status: string) => /^cancel/i.test(status);
 const isDelivered = (status: string) => /^deliver/i.test(status);
 const isMoving = (status: string) => /transit|picked|dispatch|out for/i.test(status);
@@ -180,6 +182,10 @@ export interface PoView {
 
 export interface ShipmentView extends Shipment {
   pos: { poNumber: string; tms: TmsPo | null }[];
+  /** The shipment's POs that are this supplier's (seen elsewhere in the data) */
+  ourPos: string[];
+  /** Other suppliers' POs on the same truck: THD books shipments that pick up from several suppliers */
+  otherPos: string[];
   cartons: Carton[];
   cartonCount: number;
   units: number;
@@ -191,6 +197,8 @@ export interface LogisticsData {
   cartons: Carton[];
   shipments: Shipment[];
   pos: TmsPo[];
+  /** PO numbers known from the rest of the platform (THD compliance data, the Issue Log) */
+  knownPos?: string[];
   parcels: Parcel[];
 }
 
@@ -213,7 +221,12 @@ export function buildLogistics(data: LogisticsData, today: string) {
 
   // POs that are only on TMS shipments belong to other suppliers sharing the truck, once the TMS
   // purchase orders file (this supplier's POs) is in
-  const poNumbers = new Set([...tmsByPo.keys(), ...cartonsByPo.keys(), ...(data.pos.length ? [] : shipmentsByPo.keys())]);
+  // A PO on a TMS shipment is this supplier's only when the rest of the data has it (the TMS purchase
+  // orders, the WMS, THD's compliance data or the Issue Log): THD books shipments that pick up from
+  // several suppliers, so the others' POs ride along
+  const known = new Set((data.knownPos ?? []).map(bareNumber));
+  const isOurs = (po: string) => tmsByPo.has(po) || cartonsByPo.has(po) || known.has(bareNumber(po));
+  const poNumbers = new Set([...tmsByPo.keys(), ...cartonsByPo.keys(), ...[...shipmentsByPo.keys()].filter(isOurs)]);
   const pos: PoView[] = [...poNumbers].map((poNumber) => {
     const tms = tmsByPo.get(poNumber) ?? null;
     const cartons = (cartonsByPo.get(poNumber) ?? []).sort((a, b) => a.shippedAt.getTime() - b.shippedAt.getTime());
@@ -335,6 +348,8 @@ export function buildLogistics(data: LogisticsData, today: string) {
       return {
         ...s,
         pos: s.poNumbers.map((po) => ({ poNumber: po, tms: tmsByPo.get(po) ?? null })),
+        ourPos: s.poNumbers.filter(isOurs),
+        otherPos: s.poNumbers.filter((po) => !isOurs(po)),
         cartons,
         cartonCount: new Set(cartons.map((c) => c.label)).size,
         units: cartons.reduce((n, c) => n + (c.quantity ?? 0), 0),

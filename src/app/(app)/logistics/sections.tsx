@@ -171,7 +171,16 @@ export function ShipmentsTab({ l, scac, late }: { l: LoadedLogistics; scac?: str
           { header: "SCAC", cell: (s) => <ScacLink scac={s.scac} {...(s.scac ? scacLink(l, s.scac, { shipment: s.shipmentNumber, po: s.poNumbers[0], pro: s.pros[0] }) : {})} /> },
           { header: "Pickup / delivery", cell: (s) => <Dates pickup={s.pickupLocal} delivery={s.deliveryLocal} /> },
           { header: "Route", cell: (s) => <Route from={[s.originCity, s.originState].filter(Boolean).join(", ")} to={[s.destFacility, [s.destCity, s.destState].filter(Boolean).join(", ")].filter(Boolean).join(" · ")} /> },
-          { header: "POs", cell: (s) => (s.poNumbers.length ? <span title={s.poNumbers.join(", ")}>{s.poNumbers[0]}{s.poNumbers.length > 1 && <span className="block text-xs text-gray-500">+{s.poNumbers.length - 1} more</span>}</span> : "—") },
+          {
+            header: "Our POs",
+            cell: (s) => (
+              <span title={[s.ourPos.length ? `Ours: ${s.ourPos.join(", ")}` : "", s.otherPos.length ? `Other suppliers: ${s.otherPos.join(", ")}` : ""].filter(Boolean).join("\n")}>
+                {s.ourPos.length ? <PoLink po={s.ourPos[0]} /> : <span className="text-gray-400">None</span>}
+                {s.ourPos.length > 1 && <span className="block text-xs text-gray-500">+{s.ourPos.length - 1} more</span>}
+                {s.otherPos.length > 0 && <span className="block text-xs text-gray-400">+{s.otherPos.length} other supplier{s.otherPos.length > 1 ? "s'" : "'s"}</span>}
+              </span>
+            ),
+          },
           { header: "Cartons", cell: (s) => (s.cartonCount ? n(s.cartonCount) : "—"), align: "right" },
           { header: "Flags", cell: (s) => <FlagBadges flags={s.flags} max={2} /> },
         ]}

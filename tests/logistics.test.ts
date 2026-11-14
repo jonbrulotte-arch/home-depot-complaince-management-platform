@@ -100,6 +100,7 @@ describe("logistics views of the sample files", () => {
     expect(po("1178880969").status).toBe("Delivered");
     // Other suppliers' POs on shared trucks aren't listed as this supplier's POs
     expect(views.pos.some((p) => p.poNumber === "1195611355")).toBe(false);
+    expect(views.shipments.find((s) => s.shipmentNumber === "233593184")).toMatchObject({ ourPos: ["1195586897"], otherPos: ["1195611355"] });
     expect(views.shipments.find((s) => s.shipmentNumber === "233523374")!.flags.map((f) => f.code)).toEqual(expect.arrayContaining(["NO_CARRIER", "DELIVERY_OVERDUE"]));
     const o = logisticsOverview(views);
     expect(o.pos).toBe(171);
@@ -136,6 +137,29 @@ describe("TMS IDs and crossdocks", () => {
     expect(codes("300")).toContain("CHECK_PLANEX:medium");
     expect(codes("100").some((c) => c.startsWith("CHECK_PLANEX"))).toBe(false);
     expect(v.shipments.find((s) => s.shipmentNumber === "233000008")!.flags.map((f) => f.code)).toEqual(expect.arrayContaining(["CROSSDOCK", "CHECK_PLANEX"]));
+  });
+});
+
+describe("POs on shared trucks", () => {
+  it("counts a shipment's PO as ours only when the rest of the data has it", () => {
+    const ship: Shipment = {
+      shipmentNumber: "233000100", status: "Delivered", scac: "HJCS", pickupAt: null, pickupLocal: "11/3/26 07:00 EST", deliveryAt: null, deliveryLocal: "11/3/26 14:50 EST",
+      originFacility: "28874OH001", originCity: "CAMBRIDGE", originState: "OH", destFacility: "XD05", destCity: "MONROE", destState: "OH",
+      poNumbers: ["1190000001", "1190000002", "1190000003", "1190000004"], appointment: null, tmsFlags: [],
+    };
+    const v = buildLogistics(
+      {
+        cartons: [],
+        shipments: [ship],
+        pos: [{ poNumber: "1190000001", status: "Created", originFacility: null, originCity: null, originState: null, destFacility: null, destCity: null, destState: null, appointment: null, tmsFlags: [] }],
+        parcels: [],
+        // In THD's compliance data (with leading zeros) and in the Issue Log
+        knownPos: ["001190000002", "1190000003"],
+      },
+      "2026-11-19",
+    );
+    expect(v.shipments[0]).toMatchObject({ ourPos: ["1190000001", "1190000002", "1190000003"], otherPos: ["1190000004"] });
+    expect(v.pos.map((p) => p.poNumber).sort()).toEqual(["1190000001", "1190000002", "1190000003"]);
   });
 });
 

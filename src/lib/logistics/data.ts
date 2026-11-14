@@ -55,7 +55,17 @@ export const loadLogistics = cache(async () => {
     ),
     prisma.logisticsNote.groupBy({ by: ["poNumber", "shipmentNumber"], _count: { _all: true } }),
   ]);
-  const views = buildLogistics({ cartons, shipments, pos, parcels }, today);
+  // Shipment POs not in the WMS or TMS PO data: ours only if THD's compliance data or the Issue Log has them
+  const seen = new Set([...pos.map((p) => p.poNumber), ...cartons.map((c) => c.poNumber)]);
+  const unknown = [...new Set(shipments.flatMap((s) => s.poNumbers))].filter((po) => !seen.has(po));
+  const variants = [...new Set(unknown.flatMap(poNumberVariants))];
+  const knownPos = variants.length
+    ? [
+        ...(await prisma.poRecord.findMany({ where: { poNumber: { in: variants } }, select: { poNumber: true } })).map((r) => r.poNumber),
+        ...(await prisma.issuePo.findMany({ where: { poNumber: { in: variants } }, select: { poNumber: true } })).map((r) => r.poNumber),
+      ]
+    : [];
+  const views = buildLogistics({ cartons, shipments, pos, parcels, knownPos }, today);
   const carrierBy = new Map<string, CarrierLinkInfo>(carriers.map((c) => [c.scac, c]));
   const notes = {
     po: new Map(noteCounts.filter((n) => n.poNumber).map((n) => [n.poNumber!, n._count._all])),
