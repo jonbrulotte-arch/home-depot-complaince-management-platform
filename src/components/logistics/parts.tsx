@@ -64,9 +64,14 @@ export function FlagList({ flags }: { flags: Flag[] }) {
 /** The SCAC, linking to the carrier's tracking page in a new tab */
 export function ScacLink({ scac, url, known }: { scac: string | null; url?: string | null; known?: boolean }) {
   if (!scac) return <span className="text-gray-400">—</span>;
-  if (!url) return <span className="font-mono">{scac}</span>;
+  if (!url)
+    return (
+      <span className="font-mono text-gray-700" title={known ? `No public tracking page set for ${scac}` : `No tracking page set for ${scac} yet (Logistics › Carriers)`}>
+        {scac}
+      </span>
+    );
   return (
-    <a href={url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 font-mono text-blue-600 hover:underline" title={known === false ? `No tracking page set for ${scac}: searches the web (add it under Logistics › Carriers)` : `Track with ${scac}`}>
+    <a href={url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 font-mono text-blue-600 hover:underline" title={`Open ${scac}'s tracking page`}>
       {scac}
       <ExternalLink className="h-3 w-3" />
     </a>

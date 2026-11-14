@@ -52,7 +52,9 @@ describe("logistics files", () => {
     const link = { scac: "FXFE", name: "FedEx Freight", mode: "LTL", trackingUrl: "https://www.fedex.com/fedextrack/?trknbr={pro}" };
     expect(carrierUrl("FXFE", link, { pro: "123" })).toEqual({ url: "https://www.fedex.com/fedextrack/?trknbr=123", known: true });
     expect(carrierUrl("FXFE", link, {})).toEqual({ url: "https://www.fedex.com/fedextrack/", known: true });
-    expect(carrierUrl("ZZZZ", null, {}).known).toBe(false);
+    // No tracking page set: no link (never a web search)
+    expect(carrierUrl("ZZZZ", null, {})).toEqual({ url: null, known: false });
+    expect(carrierUrl("KNIG", { scac: "KNIG", name: "Knight", mode: "TL", trackingUrl: null }, {})).toEqual({ url: null, known: true });
     expect(cleanTrackingUrl("javascript:alert(1)")).toBeNull();
     expect(cleanTrackingUrl(" https://x.example/track?p={pro} ")).toBe("https://x.example/track?p={pro}");
     expect(editDistance("HAGGESTOWN", "HAGERSTOWN")).toBe(2);

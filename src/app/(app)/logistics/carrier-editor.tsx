@@ -24,12 +24,12 @@ const th = "px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase trac
 const td = "px-4 py-2.5 text-sm";
 
 /** Carriers by SCAC and where their link goes; SCACs in the data without a carrier are listed to add. */
-export function CarrierEditor({ carriers, unknown, canManage }: { carriers: CarrierRow[]; unknown: { scac: string; shipments: number }[]; canManage: boolean }) {
+export function CarrierEditor({ carriers, unknown, canManage, add }: { carriers: CarrierRow[]; unknown: { scac: string; shipments: number }[]; canManage: boolean; /** Open the form for this SCAC (from a shipment page) */ add?: string }) {
   const router = useRouter();
-  const [editing, setEditing] = useState<Partial<CarrierRow> | null>(null);
+  const [editing, setEditing] = useState<Partial<CarrierRow> | null>(() => (canManage && add ? (carriers.find((c) => c.scac === add) ?? { scac: add }) : null));
   const [error, setError] = useState<string | null>(null);
   const remove = async (c: CarrierRow) => {
-    if (!confirm(`Delete ${c.scac} (${c.name})? Its SCAC links will search the web instead.`)) return;
+    if (!confirm(`Delete ${c.scac} (${c.name})? Its SCAC will no longer link to a tracking page.`)) return;
     try {
       await apiFetch(`/api/logistics/carriers/${c.id}`, { method: "DELETE" });
       router.refresh();
@@ -43,7 +43,7 @@ export function CarrierEditor({ carriers, unknown, canManage }: { carriers: Carr
       {unknown.length > 0 && (
         <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
           <p>
-            <strong>SCACs in your shipments with no carrier set:</strong> their links search the web for now.{canManage ? " Add them to link straight to the carrier's tracking page." : ""}
+            <strong>SCACs in your shipments with no carrier set:</strong> they have no tracking link yet.{canManage ? " Add them to link straight to the carrier's tracking page." : ""}
           </p>
           <div className="mt-2 flex flex-wrap gap-2">
             {unknown.map((u) =>

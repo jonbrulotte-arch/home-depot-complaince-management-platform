@@ -43,10 +43,10 @@ export interface CarrierLinkInfo {
 
 /**
  * Where a SCAC's link goes: the carrier's tracking page with {pro}, {shipment} and {po} filled in;
- * when a placeholder has no value, the page without its query. A carrier with no page set opens a
- * web search for its SCAC.
+ * when a placeholder has no value, the page without its query. Null when no tracking page is set for
+ * the SCAC (`known` says whether the carrier is in the list at all).
  */
-export function carrierUrl(scac: string, link: CarrierLinkInfo | null | undefined, refs: { pro?: string | null; shipment?: string | null; po?: string | null }): { url: string; known: boolean } {
+export function carrierUrl(_scac: string, link: CarrierLinkInfo | null | undefined, refs: { pro?: string | null; shipment?: string | null; po?: string | null }): { url: string | null; known: boolean } {
   if (link?.trackingUrl) {
     const values: Record<string, string | null | undefined> = { pro: refs.pro, shipment: refs.shipment, po: refs.po };
     let missing = false;
@@ -57,7 +57,7 @@ export function carrierUrl(scac: string, link: CarrierLinkInfo | null | undefine
     });
     return { url: missing ? link.trackingUrl.split("?")[0] : url, known: true };
   }
-  return { url: `https://www.google.com/search?q=${encodeURIComponent(`${scac} SCAC freight tracking`)}`, known: false };
+  return { url: null, known: Boolean(link) };
 }
 
 /** A tracking link template must be an http(s) address; null when it isn't. */

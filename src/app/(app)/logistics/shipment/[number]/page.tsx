@@ -41,18 +41,22 @@ export default async function LogisticsShipmentPage({ params }: { params: Promis
       <div className="flex flex-wrap items-center gap-3">
         <h1 className="text-2xl font-bold text-gray-900">TMS shipment {s.shipmentNumber}</h1>
         <TmsStatusBadge status={s.status} />
-        {link && (
+        {link?.url ? (
           <Button asChild size="sm" variant="outline">
             <a href={link.url} target="_blank" rel="noreferrer">
-              Track with {carrier?.name ?? s.scac}
+              Open {carrier?.name ?? s.scac} tracking
               <ExternalLink className="h-3.5 w-3.5 ml-1.5" />
             </a>
           </Button>
-        )}
+        ) : s.scac && user.permissions.has("logistics.manage") ? (
+          <Button asChild size="sm" variant="ghost">
+            <Link href={`/logistics?tab=carriers&add=${encodeURIComponent(s.scac)}`}>Add a tracking page for {s.scac}</Link>
+          </Button>
+        ) : null}
       </div>
       <StatTiles
         stats={[
-          { label: "Carrier", value: s.scac ?? "None", hint: carrier ? `${carrier.name}${carrier.mode ? ` · ${carrier.mode}` : ""}` : s.scac ? "Not in the carrier list" : undefined },
+          { label: "Carrier", value: s.scac ?? "None", hint: carrier ? `${carrier.name}${carrier.mode ? ` · ${carrier.mode}` : ""}${carrier.trackingUrl ? "" : " · no tracking page"}` : s.scac ? "Not in the carrier list yet" : undefined },
           { label: "Pickup", value: s.pickupLocal ?? "—" },
           { label: "Delivery", value: s.deliveryLocal ?? "—" },
           { label: "From", value: [s.originCity, s.originState].filter(Boolean).join(", ") || "—", hint: s.originFacility ?? undefined },

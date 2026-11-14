@@ -31,6 +31,7 @@ import {
 } from "./sections";
 
 type Search = {
+  add?: string;
   tab?: string;
   q?: string;
   status?: string;
@@ -141,7 +142,7 @@ export default async function LogisticsPage({
       ) : tab === "imports" ? (
         <ImportsTab canManage={canManage} tz={tz} />
       ) : (
-        <CarriersTab l={l} canManage={canManage} />
+        <CarriersTab l={l} canManage={canManage} add={sp.add?.toUpperCase()} />
       )}
     </div>
   );
@@ -200,9 +201,11 @@ async function ImportsTab({
 function CarriersTab({
   l,
   canManage,
+  add,
 }: {
   l: Awaited<ReturnType<typeof loadLogistics>>;
   canManage: boolean;
+  add?: string;
 }) {
   const counts = new Map<string, number>();
   for (const s of l.shipments)
@@ -211,6 +214,7 @@ function CarriersTab({
   return (
     <CarrierEditor
       canManage={canManage}
+      add={add}
       carriers={l.carriers.map((c) => ({
         id: c.id,
         scac: c.scac,
