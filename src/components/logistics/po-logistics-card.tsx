@@ -20,7 +20,13 @@ export async function PoLogisticsCard({ poNumbers }: { poNumbers: string[] }) {
           Logistics
         </CardTitle>
         <p className="text-sm text-gray-500">
-          {found.size ? `${found.size} of ${poNumbers.length} PO(s) in the WMS and TMS data.` : "None of these POs is in the WMS or TMS data imported so far."}
+          {poNumbers.length === 1
+            ? found.size
+              ? "What the warehouse (WMS) and THD's TMS show for this PO. Click the PO for its full logistics page."
+              : "This PO isn't in the WMS or TMS data imported so far."
+            : found.size
+              ? `${found.size} of ${poNumbers.length} PO(s) in the WMS and TMS data.`
+              : "None of these POs is in the WMS or TMS data imported so far."}
         </p>
       </CardHeader>
       {found.size > 0 && (

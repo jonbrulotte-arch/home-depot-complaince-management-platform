@@ -417,7 +417,7 @@ export const HELP_TOPICS: HelpTopic[] = [
         list: [
           "Each PO and shipment has **Notes**: what happened, who you spoke to, what's next.",
           "A PO's page lists the **Issue Log** issues for it, with **Log an issue** to start one with the PO filled in, and THD's compliance data (violations and offsets) with a link to the PO record.",
-          "An issue's page shows the **Logistics** of its POs, and the violations on in-app scorecards show the PO's logistics status, carrier link, flags and issues. Published scorecards themselves don't change; this is shown alongside them.",
+          "An issue's page, and a PO record opened from PO Lookup, show the **Logistics** of their POs, and the violations on in-app scorecards show the PO's logistics status, carrier link, flags and issues. Published scorecards themselves don't change; this is shown alongside them.",
         ],
       },
       {

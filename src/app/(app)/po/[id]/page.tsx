@@ -16,6 +16,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ComplianceBadge, DispositionBadge, DisputeStatusBadge } from "@/components/shared/status-badges";
 import { getTimeZone } from "@/lib/time-zone-server";
+import { PoLogisticsCard } from "@/components/logistics/po-logistics-card";
 
 type Line = PoRecordView["record"]["lines"][number];
 
@@ -226,6 +227,8 @@ export default async function PoRecordPage({ params }: { params: Promise<{ id: s
           </CardContent>
         </Card>
       )}
+
+      {user.permissions.has("logistics.view") && <PoLogisticsCard poNumbers={[record.poNumber]} />}
 
       <div className="space-y-3">
         <h2 className="text-lg font-semibold text-gray-900">Compliance lines</h2>
