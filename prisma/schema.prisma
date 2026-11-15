@@ -1027,7 +1027,7 @@ model CarrierLink {
   id          String   @id @default(cuid())
   scac        String   @unique
   name        String
-  /// LTL, TL or Parcel
+  /// LTL & TL, LTL, TL or Parcel (CARRIER_MODES)
   mode        String?
   /// Tracking page; {pro}, {shipment} and {po} are filled in when known
   trackingUrl String?

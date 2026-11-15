@@ -32,6 +32,9 @@ export function cartonRefs(trackingNumber: string | null, secondTrack: string | 
   return out;
 }
 
+/** How a carrier moves freight; most LTL carriers also run truckloads */
+export const CARRIER_MODES = ["LTL & TL", "LTL", "TL", "Parcel"] as const;
+
 export const upsTrackingUrl = (n: string) => `https://www.ups.com/track?loc=en_US&tracknum=${encodeURIComponent(n)}`;
 
 export interface CarrierLinkInfo {

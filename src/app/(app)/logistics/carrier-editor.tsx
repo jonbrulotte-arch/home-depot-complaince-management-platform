@@ -9,6 +9,7 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { apiFetch } from "@/lib/client-api";
+import { CARRIER_MODES } from "@/lib/logistics/refs";
 
 export interface CarrierRow {
   id: string;
@@ -124,7 +125,7 @@ export function CarrierEditor({ carriers, unknown, canManage, add }: { carriers:
 function CarrierForm({ carrier, onDone }: { carrier: Partial<CarrierRow>; onDone: () => void }) {
   const [scac, setScac] = useState(carrier.scac ?? "");
   const [name, setName] = useState(carrier.name ?? "");
-  const [mode, setMode] = useState(carrier.mode ?? "LTL");
+  const [mode, setMode] = useState(carrier.mode ?? "LTL & TL");
   const [url, setUrl] = useState(carrier.trackingUrl ?? "");
   const [notes, setNotes] = useState(carrier.notes ?? "");
   const [busy, setBusy] = useState(false);
@@ -157,9 +158,11 @@ function CarrierForm({ carrier, onDone }: { carrier: Partial<CarrierRow>; onDone
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="LTL">LTL</SelectItem>
-              <SelectItem value="TL">TL</SelectItem>
-              <SelectItem value="Parcel">Parcel</SelectItem>
+              {CARRIER_MODES.map((m) => (
+                <SelectItem key={m} value={m}>
+                  {m === "LTL & TL" ? "LTL & TL (both)" : m === "LTL" ? "LTL only" : m === "TL" ? "TL only" : m}
+                </SelectItem>
+              ))}
             </SelectContent>
           </Select>
         </div>

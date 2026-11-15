@@ -4,12 +4,12 @@ import { prisma } from "@/lib/prisma";
 import { requireApiPermission } from "@/lib/auth-guard";
 import { badRequest, parseJson } from "@/lib/api";
 import { audit } from "@/lib/audit";
-import { cleanTrackingUrl } from "@/lib/logistics/refs";
+import { CARRIER_MODES, cleanTrackingUrl } from "@/lib/logistics/refs";
 
 const schema = z.object({
   scac: z.string().trim().toUpperCase().regex(/^[A-Z0-9]{2,4}$/, "A SCAC is 2 to 4 letters"),
   name: z.string().trim().min(1, "Give the carrier's name").max(120),
-  mode: z.enum(["LTL", "TL", "Parcel"]).nullable().optional(),
+  mode: z.enum(CARRIER_MODES).nullable().optional(),
   trackingUrl: z.string().trim().max(500).nullable().optional(),
   notes: z.string().trim().max(500).nullable().optional(),
 });
