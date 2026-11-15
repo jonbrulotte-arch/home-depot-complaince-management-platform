@@ -30,7 +30,7 @@ export default async function LogisticsShipmentPage({ params }: { params: Promis
     complianceForPos(s.ourPos),
     prisma.logisticsNote.findMany({ where: { shipmentNumber: number }, orderBy: { createdAt: "asc" }, include: { author: { select: { name: true } } } }),
   ]);
-  const link = s.scac ? scacLink(l, s.scac, { shipment: s.shipmentNumber, po: s.ourPos[0], pro: s.pros[0] }) : null;
+  const link = s.scac ? scacLink(l, s.scac, { shipment: s.shipmentNumber, po: s.ourPos[0], pro: s.pros[0], ups: s.ups[0] }) : null;
   const carrier = s.scac ? l.carrierBy.get(s.scac) : undefined;
   const ours = s.ourPos;
   // The TMS ID the WMS has for a carton (or the malformed one it typed)
@@ -64,7 +64,7 @@ export default async function LogisticsShipmentPage({ params }: { params: Promis
       </div>
       <StatTiles
         stats={[
-          { label: "Carrier", value: s.scac ?? "None", hint: carrier ? `${carrier.name}${carrier.mode ? ` · ${carrier.mode}` : ""}${carrier.trackingUrl ? "" : " · no tracking page"}` : s.scac ? "Not in the carrier list yet" : undefined },
+          { label: "Carrier", value: s.scac ?? "None", hint: [carrier ? `${carrier.name}${carrier.mode ? ` · ${carrier.mode}` : ""}${carrier.trackingUrl || s.ups.length ? "" : " · no tracking page"}` : s.scac ? "Not in the carrier list yet" : null, s.tmsScac ? `TMS has ${s.tmsScac}; shipped with UPS numbers` : null].filter(Boolean).join(" · ") || undefined },
           { label: "Pickup", value: s.pickupLocal ?? "—" },
           { label: "Delivery", value: s.deliveryLocal ?? "—" },
           { label: "From", value: [s.originCity, s.originState].filter(Boolean).join(", ") || "—", hint: s.originFacility ?? undefined },

@@ -72,7 +72,7 @@ export default async function LogisticsPoPage({ params }: { params: Promise<{ po
               cols={[
                 { header: "Shipment #", cell: (s) => <ShipmentLink number={s.shipmentNumber} /> },
                 { header: "Status", cell: (s) => <TmsStatusBadge status={s.status} /> },
-                { header: "SCAC", cell: (s) => <ScacLink scac={s.scac} {...(s.scac ? scacLink(l, s.scac, { shipment: s.shipmentNumber, po: p.poNumber, pro: p.pros[0] }) : {})} /> },
+                { header: "SCAC", cell: (s) => <ScacLink scac={s.scac} was={s.tmsScac} {...(s.scac ? scacLink(l, s.scac, { shipment: s.shipmentNumber, po: p.poNumber, pro: p.pros[0], ups: p.ups[0] }) : {})} /> },
                 { header: "Pickup / delivery", cell: (s) => <Dates pickup={s.pickupLocal} delivery={s.deliveryLocal} /> },
                 {
                   header: "Route / stops",

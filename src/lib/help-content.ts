@@ -409,7 +409,7 @@ export const HELP_TOPICS: HelpTopic[] = [
       {
         list: [
           "Click a **SCAC** to open the carrier's tracking page in a new tab. Where the carrier's link takes a PRO, shipment or PO number, it's filled in. A SCAC with no tracking page set shows as plain text; add its page under **Logistics › Carriers** (a shipment page offers **Add a tracking page** for its carrier).",
-          "UPS numbers (1Z…) link to ups.com. When UPS tracking is set up (an administrator adds the UPS credentials under Admin › Settings › UPS tracking), the **UPS parcels** tab shows UPS's latest status, last activity and delivery date; **Refresh UPS tracking** asks UPS again.",
+          "A shipment TMS books with **RG** whose POs the WMS shipped with UPS numbers (1Z…) is UPS: it shows as **UPSN** (with \"TMS: RG\" beside it) and links to UPS tracking. UPS numbers (1Z…) link to ups.com. When UPS tracking is set up (an administrator adds the UPS credentials under Admin › Settings › UPS tracking), the **UPS parcels** tab shows UPS's latest status, last activity and delivery date; **Refresh UPS tracking** asks UPS again.",
         ],
       },
       { h: "Notes, issues and scorecards" },

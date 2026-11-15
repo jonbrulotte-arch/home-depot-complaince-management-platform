@@ -2,8 +2,8 @@ import { cache } from "react";
 import { prisma } from "@/lib/prisma";
 import { poNumberVariants } from "@/lib/issues";
 import { getTimeZone } from "@/lib/time-zone-server";
-import { carrierUrl, type CarrierLinkInfo } from "@/lib/logistics/refs";
-import { FLAGS, buildLogistics, type FlagCode, type PoView } from "@/lib/logistics/views";
+import { carrierUrl, upsTrackingUrl, type CarrierLinkInfo } from "@/lib/logistics/refs";
+import { FLAGS, UPS_SCAC, buildLogistics, type FlagCode, type PoView } from "@/lib/logistics/views";
 
 // Loads the logistics rows and builds the views (views.ts) once per request. Volumes are small
 // (a supplier's last few months of POs), so the views are built in memory.
@@ -76,8 +76,9 @@ export const loadLogistics = cache(async () => {
 
 export type LoadedLogistics = Awaited<ReturnType<typeof loadLogistics>>;
 
-/** The link for a shipment's SCAC */
-export function scacLink(l: Pick<LoadedLogistics, "carrierBy">, scac: string, refs: { pro?: string | null; shipment?: string | null; po?: string | null }) {
+/** The link for a shipment's SCAC; UPS opens the tracking of a UPS number when there is one */
+export function scacLink(l: Pick<LoadedLogistics, "carrierBy">, scac: string, refs: { pro?: string | null; shipment?: string | null; po?: string | null; ups?: string | null }) {
+  if (scac === UPS_SCAC && refs.ups) return { url: upsTrackingUrl(refs.ups), known: true };
   return carrierUrl(scac, l.carrierBy.get(scac), refs);
 }
 
@@ -120,7 +121,7 @@ export function summarize(l: Pick<LoadedLogistics, "carrierBy">, p: PoView): PoL
       number: s.shipmentNumber,
       status: s.status,
       scac: s.scac,
-      url: s.scac ? scacLink(l, s.scac, { shipment: s.shipmentNumber, po: p.poNumber, pro: p.pros[0] }).url : null,
+      url: s.scac ? scacLink(l, s.scac, { shipment: s.shipmentNumber, po: p.poNumber, pro: p.pros[0], ups: p.ups[0] }).url : null,
       delivery: s.deliveryLocal,
     })),
     ups: p.ups,

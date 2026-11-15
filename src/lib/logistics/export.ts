@@ -52,7 +52,7 @@ export async function logisticsWorkbook(l: LoadedLogistics, pos: PoView[], siteN
     shipments.map((s) => [
       s.shipmentNumber,
       s.status,
-      s.scac,
+      s.tmsScac ? `${s.scac} (TMS: ${s.tmsScac})` : s.scac,
       s.pickupLocal,
       s.deliveryLocal,
       [s.originFacility, s.originCity, s.originState].filter(Boolean).join(" · "),

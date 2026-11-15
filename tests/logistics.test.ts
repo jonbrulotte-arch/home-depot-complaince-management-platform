@@ -106,6 +106,16 @@ describe("logistics views of the sample files", () => {
     expect(mismatched.cartons.length).toBeGreaterThan(0);
     expect(new Set(mismatched.cartons.map((c) => c.trackingNumber))).toEqual(new Set(["233565631"]));
     expect(mismatched.cartonCount).toBe(po("1191515201").cartonCount + po("1191515216").cartonCount + po("1191515251").cartonCount + po("1191515253").cartonCount + po("1191515309").cartonCount + po("1191515344").cartonCount + po("1191515376").cartonCount + po("1191515391").cartonCount);
+    // RG shipments whose POs went out with UPS numbers are UPS (UPSN); TMS's RG is kept
+    const rgUps = views.shipments.find((s) => s.shipmentNumber === "233530043")!;
+    expect(rgUps).toMatchObject({ scac: "UPSN", tmsScac: "RG" });
+    expect(rgUps.ups).toEqual(["1Z9X0F560308361762"]);
+    expect(rgUps.cartonCount).toBeGreaterThan(0);
+    expect(po("1191138116").shipments[0].scac).toBe("UPSN");
+    // An RG shipment with a PRO, not UPS numbers, stays RG
+    expect(views.shipments.find((s) => s.shipmentNumber === "233480666")).toMatchObject({ scac: "RG" });
+    expect(views.shipments.find((s) => s.shipmentNumber === "233480666")!.tmsScac).toBeUndefined();
+    expect(filterPos(views.pos, { scac: "UPSN" }).map((p) => p.poNumber)).toContain("1191138116");
     // Cartons whose TMS ID is another shipment that lists their PO stay with that shipment
     const elsewhere = views.shipments.find((s) => s.shipmentNumber === "233564346")!;
     expect(elsewhere.cartons.every((c) => c.trackingNumber === "233564346")).toBe(true);

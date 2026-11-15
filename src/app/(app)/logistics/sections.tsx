@@ -119,7 +119,7 @@ export function PosTab({ l, filters, notes }: { l: LoadedLogistics; filters: PoF
                     {p.shipments.map((s) => (
                       <span key={s.shipmentNumber} className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5">
                         <ShipmentLink number={s.shipmentNumber} />
-                        <ScacLink scac={s.scac} {...(s.scac ? scacLink(l, s.scac, { shipment: s.shipmentNumber, po: p.poNumber, pro: p.pros[0] }) : {})} />
+                        <ScacLink scac={s.scac} was={s.tmsScac} {...(s.scac ? scacLink(l, s.scac, { shipment: s.shipmentNumber, po: p.poNumber, pro: p.pros[0], ups: p.ups[0] }) : {})} />
                         <TmsStatusBadge status={s.status} />
                       </span>
                     ))}
@@ -168,7 +168,7 @@ export function ShipmentsTab({ l, scac, late }: { l: LoadedLogistics; scac?: str
         cols={[
           { header: "Shipment #", cell: (s) => <ShipmentLink number={s.shipmentNumber} /> },
           { header: "Status", cell: (s) => <TmsStatusBadge status={s.status} /> },
-          { header: "SCAC", cell: (s) => <ScacLink scac={s.scac} {...(s.scac ? scacLink(l, s.scac, { shipment: s.shipmentNumber, po: s.poNumbers[0], pro: s.pros[0] }) : {})} /> },
+          { header: "SCAC", cell: (s) => <ScacLink scac={s.scac} was={s.tmsScac} {...(s.scac ? scacLink(l, s.scac, { shipment: s.shipmentNumber, po: s.ourPos[0], pro: s.pros[0], ups: s.ups[0] }) : {})} /> },
           { header: "Pickup / delivery", cell: (s) => <Dates pickup={s.pickupLocal} delivery={s.deliveryLocal} /> },
           { header: "Route", cell: (s) => <Route from={[s.originCity, s.originState].filter(Boolean).join(", ")} to={[s.destFacility, [s.destCity, s.destState].filter(Boolean).join(", ")].filter(Boolean).join(" · ")} /> },
           {

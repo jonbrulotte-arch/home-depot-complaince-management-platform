@@ -38,6 +38,8 @@ export interface Shipment {
   poNumbers: string[];
   appointment: string | null;
   tmsFlags: string[];
+  /** The SCAC as TMS has it, when it was changed (an RG shipment whose POs went UPS shows UPSN) */
+  tmsScac?: string | null;
 }
 
 export interface TmsPo {
@@ -111,6 +113,8 @@ const norm = (s: string | null | undefined) => (s ?? "").trim().toUpperCase();
 export const isCrossdock = (facility: string | null | undefined) => /^XD/i.test(facility?.trim() ?? "");
 /** A PO number without leading zeros, for matching numbers typed elsewhere */
 const bareNumber = (po: string) => po.trim().toUpperCase().replace(/^0+(?=\d)/, "");
+/** The SCAC of UPS (parcel) */
+export const UPS_SCAC = "UPSN";
 const isCanceled = (status: string) => /^cancel/i.test(status);
 const isDelivered = (status: string) => /^deliver/i.test(status);
 const isMoving = (status: string) => /transit|picked|dispatch|out for/i.test(status);
@@ -190,6 +194,8 @@ export interface ShipmentView extends Shipment {
   cartonCount: number;
   units: number;
   pros: string[];
+  /** UPS numbers on its cartons (a shipment shown as UPSN) */
+  ups: string[];
   flags: Flag[];
 }
 
@@ -203,7 +209,13 @@ export interface LogisticsData {
 }
 
 /** Every PO and shipment with its flags. `today` is the viewer's date (YYYY-MM-DD). */
-export function buildLogistics(data: LogisticsData, today: string) {
+export function buildLogistics(input: LogisticsData, today: string) {
+  // RG (routing guide) shipments whose POs went out with UPS numbers are UPS: show them as UPSN
+  const upsPos = new Set(input.cartons.filter((c) => cartonRefs(c.trackingNumber, c.secondTrack).ups).map((c) => c.poNumber));
+  const data: LogisticsData = {
+    ...input,
+    shipments: input.shipments.map((s) => (s.scac?.toUpperCase() === "RG" && s.poNumbers.some((po) => upsPos.has(po)) ? { ...s, scac: UPS_SCAC, tmsScac: s.scac } : s)),
+  };
   const shipmentsByNumber = new Map(data.shipments.map((s) => [s.shipmentNumber, s]));
   const tmsByPo = new Map(data.pos.map((p) => [p.poNumber, p]));
   const parcelsByNumber = new Map(data.parcels.map((p) => [p.trackingNumber, p]));
@@ -323,7 +335,9 @@ export function buildLogistics(data: LogisticsData, today: string) {
       const cartons = data.cartons.filter((c) => {
         const r = cartonRefs(c.trackingNumber, c.secondTrack);
         if (r.tms === s.shipmentNumber) return true;
-        if (!s.poNumbers.includes(c.poNumber) || r.ups) return false;
+        if (!s.poNumbers.includes(c.poNumber)) return false;
+        // UPS cartons belong to a shipment that turned out to be UPS
+        if (r.ups) return s.scac === UPS_SCAC && Boolean(s.tmsScac);
         return !r.tms || !shipmentsByNumber.get(r.tms)?.poNumbers.includes(c.poNumber);
       });
       const flags = [...flagsOf(s)];
@@ -341,6 +355,7 @@ export function buildLogistics(data: LogisticsData, today: string) {
         cartonCount: new Set(cartons.map((c) => c.label)).size,
         units: cartons.reduce((n, c) => n + (c.quantity ?? 0), 0),
         pros: [...new Set(cartons.map((c) => cartonRefs(c.trackingNumber, c.secondTrack).pro).filter((x): x is string => Boolean(x)))],
+        ups: [...new Set(cartons.map((c) => cartonRefs(c.trackingNumber, c.secondTrack).ups).filter((x): x is string => Boolean(x)))],
         flags: flags.sort(bySeverity),
       };
     })
