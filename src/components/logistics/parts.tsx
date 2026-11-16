@@ -64,11 +64,11 @@ export function FlagList({ flags }: { flags: Flag[] }) {
 /** The SCAC, linking to the carrier's tracking page in a new tab */
 export function ScacLink({ scac, url, known, was }: { scac: string | null; url?: string | null; known?: boolean; /** The SCAC TMS has, when it was changed (RG → UPSN) */ was?: string | null }) {
   if (!scac) return <span className="text-gray-400">—</span>;
+  // A changed SCAC (RG shipped as UPS) shows as the new one; the TMS SCAC is in the tooltip
   if (was && was !== scac)
     return (
-      <span className="inline-flex items-center gap-1" title={`TMS has ${was}; the WMS shipped it with UPS tracking numbers`}>
+      <span title={`TMS has ${was}; the WMS shipped it with UPS tracking numbers`}>
         <ScacLink scac={scac} url={url} known={known} />
-        <span className="text-xs text-gray-400">(TMS: {was})</span>
       </span>
     );
   if (!url)
