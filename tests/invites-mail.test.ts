@@ -8,6 +8,27 @@ vi.mock("@/lib/branding", () => ({ getBranding: async () => ({ siteName: "HD Com
 const env = { MS_GRAPH_TENANT_ID: "t", MS_GRAPH_CLIENT_ID: "c", MS_GRAPH_CLIENT_SECRET: "s", MS_GRAPH_SENDER: "noreply@jsproducts.com" };
 
 describe("email through Microsoft Graph", () => {
+  it("sends to several people with a Cc, a reply-to address and a file attached", async () => {
+    let sent: { message: Record<string, unknown>; saveToSentItems: boolean } | null = null;
+    const fetchMock = (async (url: string, init: RequestInit) => {
+      if (url.includes("login.microsoftonline.com")) return new Response(JSON.stringify({ access_token: "tok2", expires_in: 3600 }), { status: 200 });
+      sent = JSON.parse(String(init.body));
+      return new Response(null, { status: 202 });
+    }) as unknown as typeof fetch;
+    await sendMail(
+      { to: ["edi@x.com", "edi2@x.com"], cc: ["me@x.com"], replyTo: "jon@x.com", subject: "S", html: "<p/>", attachments: [{ name: "r.pdf", contentType: "application/pdf", bytes: new Uint8Array([37, 80, 68, 70]) }], saveToSentItems: true },
+      { ...mailConfig(env).config!, tenantId: "t3" },
+      fetchMock,
+    );
+    expect(sent!.saveToSentItems).toBe(true);
+    expect(sent!.message).toMatchObject({
+      toRecipients: [{ emailAddress: { address: "edi@x.com" } }, { emailAddress: { address: "edi2@x.com" } }],
+      ccRecipients: [{ emailAddress: { address: "me@x.com" } }],
+      replyTo: [{ emailAddress: { address: "jon@x.com" } }],
+      attachments: [{ "@odata.type": "#microsoft.graph.fileAttachment", name: "r.pdf", contentType: "application/pdf", contentBytes: "JVBERg==" }],
+    });
+  });
+
   it("reads its settings from the environment and names what is missing", () => {
     expect(mailConfig(env).config?.sender).toBe("noreply@jsproducts.com");
     expect(mailConfig({ ...env, MS_GRAPH_CLIENT_SECRET: " " })).toEqual({ config: null, missing: ["MS_GRAPH_CLIENT_SECRET"] });

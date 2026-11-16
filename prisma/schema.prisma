@@ -680,6 +680,8 @@ model SiteSettings {
   upsClientSecret      String?
   /// Use UPS's test environment (wwwcie.ups.com) instead of production
   upsTestMode          Boolean     @default(false)
+  /// Where Logistics › Send to EDI team emails go (comma-separated addresses); null when not set
+  ediTeamEmail         String?
   updatedAt            DateTime    @updatedAt
   updatedById          String?
 }

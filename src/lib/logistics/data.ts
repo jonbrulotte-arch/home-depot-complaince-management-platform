@@ -136,3 +136,13 @@ export function summarize(l: Pick<LoadedLogistics, "carrierBy">, p: PoView): PoL
 }
 
 const flagLabel = (code: FlagCode) => FLAGS[code].label;
+
+/** The POs or shipments picked on the POs or Shipments tab, in the order given (unknown ids dropped) */
+export function selectItems(l: Pick<LoadedLogistics, "pos" | "shipments">, kind: "po" | "shipment", ids: string[]) {
+  if (kind === "po") {
+    const by = new Map(l.pos.map((p) => [p.poNumber, p]));
+    return { pos: ids.map((id) => by.get(id)).filter((p): p is PoView => Boolean(p)), shipments: [] as LoadedLogistics["shipments"] };
+  }
+  const by = new Map(l.shipments.map((s) => [s.shipmentNumber, s]));
+  return { pos: [] as PoView[], shipments: ids.map((id) => by.get(id)).filter((s): s is LoadedLogistics["shipments"][number] => Boolean(s)) };
+}

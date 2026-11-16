@@ -62,6 +62,9 @@ export default async function LogisticsPage({
     }),
     wmsReportUrl(),
   ]);
+  const edi = await prisma.siteSettings.findUnique({ where: { id: "site" }, select: { ediTeamEmail: true } });
+  // The selection toolbar: export for everyone here; emailing the EDI team needs logistics.manage
+  const sel = { canEmail: canManage, ediTo: edi?.ediTeamEmail ?? "", sender: user.name };
 
   return (
     <div className="p-6 max-w-7xl mx-auto space-y-6">
@@ -129,9 +132,10 @@ export default async function LogisticsPage({
             scac: sp.scac,
           }}
           notes={l.notes.po}
+          sel={sel}
         />
       ) : tab === "shipments" ? (
-        <ShipmentsTab l={l} scac={sp.scac} late={sp.late === "1"} />
+        <ShipmentsTab l={l} scac={sp.scac} late={sp.late === "1"} sel={sel} />
       ) : tab === "parcels" ? (
         <ParcelsTab
           l={l}

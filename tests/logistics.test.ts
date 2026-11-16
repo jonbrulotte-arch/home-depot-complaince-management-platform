@@ -191,6 +191,43 @@ describe("PO order", () => {
   });
 });
 
+describe("Send to EDI team", () => {
+  it("drafts the email from the selection and the issue types ticked", async () => {
+    const { ediDraft, parseAddresses, poLine, shipmentLine, suggestedTypes, textToHtml } = await import("@/lib/logistics/edi");
+    const { views } = await sample();
+    const po = views.pos.find((p) => p.poNumber === "1191515251")!;
+    const line = poLine(po);
+    expect(line).toContain("PO 1191515251");
+    expect(line).toContain("TMS 233586508 (LOAA)");
+    expect(line).toContain("WMS has TMS ID 233565631");
+    expect(line).toContain("TMS ID mismatch");
+    expect(suggestedTypes(po.flags.map((f) => f.code))).toEqual(["tms-id", "planex"]);
+    const d = ediDraft({ kind: "po", lines: [line], poNumbers: ["1191515251"], types: ["tms-id", "planex"], sender: "Jon Brulotte", fileName: "r.pdf" });
+    expect(d.subject).toBe("Action needed: 1 PO (Correct the TMS shipment ID; Confirm the destination in Vendor PlanEx)");
+    expect(d.body).toContain("- Correct the TMS shipment ID on the ASN and labels");
+    expect(d.body).toContain(`- ${line}`);
+    expect(d.body).toContain("The attached report (r.pdf)");
+    expect(d.body.endsWith("Thanks,\nJon Brulotte")).toBe(true);
+    const ship = views.shipments.find((s) => s.shipmentNumber === "233480604")!;
+    expect(shipmentLine(ship)).toContain("POs 1191139146");
+    expect(ediDraft({ kind: "shipment", lines: [shipmentLine(ship)], poNumbers: ship.ourPos, types: [], sender: "J", fileName: "r.pdf" }).body).toContain(`PO numbers: ${ship.ourPos.join(", ")}`);
+    expect(parseAddresses("a@b.com; c@d.org,  a@b.com")).toEqual(["a@b.com", "c@d.org"]);
+    expect(parseAddresses("")).toEqual([]);
+    expect(parseAddresses("not an address")).toBeNull();
+    expect(textToHtml("<b>&\nx")).toContain("&lt;b&gt;&amp;\nx");
+  });
+
+  it("writes the report of the selection as a PDF", async () => {
+    const { logisticsReportPdf } = await import("@/lib/logistics/report-pdf");
+    const { views } = await sample();
+    const pos = views.pos.filter((p) => ["1191515251", "1191142969"].includes(p.poNumber));
+    const pdf = await logisticsReportPdf({ kind: "po", pos, shipments: [], by: "Jon", timeZone: "America/New_York" });
+    expect(pdf.subarray(0, 5).toString("latin1")).toBe("%PDF-");
+    const ships = await logisticsReportPdf({ kind: "shipment", pos: [], shipments: views.shipments.slice(0, 3), by: "Jon", timeZone: "America/New_York" });
+    expect(ships.length).toBeGreaterThan(1000);
+  });
+});
+
 describe("UPS tracking answers", () => {
   it("keeps the status, delivery and last activity", async () => {
     const { parseUpsTrack } = await import("@/lib/logistics/ups-parse");

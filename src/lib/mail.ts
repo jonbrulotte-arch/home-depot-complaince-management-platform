@@ -44,11 +44,26 @@ async function accessToken(c: MailConfig, fetchImpl: typeof fetch): Promise<stri
   return data.access_token;
 }
 
+export interface MailAttachment {
+  name: string;
+  contentType: string;
+  bytes: Uint8Array;
+}
+
 export interface Mail {
-  to: string;
+  to: string | string[];
+  cc?: string[];
+  /** Replies go here (e.g. the person who sent it) rather than to the sending mailbox */
+  replyTo?: string;
   subject: string;
   html: string;
+  /** Small files (Graph takes up to about 3 MB in one message) */
+  attachments?: MailAttachment[];
+  /** Keep a copy in the sending mailbox's Sent Items */
+  saveToSentItems?: boolean;
 }
+
+const recipients = (list: string[]) => list.map((address) => ({ emailAddress: { address } }));
 
 /** Sends one email from the configured mailbox; throws MailError with Microsoft's reason when it fails. */
 export async function sendMail(mail: Mail, config = mailConfig().config, fetchImpl: typeof fetch = fetch): Promise<void> {
@@ -58,8 +73,24 @@ export async function sendMail(mail: Mail, config = mailConfig().config, fetchIm
     method: "POST",
     headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
     body: JSON.stringify({
-      message: { subject: mail.subject, body: { contentType: "HTML", content: mail.html }, toRecipients: [{ emailAddress: { address: mail.to } }] },
-      saveToSentItems: false,
+      message: {
+        subject: mail.subject,
+        body: { contentType: "HTML", content: mail.html },
+        toRecipients: recipients(Array.isArray(mail.to) ? mail.to : [mail.to]),
+        ...(mail.cc?.length ? { ccRecipients: recipients(mail.cc) } : {}),
+        ...(mail.replyTo ? { replyTo: recipients([mail.replyTo]) } : {}),
+        ...(mail.attachments?.length
+          ? {
+              attachments: mail.attachments.map((a) => ({
+                "@odata.type": "#microsoft.graph.fileAttachment",
+                name: a.name,
+                contentType: a.contentType,
+                contentBytes: Buffer.from(a.bytes).toString("base64"),
+              })),
+            }
+          : {}),
+      },
+      saveToSentItems: Boolean(mail.saveToSentItems),
     }),
   });
   if (res.status !== 202 && !res.ok) {
