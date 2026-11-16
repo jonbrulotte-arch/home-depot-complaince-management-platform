@@ -335,7 +335,7 @@ export const HELP_TOPICS: HelpTopic[] = [
       },
       { h: "Canceled orders" },
       {
-        p: "TMS doesn't always remove a canceled PO, which leaves its shipment open in Logistics. Log an issue in the **Order cancellation** category with the PO and set it to **Resolved**: Logistics and the PO record then show the PO as **Canceled**, with a note pointing to the issue.",
+        p: "TMS doesn't always remove a canceled PO, which leaves its shipment open in Logistics. Log an issue in the **Order cancellation** category with the PO and set it to **Resolved**: Logistics and the PO record then show the PO as **Canceled**, with a note pointing to the issue. Use **Line cancellation** when only some lines of a PO were canceled: the PO stays open in Logistics.",
       },
     ],
   },
@@ -395,7 +395,7 @@ export const HELP_TOPICS: HelpTopic[] = [
           ["No TMS shipment", "The WMS shipped the PO, but no TMS shipment lists it and the cartons have no TMS ID."],
           ["TMS ID not in TMS file", "The cartons' TMS ID isn't in the Shipments export (import a newer one, or check the ID)."],
           ["Canceled PO shipped", "TMS shows the PO canceled, but it shipped or is on a shipment."],
-          ["Canceled (Issue Log) (info)", "A **Resolved** Issue Log issue in the **Order cancellation** category lists the PO, so it shows as **Canceled** here and on its PO record, even when TMS still has it open (TMS doesn't always remove canceled POs, leaving their shipments open). Its pickup-passed, delivery-overdue and no-carrier flags are dropped. Its shipment notes the cancellation, and once every one of our POs on it is canceled this way, the shipment shows as **Canceled** too (with TMS's status beside it) and drops out of the open and overdue counts. For a reused PO number, the issue's PO create date picks the use (without one, the issue must be dated on or after the PO's creation). Reopen the issue or change its category and the PO goes back to its TMS status."],
+          ["Canceled (Issue Log) (info)", "A **Resolved** Issue Log issue in the **Order cancellation** category lists the PO, so it shows as **Canceled** here and on its PO record, even when TMS still has it open (TMS doesn't always remove canceled POs, leaving their shipments open). Its pickup-passed, delivery-overdue and no-carrier flags are dropped. Its shipment notes the cancellation, and once every one of our POs on it is canceled this way, the shipment shows as **Canceled** too (with TMS's status beside it) and drops out of the open and overdue counts. For a reused PO number, the issue's PO create date picks the use (without one, the issue must be dated on or after the PO's creation). Reopen the issue or change its category and the PO goes back to its TMS status. **Line cancellation** issues don't change a PO's status, since the rest of the PO still ships."],
           ["Wrong destination", "The WMS shipped to a different city or state than the PO's destination DC."],
           ["Ship-to city misspelled", "The WMS ship-to city is a near spelling of the DC's city: a typo in the WMS ship-to address."],
           ["Pickup date passed", "The pickup date has passed and TMS still shows Accepted, Tendered or Available."],

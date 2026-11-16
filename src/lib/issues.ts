@@ -28,6 +28,7 @@ export const ISSUE_CATEGORIES = [
   "ASN / EDI",
   "Inventory / stock",
   "Order cancellation",
+  "Line cancellation",
   "Labeling / packaging",
   "Routing guide",
   "THD system / SPM",
