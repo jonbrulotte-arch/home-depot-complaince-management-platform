@@ -7,7 +7,7 @@ import { prisma } from "@/lib/prisma";
 
 import type { TeamOption } from "@/lib/team-options";
 
-export { pickerTeams, type TeamOption } from "@/lib/team-options";
+export { parseTeamAddresses, pickerTeams, type TeamOption } from "@/lib/team-options";
 
 /** Every team, in the admins' order (cached per request). */
 export const getTeams = cache(async (): Promise<(TeamOption & { id: string; description: string | null; sortOrder: number })[]> =>
@@ -39,4 +39,10 @@ export function teamKeyFor(name: string, taken: string[]): string {
   const used = new Set(taken.map((t) => t.toUpperCase()));
   if (!used.has(base)) return base;
   for (let i = 2; ; i++) if (!used.has(`${base}_${i}`)) return `${base}_${i}`;
+}
+
+/** Teams with addresses, for Logistics › Send Email (active ones, in the admins' order) */
+export async function emailTeams(): Promise<{ key: string; name: string; to: string[]; cc: string[] }[]> {
+  const teams = await prisma.team.findMany({ where: { active: true }, orderBy: [{ sortOrder: "asc" }, { name: "asc" }], select: { key: true, name: true, emailTo: true, emailCc: true } });
+  return teams.filter((t) => t.emailTo.length || t.emailCc.length).map((t) => ({ key: t.key, name: t.name, to: t.emailTo, cc: t.emailCc }));
 }

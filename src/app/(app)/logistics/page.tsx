@@ -6,6 +6,7 @@ import { wmsReportUrl } from "@/lib/logistics/import";
 import { LOGISTICS_KIND_LABELS } from "@/lib/logistics/parse";
 import { upsConfigured } from "@/lib/logistics/ups";
 import { getTimeZone } from "@/lib/time-zone-server";
+import { emailTeams } from "@/lib/teams";
 import { formatDateTime } from "@/lib/utils";
 import {
   Card,
@@ -62,9 +63,8 @@ export default async function LogisticsPage({
     }),
     wmsReportUrl(),
   ]);
-  const edi = await prisma.siteSettings.findUnique({ where: { id: "site" }, select: { ediTeamEmail: true } });
-  // The selection toolbar: export for everyone here; emailing the EDI team needs logistics.manage
-  const sel = { canEmail: canManage, ediTo: edi?.ediTeamEmail ?? "", sender: user.name };
+  // The selection toolbar: export for everyone here; Send Email (to the teams with addresses) needs logistics.manage
+  const sel = { canEmail: canManage, teams: canManage ? await emailTeams() : [], sender: user.name };
 
   return (
     <div className="p-6 max-w-7xl mx-auto space-y-6">

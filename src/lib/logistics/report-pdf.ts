@@ -6,7 +6,7 @@ import type { SelectionKind } from "@/lib/logistics/edi";
 import { formatDateTime, formatUtcDate } from "@/lib/utils";
 
 // The Logistics report for selected POs or shipments, as a landscape Letter PDF: a summary table,
-// then each one with its flags explained. The same report is attached to Send to EDI team emails.
+// then each one with its flags explained. The same report is attached to Send Email emails.
 
 const SEV_COLOR = { high: C.red, medium: C.amber, info: C.muted } as const;
 const route = (s: { originCity: string | null; originState: string | null; destFacility: string | null; destCity: string | null; destState: string | null }) =>

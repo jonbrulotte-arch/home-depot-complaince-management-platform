@@ -8,11 +8,10 @@ import { mailConfig } from "@/lib/mail";
 import { SopSettings } from "./sop-settings";
 import { WmsReportSettings } from "./wms-report-settings";
 import { UpsSettings } from "./ups-settings";
-import { EdiTeamSettings } from "./edi-team-settings";
 
 export default async function SettingsPage() {
   await requirePagePermission("admin.settings");
-  const s = await prisma.siteSettings.findUnique({ where: { id: "site" }, select: { brandingEnabled: true, siteName: true, logoContentType: true, updatedAt: true, reportPeriodBasis: true, publicDashboardToken: true, wmsReportUrl: true, upsClientId: true, upsClientSecret: true, upsTestMode: true, ediTeamEmail: true } });
+  const s = await prisma.siteSettings.findUnique({ where: { id: "site" }, select: { brandingEnabled: true, siteName: true, logoContentType: true, updatedAt: true, reportPeriodBasis: true, publicDashboardToken: true, wmsReportUrl: true, upsClientId: true, upsClientSecret: true, upsTestMode: true } });
   const mail = mailConfig();
   const [sops, roles] = await Promise.all([
     prisma.sopDocument.findMany({ orderBy: [{ sortOrder: "asc" }, { title: "asc" }], select: { id: true, title: true, fileName: true, size: true, roleIds: true, updatedAt: true } }),
@@ -27,7 +26,6 @@ export default async function SettingsPage() {
       <ReportPeriodSettings initial={s?.reportPeriodBasis ?? "RECEIVED_MONTH"} />
       <PublicDashboardSettings initialToken={s?.publicDashboardToken ?? null} />
       <WmsReportSettings initial={s?.wmsReportUrl ?? null} />
-      <EdiTeamSettings initial={s?.ediTeamEmail ?? null} />
       <UpsSettings initial={{ clientId: s?.upsClientId ?? null, hasSecret: Boolean(s?.upsClientSecret), testMode: s?.upsTestMode ?? false }} />
       <SopSettings sops={sops.map((x) => ({ ...x, updatedAt: x.updatedAt.toISOString() }))} roles={roles} />
       <EmailSettings configured={Boolean(mail.config)} sender={mail.config?.sender ?? (process.env.MS_GRAPH_SENDER?.trim() || null)} missing={mail.missing} />

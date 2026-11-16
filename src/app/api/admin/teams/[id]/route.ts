@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { requireApiPermission } from "@/lib/auth-guard";
 import { badRequest, notFound, parseJson, type IdParams } from "@/lib/api";
 import { audit } from "@/lib/audit";
+import { parseTeamAddresses } from "@/lib/teams";
 
 const patchSchema = z.object({
   name: z.string().trim().min(1, "is required").max(60).optional(),
@@ -14,9 +15,12 @@ const patchSchema = z.object({
     .nullish()
     .transform((d) => (d === undefined ? undefined : d || null)),
   active: z.boolean().optional(),
+  /** Addresses for Logistics › Send Email, separated by commas */
+  emailTo: z.string().max(2000).optional(),
+  emailCc: z.string().max(2000).optional(),
 });
 
-/** Renames a team, changes its description, or turns it off (kept on earlier reviews and issues) or on. */
+/** Renames a team, changes its description or email addresses, or turns it off (kept on earlier reviews and issues) or on. */
 export async function PATCH(req: Request, { params }: IdParams) {
   const guard = await requireApiPermission("admin.teams");
   if (guard.error) return guard.error;
@@ -26,6 +30,10 @@ export async function PATCH(req: Request, { params }: IdParams) {
   const team = await prisma.team.findUnique({ where: { id } });
   if (!team) return notFound("Team not found");
   const { name, description, active } = body.data;
+  const emails = parseTeamAddresses(body.data);
+  if ("error" in emails) return badRequest(emails.error);
+  const { emailTo, emailCc } = emails;
+  const same = (a: string[], b: string[]) => a.join(",") === b.join(",");
   if (name && name.toLowerCase() !== team.name.toLowerCase() && (await prisma.team.findFirst({ where: { name: { equals: name, mode: "insensitive" }, NOT: { id } } }))) {
     return badRequest("A team with that name already exists");
   }
@@ -33,8 +41,10 @@ export async function PATCH(req: Request, { params }: IdParams) {
   if (name !== undefined && name !== team.name) diff.name = { from: team.name, to: name };
   if (description !== undefined && description !== team.description) diff.description = { from: team.description, to: description };
   if (active !== undefined && active !== team.active) diff.active = { from: team.active, to: active };
+  if (emailTo && !same(emailTo, team.emailTo)) diff.emailTo = { from: team.emailTo, to: emailTo };
+  if (emailCc && !same(emailCc, team.emailCc)) diff.emailCc = { from: team.emailCc, to: emailCc };
   if (Object.keys(diff).length) {
-    await prisma.team.update({ where: { id }, data: { ...(name !== undefined ? { name } : {}), ...(description !== undefined ? { description } : {}), ...(active !== undefined ? { active } : {}) } });
+    await prisma.team.update({ where: { id }, data: { ...(name !== undefined ? { name } : {}), ...(description !== undefined ? { description } : {}), ...(active !== undefined ? { active } : {}), ...(diff.emailTo ? { emailTo } : {}), ...(diff.emailCc ? { emailCc } : {}) } });
     await audit(guard.user.id, "team.update", "Team", id, { key: team.key, ...diff });
   }
   return NextResponse.json({ ok: true });

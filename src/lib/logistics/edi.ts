@@ -1,6 +1,8 @@
 import { FLAGS, type Flag, type FlagCode, type PoView, type ShipmentView } from "@/lib/logistics/views";
 
-// Logistics › Send to EDI team: the issue types an email can ask for, the one-line summary of each
+export { parseAddresses } from "@/lib/email-address";
+
+// Logistics › Send Email: the issue types an email can ask for, the one-line summary of each
 // PO or shipment, and the draft email built from them. Pure (unit-tested) and safe in the browser.
 
 export type SelectionKind = "po" | "shipment";
@@ -9,7 +11,7 @@ export const MAX_SELECTION = 200;
 export interface EdiIssueType {
   key: string;
   label: string;
-  /** What the email asks the EDI team to do */
+  /** What the email asks the team to do */
   request: string;
   /** Flags that suggest this type (pre-ticked when the selection has them) */
   flags: FlagCode[];
@@ -64,12 +66,12 @@ export function suggestedTypes(flagCodes: string[]): string[] {
 }
 
 /** The email as first drafted; people edit it before sending */
-export function ediDraft({ kind, lines, poNumbers, types, sender, fileName }: { kind: SelectionKind; lines: string[]; poNumbers: string[]; types: string[]; sender: string; fileName: string }) {
+export function ediDraft({ kind, lines, poNumbers, types, sender, fileName, team }: { kind: SelectionKind; lines: string[]; poNumbers: string[]; types: string[]; sender: string; fileName: string; team?: string | null }) {
   const chosen = EDI_ISSUE_TYPES.filter((t) => types.includes(t.key));
   const noun = kind === "po" ? (lines.length === 1 ? "PO" : "POs") : lines.length === 1 ? "shipment" : "shipments";
   const subject = `Action needed: ${lines.length} ${noun}${chosen.length ? ` (${chosen.filter((t) => t.key !== "other").map((t) => t.label).join("; ") || "see note"})` : ""}`;
   const body = [
-    "Hi EDI team,",
+    greeting(team),
     "",
     `Please take action on the ${lines.length} ${noun} below.`,
     "",
@@ -86,17 +88,47 @@ export function ediDraft({ kind, lines, poNumbers, types, sender, fileName }: { 
   return { subject: subject.slice(0, 250), body };
 }
 
-/** Email addresses typed with commas, semicolons or spaces; null when one isn't an address */
-export function parseAddresses(text: string): string[] | null {
-  const list = text
-    .split(/[\s,;]+/)
-    .map((a) => a.trim())
-    .filter(Boolean);
-  return list.every((a) => /^[^@\s<>]+@[^@\s<>]+\.[^@\s<>]+$/.test(a)) ? [...new Set(list)] : null;
+/** "Hi Ohio Shipping team," for the team picked, "Hi," without one */
+function greeting(team?: string | null): string {
+  const name = team?.trim();
+  if (!name) return "Hi,";
+  return /\bteam$/i.test(name) ? `Hi ${name},` : `Hi ${name} team,`;
 }
 
-/** Plain text (the edited message) as simple email HTML: escaped, line breaks kept */
+const esc = (s: string) => s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
+
+/**
+ * Plain text (the edited message) as email HTML that keeps its layout in Outlook, which ignores
+ * `white-space: pre-wrap`: blank lines start paragraphs, lines starting "- " or "* " become a
+ * bulleted list, and other line breaks are <br>.
+ */
 export function textToHtml(text: string): string {
-  const esc = (s: string) => s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
-  return `<!doctype html><html><body style="font-family:Segoe UI,Arial,sans-serif;font-size:14px;line-height:1.5;color:#111827"><div style="white-space:pre-wrap">${esc(text)}</div></body></html>`;
+  const font = "font-family:Segoe UI,Calibri,Arial,sans-serif;font-size:14px;line-height:1.5;color:#111827";
+  const out: string[] = [];
+  let para: string[] = [];
+  let items: string[] = [];
+  const flush = () => {
+    if (para.length) out.push(`<p style="margin:0 0 12px 0;${font}">${para.join("<br>")}</p>`);
+    if (items.length) out.push(`<ul style="margin:0 0 12px 0;padding-left:24px;${font}">${items.map((i) => `<li style="margin:0 0 4px 0">${i}</li>`).join("")}</ul>`);
+    para = [];
+    items = [];
+  };
+  for (const raw of text.replace(/\r\n?/g, "\n").split("\n")) {
+    const line = raw.replace(/\s+$/, "");
+    const bullet = /^\s*[-*•]\s+(.*)$/.exec(line);
+    if (!line.trim()) flush();
+    else if (bullet) {
+      if (para.length) {
+        out.push(`<p style="margin:0 0 4px 0;${font}">${para.join("<br>")}</p>`);
+        para = [];
+      }
+      items.push(esc(bullet[1]));
+    } else {
+      if (items.length) flush();
+      // Leading spaces kept (non-breaking), so indented lines stay indented
+      para.push(esc(line).replace(/^ +/, (m) => "&nbsp;".repeat(m.length)));
+    }
+  }
+  flush();
+  return `<!doctype html><html><body style="${font}">${out.join("")}</body></html>`;
 }

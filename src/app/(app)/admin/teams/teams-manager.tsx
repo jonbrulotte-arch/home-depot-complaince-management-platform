@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowDown, ArrowUp, Pencil, Plus, Trash2 } from "lucide-react";
+import { ArrowDown, ArrowUp, Mail, Pencil, Plus, Trash2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -18,6 +18,9 @@ export interface TeamRow {
   name: string;
   description: string | null;
   active: boolean;
+  /** Addresses for Logistics › Send Email */
+  emailTo: string[];
+  emailCc: string[];
   /** Violation reviews and issues that name this team */
   reviews: number;
   issues: number;
@@ -57,7 +60,7 @@ export function TeamsManager({ teams }: { teams: TeamRow[] }) {
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Teams</h1>
           <p className="text-sm text-gray-500 mt-1 max-w-3xl">
-            The teams a violation or an issue can be put on (&ldquo;Team responsible&rdquo;). Renaming a team changes it everywhere at once: violation reviews, issues, PO records, packages,
+            The teams a violation or an issue can be put on (&ldquo;Team responsible&rdquo;), and who Logistics&apos; <strong>Send Email</strong> can write to. Renaming a team changes it everywhere at once: violation reviews, issues, PO records, packages,
             disputes and Reports &amp; Insights. Published scorecards keep the name they were generated with until they are regenerated.
           </p>
         </div>
@@ -74,7 +77,7 @@ export function TeamsManager({ teams }: { teams: TeamRow[] }) {
             <tr>
               <th className={cn(th, "w-20")}>Order</th>
               <th className={th}>Team</th>
-              <th className={th}>Description</th>
+              <th className={th}>Description / email</th>
               <th className={cn(th, "text-right")}>Violations</th>
               <th className={cn(th, "text-right")}>Issues</th>
               <th className={th}>Status</th>
@@ -98,7 +101,17 @@ export function TeamsManager({ teams }: { teams: TeamRow[] }) {
                   <p className={t.active ? "font-medium text-gray-900" : "font-medium"}>{t.name}</p>
                   <p className="text-xs text-gray-400 font-mono">{t.key}</p>
                 </td>
-                <td className="px-4 py-3 text-gray-500">{t.description ?? "—"}</td>
+                <td className="px-4 py-3 text-gray-500">
+                  {t.description ?? (t.emailTo.length || t.emailCc.length ? null : "—")}
+                  {(t.emailTo.length > 0 || t.emailCc.length > 0) && (
+                    <p className="mt-0.5 text-xs text-gray-500 break-all">
+                      <Mail className="mr-1 inline h-3.5 w-3.5 text-gray-400" />
+                      {t.emailTo.length > 0 && <>To: {t.emailTo.join(", ")}</>}
+                      {t.emailTo.length > 0 && t.emailCc.length > 0 && " · "}
+                      {t.emailCc.length > 0 && <>Cc: {t.emailCc.join(", ")}</>}
+                    </p>
+                  )}
+                </td>
                 <td className="px-4 py-3 text-right tabular-nums">{t.reviews.toLocaleString("en-US")}</td>
                 <td className="px-4 py-3 text-right tabular-nums">{t.issues.toLocaleString("en-US")}</td>
                 <td className="px-4 py-3">{t.active ? <Badge variant="success">Active</Badge> : <Badge variant="secondary">Inactive</Badge>}</td>
@@ -174,6 +187,8 @@ function TeamDialog({ team, onClose, onSaved }: { team: TeamRow | "new" | null; 
 function TeamForm({ team, onClose, onSaved }: { team: TeamRow | null; onClose: () => void; onSaved: () => void }) {
   const [name, setName] = useState(team?.name ?? "");
   const [description, setDescription] = useState(team?.description ?? "");
+  const [emailTo, setEmailTo] = useState(team?.emailTo.join(", ") ?? "");
+  const [emailCc, setEmailCc] = useState(team?.emailCc.join(", ") ?? "");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -181,8 +196,8 @@ function TeamForm({ team, onClose, onSaved }: { team: TeamRow | null; onClose: (
     setBusy(true);
     setError(null);
     try {
-      if (team) await apiFetch(`/api/admin/teams/${team.id}`, { method: "PATCH", body: { name, description } });
-      else await apiFetch("/api/admin/teams", { body: { name, description } });
+      if (team) await apiFetch(`/api/admin/teams/${team.id}`, { method: "PATCH", body: { name, description, emailTo, emailCc } });
+      else await apiFetch("/api/admin/teams", { body: { name, description, emailTo, emailCc } });
       onSaved();
       onClose();
     } catch (e) {
@@ -214,6 +229,26 @@ function TeamForm({ team, onClose, onSaved }: { team: TeamRow | null; onClose: (
             Description <span className="font-normal text-gray-400">(optional)</span>
           </label>
           <Textarea id="team-description" value={description} onChange={(e) => setDescription(e.target.value)} maxLength={300} rows={3} placeholder="Who this team is, for the people choosing it" />
+        </div>
+        <div>
+          <p className="text-sm font-medium text-gray-700">
+            Email <span className="font-normal text-gray-400">(optional)</span>
+          </p>
+          <p className="mb-2 text-xs text-gray-500">Picking this team in Logistics › Send Email sends to these addresses. Separate several with commas.</p>
+          <div className="space-y-2">
+            <div className="flex items-center gap-2">
+              <label htmlFor="team-email-to" className="w-8 shrink-0 text-sm text-gray-700">
+                To
+              </label>
+              <Input id="team-email-to" value={emailTo} onChange={(e) => setEmailTo(e.target.value)} maxLength={2000} placeholder="shipping@example.com, lead@example.com" />
+            </div>
+            <div className="flex items-center gap-2">
+              <label htmlFor="team-email-cc" className="w-8 shrink-0 text-sm text-gray-700">
+                Cc
+              </label>
+              <Input id="team-email-cc" value={emailCc} onChange={(e) => setEmailCc(e.target.value)} maxLength={2000} placeholder="Optional" />
+            </div>
+          </div>
         </div>
         {error && <div className="rounded-lg bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700">{error}</div>}
       </div>

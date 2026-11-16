@@ -21,7 +21,7 @@ import {
 import { Section, Table, n } from "@/app/(app)/insights/ui";
 import { PoFiltersBar } from "./po-filters";
 import { UpsRefreshButton } from "./ups-refresh-button";
-import { SelectBox, SelectionProvider } from "./selection";
+import { SelectBox, SelectionProvider, type EmailTeam } from "./selection";
 import { poLine, shipmentLine } from "@/lib/logistics/edi";
 
 // The Logistics tabs. Each takes the loaded views (src/lib/logistics/data.ts).
@@ -216,10 +216,10 @@ export function OverviewTab({ l }: { l: LoadedLogistics }) {
   );
 }
 
-/** Who may email the EDI team, its address and the sender's name (for the selection toolbar) */
+/** Who may send email, the teams with addresses and the sender's name (for the selection toolbar) */
 export interface SelectionSettings {
   canEmail: boolean;
-  ediTo: string;
+  teams: EmailTeam[];
   sender: string;
 }
 

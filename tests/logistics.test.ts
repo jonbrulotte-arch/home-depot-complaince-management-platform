@@ -191,9 +191,9 @@ describe("PO order", () => {
   });
 });
 
-describe("Send to EDI team", () => {
+describe("Send Email", () => {
   it("drafts the email from the selection and the issue types ticked", async () => {
-    const { ediDraft, parseAddresses, poLine, shipmentLine, suggestedTypes, textToHtml } = await import("@/lib/logistics/edi");
+    const { ediDraft, parseAddresses, poLine, shipmentLine, suggestedTypes } = await import("@/lib/logistics/edi");
     const { views } = await sample();
     const po = views.pos.find((p) => p.poNumber === "1191515251")!;
     const line = poLine(po);
@@ -208,13 +208,36 @@ describe("Send to EDI team", () => {
     expect(d.body).toContain(`- ${line}`);
     expect(d.body).toContain("The attached report (r.pdf)");
     expect(d.body.endsWith("Thanks,\nJon Brulotte")).toBe(true);
+    expect(d.body.startsWith("Hi,\n")).toBe(true);
+    const greet = (team: string) => ediDraft({ kind: "po", lines: [line], poNumbers: [], types: [], sender: "J", fileName: "r.pdf", team }).body.split("\n")[0];
+    expect(greet("Ohio Shipping")).toBe("Hi Ohio Shipping team,");
+    expect(greet("EDI Team")).toBe("Hi EDI Team,");
     const ship = views.shipments.find((s) => s.shipmentNumber === "233480604")!;
     expect(shipmentLine(ship)).toContain("POs 1191139146");
     expect(ediDraft({ kind: "shipment", lines: [shipmentLine(ship)], poNumbers: ship.ourPos, types: [], sender: "J", fileName: "r.pdf" }).body).toContain(`PO numbers: ${ship.ourPos.join(", ")}`);
-    expect(parseAddresses("a@b.com; c@d.org,  a@b.com")).toEqual(["a@b.com", "c@d.org"]);
+    expect(parseAddresses("a@b.com; c@d.org,  A@b.com")).toEqual(["a@b.com", "c@d.org"]);
     expect(parseAddresses("")).toEqual([]);
     expect(parseAddresses("not an address")).toBeNull();
-    expect(textToHtml("<b>&\nx")).toContain("&lt;b&gt;&amp;\nx");
+  });
+
+  it("keeps the message's layout in the email's HTML (Outlook ignores pre-wrap)", async () => {
+    const { textToHtml } = await import("@/lib/logistics/edi");
+    const html = textToHtml("Hi <team> & co,\n\nPlease act.\n\nWhat's needed:\n- Fix the ID\n- Resend the ASN\n\nThanks,\nJon");
+    expect(html).not.toContain("pre-wrap");
+    expect(html).toContain(">Hi &lt;team&gt; &amp; co,</p>");
+    expect(html).toContain(">What&#39;s needed:</p><ul");
+    expect(html).toContain('<li style="margin:0 0 4px 0">Fix the ID</li><li style="margin:0 0 4px 0">Resend the ASN</li></ul>');
+    expect(html).toContain(">Thanks,<br>Jon</p>");
+    expect(textToHtml("  indented")).toContain("&nbsp;&nbsp;indented");
+  });
+
+  it("checks team addresses and adds typed ones to a team's", async () => {
+    const { parseTeamAddresses } = await import("@/lib/team-options");
+    const { mergeAddresses } = await import("@/lib/email-address");
+    expect(parseTeamAddresses({ emailTo: "a@x.com, b@x.com", emailCc: "b@x.com; c@x.com" })).toEqual({ emailTo: ["a@x.com", "b@x.com"], emailCc: ["c@x.com"] });
+    expect(parseTeamAddresses({ emailTo: "", emailCc: undefined })).toEqual({ emailTo: [], emailCc: undefined });
+    expect(parseTeamAddresses({ emailTo: "a@x" })).toEqual({ error: "Check the To addresses (separate them with commas)" });
+    expect(mergeAddresses(["a@x.com"], ["A@x.com", "d@x.com"])).toEqual(["a@x.com", "d@x.com"]);
   });
 
   it("writes the report of the selection as a PDF", async () => {
