@@ -1,6 +1,6 @@
 import { cache } from "react";
 import { prisma } from "@/lib/prisma";
-import { poNumberVariants } from "@/lib/issues";
+import { ORDER_CANCELLATION, poNumberVariants } from "@/lib/issues";
 import { getTimeZone } from "@/lib/time-zone-server";
 import { carrierUrl, upsTrackingUrl, type CarrierLinkInfo } from "@/lib/logistics/refs";
 import { FLAGS, UPS_SCAC, buildLogistics, type FlagCode, type PoView } from "@/lib/logistics/views";
@@ -71,7 +71,18 @@ export const loadLogistics = cache(async () => {
     ? await prisma.poRecord.findMany({ where: { poNumber: { in: [...new Set(ourNumbers.flatMap(poNumberVariants))] }, poCreateDate: { not: null } }, select: { poNumber: true, poCreateDate: true }, orderBy: { poCreateDate: "asc" } })
     : [];
   const poCreated = Object.fromEntries(records.map((r) => [r.poNumber.replace(/^0+(?=\d)/, ""), r.poCreateDate!.toISOString().slice(0, 10)]));
-  const views = buildLogistics({ cartons, shipments, pos, parcels, knownPos, poCreated }, today);
+  // TMS sometimes keeps a canceled PO open: a resolved "Order cancellation" issue marks it canceled
+  const cancellations = await prisma.issuePo.findMany({
+    where: { issue: { category: ORDER_CANCELLATION, status: "RESOLVED" } },
+    select: { poNumber: true, poCreateDate: true, issue: { select: { number: true, issueDate: true } } },
+  });
+  const canceledByIssue = cancellations.map((c) => ({
+    poNumber: c.poNumber,
+    issueNumber: c.issue.number,
+    issueDate: c.issue.issueDate.toISOString().slice(0, 10),
+    poCreateDate: c.poCreateDate ? c.poCreateDate.toISOString().slice(0, 10) : null,
+  }));
+  const views = buildLogistics({ cartons, shipments, pos, parcels, knownPos, poCreated, canceledByIssue }, today);
   const carrierBy = new Map<string, CarrierLinkInfo>(carriers.map((c) => [c.scac, c]));
   const notes = {
     po: new Map(noteCounts.filter((n) => n.poNumber).map((n) => [n.poNumber!, n._count._all])),
@@ -131,7 +142,8 @@ export function summarize(l: Pick<LoadedLogistics, "carrierBy">, p: PoView): PoL
       delivery: s.deliveryLocal,
     })),
     ups: p.ups,
-    flags: p.flags.filter((f) => f.severity !== "info").map((f) => ({ label: flagLabel(f.code), severity: f.severity, message: f.message })),
+    // Info flags left out, except the one explaining a cancellation from the Issue Log
+    flags: p.flags.filter((f) => f.severity !== "info" || f.code === "CANCELED_BY_ISSUE").map((f) => ({ label: flagLabel(f.code), severity: f.severity, message: f.message })),
   };
 }
 

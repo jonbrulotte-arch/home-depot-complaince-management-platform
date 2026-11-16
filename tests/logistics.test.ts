@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { detectKind, localDateOf, parseCsv, parseHtmlTable, parseTmsTime, parseWmsTime, splitPos } from "@/lib/logistics/parse";
 import { readLogisticsFile } from "@/lib/logistics/read";
 import { carrierUrl, cartonRefs, cleanTrackingUrl } from "@/lib/logistics/refs";
-import { buildLogistics, editDistance, filterPos, logisticsOverview, type Shipment } from "@/lib/logistics/views";
+import { buildLogistics, cancellationApplies, editDistance, filterPos, logisticsOverview, type IssueCancellation, type Shipment } from "@/lib/logistics/views";
 
 const fixture = (n: string) => readLogisticsFile(new Uint8Array(readFileSync(`tests/fixtures/logistics/${n}`)));
 
@@ -276,5 +276,42 @@ describe("UPS tracking answers", () => {
     expect(moving).toMatchObject({ delivered: false, statusType: "I", lastActivity: "Departed from Facility" });
     expect(moving.expectedAt!.toISOString().slice(0, 10)).toBe("2026-11-18");
     expect(parseUpsTrack({ trackResponse: { shipment: [{ warnings: [{ message: "Tracking Information Not Found" }] }] } }).error).toBe("Tracking Information Not Found");
+  });
+});
+
+describe("POs canceled through the Issue Log", () => {
+  it("marks a PO canceled when a resolved Order cancellation issue has it, and drops its open-shipment timing flags", async () => {
+    const { w, s, p, views } = await sample();
+    const late = views.pos.find((x) => x.status !== "Canceled" && x.flags.some((f) => ["PICKUP_PASSED", "DELIVERY_OVERDUE"].includes(f.code)))!;
+    expect(late).toBeTruthy();
+    const shipments = s.parsed.rows.map((r) => ({ ...r, pickupAt: r.pickup?.at ?? null, pickupLocal: r.pickup?.local ?? null, deliveryAt: r.delivery?.at ?? null, deliveryLocal: r.delivery?.local ?? null }));
+    const build = (canceledByIssue: IssueCancellation[], poCreated?: Record<string, string>) =>
+      buildLogistics({ cartons: w.parsed.rows, shipments, pos: p.parsed.rows, parcels: [], canceledByIssue, poCreated }, "2026-11-14");
+    const cancel = { poNumber: `00${late.poNumber}`, issueNumber: 12, issueDate: "2026-11-10", poCreateDate: null };
+    const po = build([cancel]).pos.find((x) => x.poNumber === late.poNumber)!;
+    expect(po.status).toBe("Canceled");
+    expect(po.flags.some((f) => ["PICKUP_PASSED", "DELIVERY_OVERDUE", "NO_CARRIER"].includes(f.code))).toBe(false);
+    const note = po.flags.find((f) => f.code === "CANCELED_BY_ISSUE")!;
+    expect(note.severity).toBe("info");
+    expect(note.message).toContain("Issue Log #12 (Order cancellation) is resolved");
+    // Its shipment says so too, and keeps its own status
+    const ship = build([cancel]).shipments.find((x) => x.poNumbers.includes(late.poNumber) && !/^cancel/i.test(x.status));
+    if (ship) expect(ship.flags.some((f) => f.code === "CANCELED_BY_ISSUE" && f.message.startsWith(`PO ${late.poNumber}:`))).toBe(true);
+    // Another PO is untouched
+    const other = views.pos.find((x) => x.poNumber !== late.poNumber)!;
+    expect(build([cancel]).pos.find((x) => x.poNumber === other.poNumber)!.status).toBe(other.status);
+    // A reused PO number: an issue about an earlier use doesn't cancel this one
+    const created = { [late.poNumber]: "2026-11-01" };
+    expect(build([{ ...cancel, issueDate: "2026-10-01" }], created).pos.find((x) => x.poNumber === late.poNumber)!.status).not.toBe("Canceled");
+    expect(build([{ ...cancel, issueDate: "2026-10-01", poCreateDate: "2026-11-01" }], created).pos.find((x) => x.poNumber === late.poNumber)!.status).toBe("Canceled");
+    expect(build([{ ...cancel, poCreateDate: "2025-03-01" }], created).pos.find((x) => x.poNumber === late.poNumber)!.status).not.toBe("Canceled");
+  });
+
+  it("decides which use of a reused PO number an issue is about", () => {
+    const c = { poNumber: "1", issueNumber: 1, issueDate: "2026-05-10", poCreateDate: null };
+    expect(cancellationApplies(c, null)).toBe(true);
+    expect(cancellationApplies(c, "2026-05-01")).toBe(true);
+    expect(cancellationApplies(c, "2026-06-01")).toBe(false);
+    expect(cancellationApplies({ ...c, poCreateDate: "2026-06-01" }, "2026-06-01")).toBe(true);
   });
 });

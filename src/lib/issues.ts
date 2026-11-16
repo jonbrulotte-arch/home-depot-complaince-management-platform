@@ -18,6 +18,9 @@ export const ISSUE_SEVERITIES = {
 } as const;
 export type IssueSeverityKey = keyof typeof ISSUE_SEVERITIES;
 
+/** The category whose resolved issues mark their POs canceled in Logistics (TMS sometimes keeps them open) */
+export const ORDER_CANCELLATION = "Order cancellation";
+
 export const ISSUE_CATEGORIES = [
   "Carrier / pickup",
   "Shipping & fulfillment",

@@ -73,6 +73,7 @@ export type Severity = "high" | "medium" | "info";
 
 export const FLAGS = {
   CANCELED_SHIPPED: { severity: "high", label: "Canceled PO shipped" },
+  CANCELED_BY_ISSUE: { severity: "info", label: "Canceled (Issue Log)" },
   NO_TMS_SHIPMENT: { severity: "high", label: "No TMS shipment" },
   SUSPECT_TMS_ID: { severity: "high", label: "Invalid TMS ID" },
   TMS_ID_MISMATCH: { severity: "high", label: "TMS ID mismatch" },
@@ -206,6 +207,30 @@ export interface ShipmentView extends Shipment {
   flags: Flag[];
 }
 
+/** A PO on a resolved Issue Log issue in the "Order cancellation" category */
+export interface IssueCancellation {
+  poNumber: string;
+  issueNumber: number;
+  /** The issue's date (YYYY-MM-DD) */
+  issueDate: string;
+  /** The PO create date given on the issue (YYYY-MM-DD), which picks the use of a reused number */
+  poCreateDate: string | null;
+}
+
+/**
+ * Whether a cancellation issue is about this use of the PO number (THD reuses numbers): the create
+ * date given on the issue must match the PO's; without one, the issue must be dated on or after the
+ * PO's creation. When the PO's create date isn't known, the issue counts.
+ */
+export function cancellationApplies(c: IssueCancellation, poCreated: string | null): boolean {
+  if (!poCreated) return true;
+  if (c.poCreateDate) return c.poCreateDate === poCreated;
+  return c.issueDate >= poCreated;
+}
+
+/** Shipment flags that only say an open shipment is late; meaningless for a PO canceled through the Issue Log */
+const TIMING_FLAGS: FlagCode[] = ["PICKUP_PASSED", "DELIVERY_OVERDUE", "NO_CARRIER"];
+
 export interface LogisticsData {
   cartons: Carton[];
   shipments: Shipment[];
@@ -214,6 +239,8 @@ export interface LogisticsData {
   knownPos?: string[];
   /** PO create dates (YYYY-MM-DD) from THD's compliance data, keyed by PO number without leading zeros */
   poCreated?: Record<string, string>;
+  /** POs on resolved "Order cancellation" issues: TMS sometimes keeps a canceled PO open */
+  canceledByIssue?: IssueCancellation[];
   parcels: Parcel[];
 }
 
@@ -250,6 +277,8 @@ export function buildLogistics(input: LogisticsData, today: string) {
   const poNumbers = new Set([...tmsByPo.keys(), ...cartonsByPo.keys(), ...[...shipmentsByPo.keys()].filter(isOurs)]);
   const pos: PoView[] = [...poNumbers].map((poNumber) => {
     const tms = tmsByPo.get(poNumber) ?? null;
+    const created = data.poCreated?.[bareNumber(poNumber)] ?? null;
+    const canceledBy = (data.canceledByIssue ?? []).filter((c) => bareNumber(c.poNumber) === bareNumber(poNumber) && cancellationApplies(c, created)).sort((a, b) => a.issueNumber - b.issueNumber)[0];
     const cartons = (cartonsByPo.get(poNumber) ?? []).sort((a, b) => a.shippedAt.getTime() - b.shippedAt.getTime());
     const shipments = (shipmentsByPo.get(poNumber) ?? []).slice().sort((a, b) => (a.pickupAt?.getTime() ?? 0) - (b.pickupAt?.getTime() ?? 0));
     const live = shipments.filter((s) => !isCanceled(s.status));
@@ -300,7 +329,18 @@ export function buildLogistics(input: LogisticsData, today: string) {
         if (late > 0) flags.push(flag("SHIPPED_AFTER_PICKUP", `The WMS shipped it ${late} day(s) after the TMS pickup date (${pickup}) of shipment ${s.shipmentNumber}.`));
       }
     }
-    for (const s of live) for (const f of flagsOf(s)) if (!flags.some((x) => x.message === f.message || (f.code === "CROSSDOCK" && x.code === "CROSSDOCK"))) flags.push(f);
+    for (const s of live)
+      for (const f of flagsOf(s)) {
+        if (canceledBy && TIMING_FLAGS.includes(f.code)) continue;
+        if (!flags.some((x) => x.message === f.message || (f.code === "CROSSDOCK" && x.code === "CROSSDOCK"))) flags.push(f);
+      }
+    if (canceledBy)
+      flags.push(
+        flag(
+          "CANCELED_BY_ISSUE",
+          `Canceled: Issue Log #${canceledBy.issueNumber} (Order cancellation) is resolved${tms && !isCanceled(tms.status) ? `, though TMS still shows the PO ${tms.status}` : ""}${live.length ? ` and has it on ${live.map((x) => `${x.shipmentNumber} (${x.status})`).join(", ")}` : ""}.`,
+        ),
+      );
     for (const p of parcels) {
       if (p.statusType === "X") flags.push(flag("UPS_EXCEPTION", `UPS ${p.trackingNumber}: ${p.status ?? "exception"}${p.lastActivity ? ` (${p.lastActivity})` : ""}.`));
       else if (!p.delivered && p.expectedAt && isoDate(p.expectedAt) < today) flags.push(flag("UPS_LATE", `UPS ${p.trackingNumber} was expected ${isoDate(p.expectedAt)} and isn't delivered (${p.status ?? "no status"}).`));
@@ -309,7 +349,7 @@ export function buildLogistics(input: LogisticsData, today: string) {
     if (tms?.tmsFlags.length) flags.push(flag("TMS_FLAGGED", `TMS marks this PO: ${tms.tmsFlags.join(", ")}.`));
 
     let status: PoStatus = "Open";
-    if (tms && isCanceled(tms.status)) status = "Canceled";
+    if ((tms && isCanceled(tms.status)) || canceledBy) status = "Canceled";
     else if ((live.length && live.every((s) => isDelivered(s.status))) || (ups.length && parcels.length === ups.length && parcels.every((p) => p.delivered) && !live.length)) status = "Delivered";
     else if (live.some((s) => isMoving(s.status) || isDelivered(s.status)) || parcels.some((p) => !p.delivered && p.statusType && p.statusType !== "M")) status = "In transit";
     else if (cartons.length) status = "Shipped";
@@ -323,7 +363,7 @@ export function buildLogistics(input: LogisticsData, today: string) {
       cartons,
       cartonCount: new Set(cartons.map((c) => c.label)).size,
       units: cartons.reduce((s, c) => s + (c.quantity ?? 0), 0),
-      createdAt: data.poCreated?.[bareNumber(poNumber)] ? new Date(data.poCreated[bareNumber(poNumber)]) : null,
+      createdAt: created ? new Date(created) : null,
       firstShipped,
       lastShipped,
       wmsTms,
@@ -356,6 +396,8 @@ export function buildLogistics(input: LogisticsData, today: string) {
       for (const po of s.poNumbers) {
         const tms = tmsByPo.get(po);
         if (tms && isCanceled(tms.status) && !isCanceled(s.status)) flags.push(flag("CANCELED_SHIPPED", `PO ${po} on this shipment is ${tms.status} in TMS.`));
+        const byIssue = poByNumber.get(po)?.flags.find((f) => f.code === "CANCELED_BY_ISSUE");
+        if (byIssue && !isCanceled(s.status)) flags.push({ ...byIssue, message: `PO ${po}: ${byIssue.message}` });
         for (const f of poByNumber.get(po)?.flags ?? []) if (["WRONG_DESTINATION", "SUSPECT_TMS_ID", "TMS_ID_MISMATCH", "ORIGIN_MISMATCH", "SHIPPED_AFTER_PICKUP"].includes(f.code) && !flags.some((x) => x.message === f.message)) flags.push({ ...f, message: `PO ${po}: ${f.message}` });
       }
       return {
