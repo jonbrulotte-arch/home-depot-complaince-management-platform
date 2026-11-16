@@ -294,9 +294,19 @@ describe("POs canceled through the Issue Log", () => {
     const note = po.flags.find((f) => f.code === "CANCELED_BY_ISSUE")!;
     expect(note.severity).toBe("info");
     expect(note.message).toContain("Issue Log #12 (Order cancellation) is resolved");
-    // Its shipment says so too, and keeps its own status
-    const ship = build([cancel]).shipments.find((x) => x.poNumbers.includes(late.poNumber) && !/^cancel/i.test(x.status));
-    if (ship) expect(ship.flags.some((f) => f.code === "CANCELED_BY_ISSUE" && f.message.startsWith(`PO ${late.poNumber}:`))).toBe(true);
+    // Its open shipment: canceled too once every one of our POs on it is, keeping TMS's status aside
+    const before = views.shipments.find((x) => x.poNumbers.includes(late.poNumber) && !/^cancel/i.test(x.status))!;
+    expect(before.tmsStatus).toBeNull();
+    const ourOthers = before.ourPos.filter((po) => po !== late.poNumber);
+    const all = build([cancel, ...ourOthers.map((po, i) => ({ ...cancel, poNumber: po, issueNumber: 20 + i }))]);
+    const ship = all.shipments.find((x) => x.shipmentNumber === before.shipmentNumber)!;
+    expect(ship.status).toBe("Canceled");
+    expect(ship.tmsStatus).toBe(before.status);
+    expect(ship.flags.some((f) => ["PICKUP_PASSED", "DELIVERY_OVERDUE", "NO_CARRIER"].includes(f.code))).toBe(false);
+    expect(ship.flags.some((f) => f.code === "CANCELED_BY_ISSUE" && f.message.startsWith(`PO ${late.poNumber}:`))).toBe(true);
+    expect(all.pos.find((x) => x.poNumber === late.poNumber)!.shipments.find((x) => x.shipmentNumber === ship.shipmentNumber)!.status).toBe("Canceled");
+    // While one of our POs on it is still live, the shipment keeps its TMS status
+    if (ourOthers.length) expect(build([cancel]).shipments.find((x) => x.shipmentNumber === before.shipmentNumber)!.status).toBe(before.status);
     // Another PO is untouched
     const other = views.pos.find((x) => x.poNumber !== late.poNumber)!;
     expect(build([cancel]).pos.find((x) => x.poNumber === other.poNumber)!.status).toBe(other.status);

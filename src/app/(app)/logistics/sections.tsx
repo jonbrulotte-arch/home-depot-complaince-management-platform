@@ -454,7 +454,12 @@ export function ShipmentsTab({
               },
               {
                 header: "Status",
-                cell: (s) => <TmsStatusBadge status={s.status} />,
+                cell: (s) => (
+                  <>
+                    <TmsStatusBadge status={s.status} />
+                    {s.tmsStatus && <p className="mt-0.5 text-xs text-gray-500">TMS: {s.tmsStatus}</p>}
+                  </>
+                ),
               },
               {
                 header: "SCAC",

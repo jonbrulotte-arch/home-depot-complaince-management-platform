@@ -49,6 +49,7 @@ export default async function LogisticsShipmentPage({ params }: { params: Promis
       <div className="flex flex-wrap items-center gap-3">
         <h1 className="text-2xl font-bold text-gray-900">TMS shipment {s.shipmentNumber}</h1>
         <TmsStatusBadge status={s.status} />
+        {s.tmsStatus && <span className="text-sm text-gray-500">TMS: {s.tmsStatus} (POs canceled in the Issue Log)</span>}
         {link?.url ? (
           <Button asChild size="sm" variant="outline">
             <a href={link.url} target="_blank" rel="noreferrer">

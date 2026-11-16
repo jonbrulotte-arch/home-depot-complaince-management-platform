@@ -205,6 +205,8 @@ export interface ShipmentView extends Shipment {
   /** UPS numbers on its cartons (a shipment shown as UPSN) */
   ups: string[];
   flags: Flag[];
+  /** TMS's own status when the shipment is shown Canceled because all our POs on it were canceled through the Issue Log */
+  tmsStatus: string | null;
 }
 
 /** A PO on a resolved Issue Log issue in the "Order cancellation" category */
@@ -400,20 +402,30 @@ export function buildLogistics(input: LogisticsData, today: string) {
         if (byIssue && !isCanceled(s.status)) flags.push({ ...byIssue, message: `PO ${po}: ${byIssue.message}` });
         for (const f of poByNumber.get(po)?.flags ?? []) if (["WRONG_DESTINATION", "SUSPECT_TMS_ID", "TMS_ID_MISMATCH", "ORIGIN_MISMATCH", "SHIPPED_AFTER_PICKUP"].includes(f.code) && !flags.some((x) => x.message === f.message)) flags.push({ ...f, message: `PO ${po}: ${f.message}` });
       }
+      // Every one of our POs on it canceled through the Issue Log: the shipment is canceled too,
+      // whatever TMS still says, and its lateness flags no longer apply
+      const ours = s.poNumbers.filter(isOurs);
+      const canceledByIssue = !isCanceled(s.status) && ours.length > 0 && ours.every((po) => poByNumber.get(po)?.flags.some((f) => f.code === "CANCELED_BY_ISSUE"));
       return {
         ...s,
+        status: canceledByIssue ? "Canceled" : s.status,
+        tmsStatus: canceledByIssue ? s.status : null,
         pos: s.poNumbers.map((po) => ({ poNumber: po, tms: tmsByPo.get(po) ?? null })),
-        ourPos: s.poNumbers.filter(isOurs),
+        ourPos: ours,
         otherPos: s.poNumbers.filter((po) => !isOurs(po)),
         cartons,
         cartonCount: new Set(cartons.map((c) => c.label)).size,
         units: cartons.reduce((n, c) => n + (c.quantity ?? 0), 0),
         pros: [...new Set(cartons.map((c) => cartonRefs(c.trackingNumber, c.secondTrack).pro).filter((x): x is string => Boolean(x)))],
         ups: [...new Set(cartons.map((c) => cartonRefs(c.trackingNumber, c.secondTrack).ups).filter((x): x is string => Boolean(x)))],
-        flags: flags.sort(bySeverity),
+        flags: (canceledByIssue ? flags.filter((f) => !TIMING_FLAGS.includes(f.code)) : flags).sort(bySeverity),
       };
     })
     .sort((a, b) => (b.pickupAt?.getTime() ?? 0) - (a.pickupAt?.getTime() ?? 0) || b.shipmentNumber.localeCompare(a.shipmentNumber));
+
+  // POs list their shipments as canceled too
+  const canceled = new Set(shipments.filter((s) => s.tmsStatus).map((s) => s.shipmentNumber));
+  if (canceled.size) for (const p of pos) p.shipments = p.shipments.map((s) => (canceled.has(s.shipmentNumber) ? { ...s, status: "Canceled" } : s));
 
   return { pos, shipments };
 }
