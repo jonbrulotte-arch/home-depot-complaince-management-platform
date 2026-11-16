@@ -421,7 +421,7 @@ export const HELP_TOPICS: HelpTopic[] = [
         ],
       },
       {
-        p: "The **POs** tab searches by PO, shipment, tracking or PRO number, order or DC, and filters by status, flag and carrier; **Export to Excel** downloads the POs shown with their shipments and WMS lines.",
+        p: "The **POs** tab lists the newest PO first (THD numbers POs in the order it creates them; a PO's create date shows under its number when THD's compliance data has it). It searches by PO, shipment, tracking or PRO number, order or DC, and filters by status, flag and carrier; **Export to Excel** downloads the POs shown with their shipments and WMS lines.",
       },
     ],
   },

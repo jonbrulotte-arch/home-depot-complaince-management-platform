@@ -182,6 +182,15 @@ describe("POs on shared trucks", () => {
   });
 });
 
+describe("PO order", () => {
+  it("lists POs newest first by number, with the create date from THD's data when known", async () => {
+    const { byPoNumberDesc } = await import("@/lib/logistics/views");
+    expect(["1176595372", "1191515132", "001141585118", "1124000000"].map((poNumber) => ({ poNumber })).sort(byPoNumberDesc).map((p) => p.poNumber)).toEqual(["1191515132", "1176595372", "001141585118", "1124000000"]);
+    const v = buildLogistics({ cartons: [], shipments: [], parcels: [], pos: ["1176595372", "1191515132"].map((poNumber) => ({ poNumber, status: "Created", originFacility: null, originCity: null, originState: null, destFacility: null, destCity: null, destState: null, appointment: null, tmsFlags: [] })), poCreated: { "1191515132": "2026-11-04" } }, "2026-11-16");
+    expect(v.pos.map((p) => [p.poNumber, p.createdAt?.toISOString().slice(0, 10) ?? null])).toEqual([["1191515132", "2026-11-04"], ["1176595372", null]]);
+  });
+});
+
 describe("UPS tracking answers", () => {
   it("keeps the status, delivery and last activity", async () => {
     const { parseUpsTrack } = await import("@/lib/logistics/ups-parse");

@@ -25,9 +25,10 @@ export async function logisticsWorkbook(l: LoadedLogistics, pos: PoView[], siteN
   sheet(
     wb,
     "POs",
-    [["PO #", 13], ["Status", 11], ["TMS PO status", 12], ["Ship-from", 30], ["Destination", 30], ["First shipped (WMS)", 18], ["Cartons", 9], ["Units", 9], ["TMS shipments", 24], ["Carriers", 12], ["UPS", 22], ["PRO", 16], ["Flags", 30], ["Flag details", 70], ["Notes", 7]],
+    [["PO #", 13], ["Created", 12], ["Status", 11], ["TMS PO status", 12], ["Ship-from", 30], ["Destination", 30], ["First shipped (WMS)", 18], ["Cartons", 9], ["Units", 9], ["TMS shipments", 24], ["Carriers", 12], ["UPS", 22], ["PRO", 16], ["Flags", 30], ["Flag details", 70], ["Notes", 7]],
     pos.map((p) => [
       p.poNumber,
+      p.createdAt ? p.createdAt.toISOString().slice(0, 10) : null,
       p.status,
       p.tms?.status ?? null,
       p.origin,

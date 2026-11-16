@@ -111,6 +111,11 @@ export const PO_STATUSES: PoStatus[] = ["Open", "Scheduled", "Shipped", "In tran
 const norm = (s: string | null | undefined) => (s ?? "").trim().toUpperCase();
 /** A THD crossdock (IFC): its facility ID starts with XD */
 export const isCrossdock = (facility: string | null | undefined) => /^XD/i.test(facility?.trim() ?? "");
+/** Newest PO first: by number (numbers of different lengths by length), as THD numbers POs in creation order */
+export function byPoNumberDesc(a: { poNumber: string }, b: { poNumber: string }): number {
+  const x = bareNumber(a.poNumber), y = bareNumber(b.poNumber);
+  return y.length - x.length || (y < x ? -1 : y > x ? 1 : 0);
+}
 /** A PO number without leading zeros, for matching numbers typed elsewhere */
 const bareNumber = (po: string) => po.trim().toUpperCase().replace(/^0+(?=\d)/, "");
 /** The SCAC of UPS (parcel) */
@@ -172,6 +177,8 @@ export interface PoView {
   /** Distinct carton labels */
   cartonCount: number;
   units: number;
+  /** The PO's create date, from THD's compliance data (PO records) when it has the PO */
+  createdAt: Date | null;
   firstShipped: Date | null;
   lastShipped: Date | null;
   /** TMS shipment IDs, UPS numbers and PROs on the WMS cartons */
@@ -205,6 +212,8 @@ export interface LogisticsData {
   pos: TmsPo[];
   /** PO numbers known from the rest of the platform (THD compliance data, the Issue Log) */
   knownPos?: string[];
+  /** PO create dates (YYYY-MM-DD) from THD's compliance data, keyed by PO number without leading zeros */
+  poCreated?: Record<string, string>;
   parcels: Parcel[];
 }
 
@@ -314,6 +323,7 @@ export function buildLogistics(input: LogisticsData, today: string) {
       cartons,
       cartonCount: new Set(cartons.map((c) => c.label)).size,
       units: cartons.reduce((s, c) => s + (c.quantity ?? 0), 0),
+      createdAt: data.poCreated?.[bareNumber(poNumber)] ? new Date(data.poCreated[bareNumber(poNumber)]) : null,
       firstShipped,
       lastShipped,
       wmsTms,
@@ -325,7 +335,9 @@ export function buildLogistics(input: LogisticsData, today: string) {
       flags: flags.sort(bySeverity),
     };
   });
-  pos.sort((a, b) => (b.lastShipped?.getTime() ?? b.shipments.at(-1)?.pickupAt?.getTime() ?? 0) - (a.lastShipped?.getTime() ?? a.shipments.at(-1)?.pickupAt?.getTime() ?? 0) || b.poNumber.localeCompare(a.poNumber));
+  // Newest PO first. THD numbers its POs in the order it creates them, so the number orders POs by
+  // create date, including the many whose date isn't known (it's only in THD's compliance data)
+  pos.sort(byPoNumberDesc);
 
   const poByNumber = new Map(pos.map((p) => [p.poNumber, p]));
   const shipments: ShipmentView[] = data.shipments

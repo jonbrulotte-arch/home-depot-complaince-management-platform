@@ -101,12 +101,20 @@ export function PosTab({ l, filters, notes }: { l: LoadedLogistics; filters: PoF
   return (
     <div className="space-y-4">
       <PoFiltersBar filters={filters} statuses={PO_STATUSES} flags={[...o.flags.reduce((m, f) => m.set(f.code, { code: f.code, label: f.label, pos: (m.get(f.code)?.pos ?? 0) + f.pos }), new Map<string, { code: string; label: string; pos: number }>()).values()]} scacs={scacs} />
-      <Section title={`${n(rows.length)} PO(s)`} description={rows.length > PAGE ? `Showing the latest ${PAGE}; narrow the search or export to Excel for all of them.` : "Latest shipped first."}>
+      <Section title={`${n(rows.length)} PO(s)`} description={`Newest PO first (THD numbers POs in the order it creates them). The create date under a PO comes from THD\u2019s compliance data, when it has the PO.${rows.length > PAGE ? ` Showing the latest ${PAGE}; narrow the search or export to Excel for all of them.` : ""}`}>
         <Table
           rows={rows.slice(0, PAGE)}
           empty="No POs match."
           cols={[
-            { header: "PO #", cell: (p) => <PoLink po={p.poNumber} /> },
+            {
+              header: "PO # / created",
+              cell: (p) => (
+                <span className="block">
+                  <PoLink po={p.poNumber} />
+                  {p.createdAt && <span className="block whitespace-nowrap text-xs text-gray-500">Created {formatUtcDate(p.createdAt)}</span>}
+                </span>
+              ),
+            },
             { header: "Status", cell: (p) => <PoStatusBadge status={p.status} /> },
             { header: "Destination", cell: (p) => <span className="block min-w-32">{p.destination}</span> },
             { header: "Shipped (WMS)", cell: (p) => <span className="whitespace-nowrap">{day(p.firstShipped)}</span> },

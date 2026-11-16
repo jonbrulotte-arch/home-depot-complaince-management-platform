@@ -65,7 +65,13 @@ export const loadLogistics = cache(async () => {
         ...(await prisma.issuePo.findMany({ where: { poNumber: { in: variants } }, select: { poNumber: true } })).map((r) => r.poNumber),
       ]
     : [];
-  const views = buildLogistics({ cartons, shipments, pos, parcels, knownPos }, today);
+  // PO create dates live only in THD's compliance data (PO records): the latest use of each number
+  const ourNumbers = [...new Set([...pos.map((p) => p.poNumber), ...cartons.map((c) => c.poNumber), ...knownPos])];
+  const records = ourNumbers.length
+    ? await prisma.poRecord.findMany({ where: { poNumber: { in: [...new Set(ourNumbers.flatMap(poNumberVariants))] }, poCreateDate: { not: null } }, select: { poNumber: true, poCreateDate: true }, orderBy: { poCreateDate: "asc" } })
+    : [];
+  const poCreated = Object.fromEntries(records.map((r) => [r.poNumber.replace(/^0+(?=\d)/, ""), r.poCreateDate!.toISOString().slice(0, 10)]));
+  const views = buildLogistics({ cartons, shipments, pos, parcels, knownPos, poCreated }, today);
   const carrierBy = new Map<string, CarrierLinkInfo>(carriers.map((c) => [c.scac, c]));
   const notes = {
     po: new Map(noteCounts.filter((n) => n.poNumber).map((n) => [n.poNumber!, n._count._all])),
