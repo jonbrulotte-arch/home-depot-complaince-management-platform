@@ -379,3 +379,46 @@ describe("Date ranges for POs", () => {
     expect(counts).toBeLessThanOrEqual(logisticsOverview(views).flags.reduce((n, f) => n + f.pos, 0));
   });
 });
+
+describe("Warehouses", () => {
+  const WH = [
+    { prefix: "3-", name: "Ohio Warehouse (Site 3)" },
+    { prefix: "0-", name: "LV Warehouse (Site 0)" },
+  ];
+
+  it("reads the warehouse from the OrderNumber prefix (the longest match wins)", async () => {
+    const { warehouseOf, matchesWarehouse, warehouseRank } = await import("@/lib/logistics/warehouses");
+    expect(warehouseOf("3-S-ORD1005437", WH)?.name).toBe("Ohio Warehouse (Site 3)");
+    expect(warehouseOf(" 0-s-ord1", WH)?.name).toBe("LV Warehouse (Site 0)");
+    expect(warehouseOf("S-ORD1005437S", WH)).toBeNull();
+    expect(warehouseOf(null, WH)).toBeNull();
+    expect(warehouseOf("3-X-1", [...WH, { prefix: "3-X", name: "Ohio annex" }])?.name).toBe("Ohio annex");
+    expect(matchesWarehouse([WH[0]], "3-")).toBe(true);
+    expect(matchesWarehouse([WH[0]], "0-")).toBe(false);
+    expect(matchesWarehouse([], "none")).toBe(true);
+    expect(warehouseRank([], WH)).toBe(2);
+  });
+
+  it("gives POs and shipments their warehouse, and filters and sorts by it", async () => {
+    const { w, s, p } = await sample();
+    const shipments = s.parsed.rows.map((r) => ({ ...r, pickupAt: r.pickup?.at ?? null, pickupLocal: r.pickup?.local ?? null, deliveryAt: r.delivery?.at ?? null, deliveryLocal: r.delivery?.local ?? null }));
+    // Every sample carton is Site 3; ship one PO from Site 0 instead
+    const lv = w.parsed.rows.find((c) => c.poNumber === "1191515251")!.poNumber;
+    const cartons = w.parsed.rows.map((c) => (c.poNumber === lv ? { ...c, orderNumber: `0-${c.orderNum}` } : { ...c, orderNumber: `3-${c.orderNum}` }));
+    const v = buildLogistics({ cartons, shipments, pos: p.parsed.rows, parcels: [], warehouses: WH }, "2026-11-14");
+    const po = v.pos.find((x) => x.poNumber === lv)!;
+    expect(po.warehouses.map((x) => x.name)).toEqual(["LV Warehouse (Site 0)"]);
+    const ship = v.shipments.find((x) => x.ourPos.includes(lv))!;
+    expect(ship.warehouses.map((x) => x.prefix)).toContain("0-");
+    expect(filterPos(v.pos, { wh: "0-" }).map((x) => x.poNumber)).toEqual([lv]);
+    expect(filterPos(v.pos, { wh: "none" }).every((x) => x.warehouses.length === 0)).toBe(true);
+    const { sortPos, filterShipments } = await import("@/lib/logistics/views");
+    const sorted = sortPos(v.pos, "warehouse", WH);
+    const ranks = sorted.map((x) => (x.warehouses[0] ? WH.findIndex((h) => h.prefix === x.warehouses[0].prefix) : 2));
+    expect([...ranks].sort((a, b) => a - b)).toEqual(ranks);
+    expect(filterShipments(v.shipments, { wh: "0-" }, WH).every((x) => x.warehouses.some((h) => h.prefix === "0-"))).toBe(true);
+    const by = logisticsOverview(v, WH).warehouses;
+    expect(by.map((x) => x.name)).toEqual(expect.arrayContaining(["Ohio Warehouse (Site 3)", "LV Warehouse (Site 0)"]));
+    expect(by.find((x) => x.prefix === "0-")!.pos).toBe(1);
+  });
+});

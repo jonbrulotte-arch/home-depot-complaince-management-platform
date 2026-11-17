@@ -16,6 +16,7 @@ import { FlagList, PoStatusBadge, ScacLink, ShipmentLink, TmsStatusBadge, UpsLin
 import { LogisticsNotes } from "@/components/logistics/notes";
 import { ComplianceCard, IssuesCard } from "@/components/logistics/related";
 import { EmailsCard } from "@/components/logistics/emails";
+import { warehouseNames } from "@/lib/logistics/warehouses";
 import { Section, Table, n } from "@/app/(app)/insights/ui";
 import { UpsRefreshButton } from "../../ups-refresh-button";
 import { Dates, Route } from "../../sections";
@@ -45,6 +46,7 @@ export default async function LogisticsPoPage({ params }: { params: Promise<{ po
         <h1 className="text-2xl font-bold text-gray-900">PO {p.poNumber}</h1>
         <PoStatusBadge status={p.status} />
         {p.tms && <span className="text-sm text-gray-500">TMS: {p.tms.status}</span>}
+        {p.warehouses.length > 0 && <span className="text-sm text-gray-500">Shipped from {warehouseNames(p.warehouses)}</span>}
       </div>
       <StatTiles
         stats={[

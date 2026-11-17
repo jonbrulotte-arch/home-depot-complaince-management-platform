@@ -1,4 +1,5 @@
 import { localDateOf } from "@/lib/logistics/parse";
+import { matchesWarehouse, warehouseRank, warehousesOf, type WarehouseInfo } from "@/lib/logistics/warehouses";
 import { cartonRefs } from "@/lib/logistics/refs";
 
 // Logistics views: every PO and TMS shipment with the WMS cartons, TMS records and UPS tracking
@@ -10,6 +11,8 @@ export interface Carton {
   label: string;
   poNumber: string;
   orderNum: string;
+  /** The WMS OrderNumber, whose prefix tells the warehouse ("3-…" is Site 3) */
+  orderNumber?: string | null;
   customer: string | null;
   trackingNumber: string | null;
   secondTrack: string | null;
@@ -189,6 +192,8 @@ export interface PoView {
   parcels: Parcel[];
   destination: string;
   origin: string;
+  /** The warehouses its WMS cartons shipped from (by OrderNumber prefix) */
+  warehouses: WarehouseInfo[];
   flags: Flag[];
 }
 
@@ -207,6 +212,8 @@ export interface ShipmentView extends Shipment {
   flags: Flag[];
   /** TMS's own status when the shipment is shown Canceled because all our POs on it were canceled through the Issue Log */
   tmsStatus: string | null;
+  /** The warehouses it shipped from: its cartons', else its POs' */
+  warehouses: WarehouseInfo[];
 }
 
 /** A PO on a resolved Issue Log issue in the "Order cancellation" category */
@@ -243,6 +250,8 @@ export interface LogisticsData {
   poCreated?: Record<string, string>;
   /** POs on resolved "Order cancellation" issues: TMS sometimes keeps a canceled PO open */
   canceledByIssue?: IssueCancellation[];
+  /** Warehouses by OrderNumber prefix, in the admins' order */
+  warehouses?: WarehouseInfo[];
   parcels: Parcel[];
 }
 
@@ -374,6 +383,7 @@ export function buildLogistics(input: LogisticsData, today: string) {
       parcels,
       destination: tms ? place(tms.destFacility, tms.destCity, tms.destState) : live[0] ? place(live[0].destFacility, live[0].destCity, live[0].destState) : cartons[0] ? place(null, cartons[0].shipCity, cartons[0].shipState) : "—",
       origin: tms ? place(tms.originFacility, tms.originCity, tms.originState) : live[0] ? place(live[0].originFacility, live[0].originCity, live[0].originState) : "—",
+      warehouses: warehousesOf(cartons, data.warehouses ?? []),
       flags: flags.sort(bySeverity),
     };
   });
@@ -410,6 +420,7 @@ export function buildLogistics(input: LogisticsData, today: string) {
         ...s,
         status: canceledByIssue ? "Canceled" : s.status,
         tmsStatus: canceledByIssue ? s.status : null,
+        warehouses: cartons.length ? warehousesOf(cartons, data.warehouses ?? []) : (data.warehouses ?? []).filter((w) => ours.some((po) => poByNumber.get(po)?.warehouses.some((x) => x.prefix === w.prefix))),
         pos: s.poNumbers.map((po) => ({ poNumber: po, tms: tmsByPo.get(po) ?? null })),
         ourPos: ours,
         otherPos: s.poNumbers.filter((po) => !isOurs(po)),
@@ -433,7 +444,7 @@ export function buildLogistics(input: LogisticsData, today: string) {
 export type LogisticsViews = ReturnType<typeof buildLogistics>;
 
 /** Overview counts: POs by status, flags by type (POs affected), and per carrier. */
-export function logisticsOverview(views: LogisticsViews) {
+export function logisticsOverview(views: LogisticsViews, warehouses: WarehouseInfo[] = []) {
   // POs per flag and priority: a flag can be informational in one case (e.g. at a crossdock) and not another
   const flagCounts = new Map<string, number>();
   for (const p of views.pos) for (const key of new Set(p.flags.map((f) => `${f.code}|${f.severity}`))) flagCounts.set(key, (flagCounts.get(key) ?? 0) + 1);
@@ -471,7 +482,26 @@ export function logisticsOverview(views: LogisticsViews) {
       .sort((a, b) => SEVERITY_ORDER.indexOf(a.severity) - SEVERITY_ORDER.indexOf(b.severity)),
     carriers: [...carriers.values()].sort((a, b) => b.shipments - a.shipments),
     destinations: [...dests.values()].sort((a, b) => b.flagged - a.flagged || b.pos - a.pos).slice(0, 15),
+    warehouses: byWarehouse(views, warehouses),
   };
+}
+
+/** POs and shipments per warehouse (admins' order, then unknown), leaving canceled ones out */
+function byWarehouse(views: Pick<LogisticsViews, "pos" | "shipments">, warehouses: WarehouseInfo[]) {
+  const rows = [...warehouses.map((w) => ({ prefix: w.prefix, name: w.name })), { prefix: "none", name: "No WMS cartons yet" }].map((w) => {
+    const has = (items: WarehouseInfo[]) => (w.prefix === "none" ? items.length === 0 : items.some((x) => x.prefix === w.prefix));
+    const pos = views.pos.filter((p) => p.status !== "Canceled" && has(p.warehouses));
+    const shipments = views.shipments.filter((s) => !isCanceled(s.status) && has(s.warehouses));
+    return {
+      ...w,
+      pos: pos.length,
+      high: pos.filter((p) => p.flags.some((f) => f.severity === "high")).length,
+      inTransit: pos.filter((p) => p.status === "Shipped" || p.status === "In transit").length,
+      shipments: shipments.length,
+      openShipments: shipments.filter((s) => !isDelivered(s.status)).length,
+    };
+  });
+  return rows.filter((r) => r.prefix !== "none" || r.pos || r.shipments);
 }
 
 export interface PoFilters {
@@ -480,6 +510,10 @@ export interface PoFilters {
   flag?: string;
   severity?: string;
   scac?: string;
+  /** A warehouse's OrderNumber prefix, or "none" for unknown */
+  wh?: string;
+  /** "warehouse" or "shipped"; newest PO first otherwise */
+  sort?: string;
   /** A date range (PO_RANGES key); "custom" uses from and to (YYYY-MM-DD) */
   range?: string;
   from?: string;
@@ -552,8 +586,35 @@ export function filterPos(pos: PoView[], f: PoFilters, today?: string): PoView[]
     if (f.severity === "any" && !pool.some((x) => x.severity !== "info")) return false;
     if (f.severity && f.severity !== "any" && !pool.some((x) => x.severity === f.severity)) return false;
     if (f.scac && !p.shipments.some((s) => s.scac === f.scac)) return false;
+    if (!matchesWarehouse(p.warehouses, f.wh)) return false;
     if (!q) return true;
     const hay = [p.poNumber, p.destination, p.origin, ...p.wmsTms, ...p.ups, ...p.pros, ...p.shipments.map((s) => s.shipmentNumber), ...p.cartons.map((c) => c.orderNum), ...p.cartons.map((c) => c.label)].join(" ").toUpperCase();
     return hay.includes(q);
   });
+}
+
+/** POs in the order asked: by warehouse (admins' order, unknown last), by WMS ship date (newest first), else newest PO first */
+export function sortPos(pos: PoView[], sort: string | undefined, warehouses: WarehouseInfo[]): PoView[] {
+  const out = [...pos].sort(byPoNumberDesc);
+  if (sort === "warehouse") return out.sort((a, b) => warehouseRank(a.warehouses, warehouses) - warehouseRank(b.warehouses, warehouses));
+  if (sort === "shipped") return out.sort((a, b) => (b.firstShipped?.getTime() ?? 0) - (a.firstShipped?.getTime() ?? 0));
+  return out;
+}
+
+export interface ShipmentFilters {
+  scac?: string;
+  /** Only shipments past their pickup or delivery date */
+  late?: boolean;
+  wh?: string;
+  /** "warehouse"; latest pickup first otherwise */
+  sort?: string;
+}
+
+/** Shipments matching the Shipments tab's filters, in the order asked */
+export function filterShipments(shipments: ShipmentView[], f: ShipmentFilters, warehouses: WarehouseInfo[]): ShipmentView[] {
+  const rows = shipments.filter(
+    (s) => (!f.scac || s.scac === f.scac) && (!f.late || s.flags.some((x) => x.code === "DELIVERY_OVERDUE" || x.code === "PICKUP_PASSED")) && matchesWarehouse(s.warehouses, f.wh),
+  );
+  // Array sort is stable: within a warehouse, the latest pickup stays first
+  return f.sort === "warehouse" ? [...rows].sort((a, b) => warehouseRank(a.warehouses, warehouses) - warehouseRank(b.warehouses, warehouses)) : rows;
 }

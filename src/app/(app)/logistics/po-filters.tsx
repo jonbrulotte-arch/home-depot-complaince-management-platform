@@ -8,11 +8,12 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import type { PoFilters } from "@/lib/logistics/views";
 import { PoRangePicker } from "./range-picker";
+import { UNKNOWN_WAREHOUSE, type WarehouseInfo } from "@/lib/logistics/warehouses";
 
 const ALL = "all";
 
 /** Search and filters for the POs tab, kept in the address. */
-export function PoFiltersBar({ filters, statuses, flags, scacs }: { filters: PoFilters; statuses: string[]; flags: { code: string; label: string; pos: number }[]; scacs: string[] }) {
+export function PoFiltersBar({ filters, statuses, flags, scacs, warehouses }: { filters: PoFilters; statuses: string[]; flags: { code: string; label: string; pos: number }[]; scacs: string[]; warehouses: WarehouseInfo[] }) {
   const router = useRouter();
   const pathname = usePathname();
   const [q, setQ] = useState(filters.q ?? "");
@@ -65,6 +66,8 @@ export function PoFiltersBar({ filters, statuses, flags, scacs }: { filters: PoF
       {pick("log-sev", "Needs attention", filters.severity, [[ALL, "All POs"], ["any", "Flagged (high or medium)"], ["high", "High"], ["medium", "Medium"], ["info", "Info"]], "severity", "w-52")}
       {pick("log-flag", "Flag", filters.flag, [[ALL, "Any flag"], ...flags.map((f): [string, string] => [f.code, `${f.label} (${f.pos})`])], "flag", "w-60")}
       {pick("log-scac", "Carrier", filters.scac, [[ALL, "Any carrier"], ...scacs.map((s): [string, string] => [s, s])], "scac", "w-36")}
+      {pick("log-wh", "Warehouse", filters.wh, [[ALL, "Any warehouse"], ...warehouses.map((w): [string, string] => [w.prefix, w.name]), [UNKNOWN_WAREHOUSE, "No WMS cartons yet"]], "wh", "w-56")}
+      {pick("log-sort", "Sort", filters.sort, [[ALL, "Newest PO first"], ["warehouse", "Warehouse"], ["shipped", "Latest shipped (WMS)"]], "sort", "w-48")}
       <div>
         <label htmlFor="log-range" className="mb-1 block text-xs font-medium text-gray-500">
           Date
@@ -75,7 +78,7 @@ export function PoFiltersBar({ filters, statuses, flags, scacs }: { filters: PoF
         <Search className="h-4 w-4 mr-1.5" />
         Search
       </Button>
-      {Boolean(filters.q || filters.status || filters.flag || filters.severity || filters.scac || filters.range) && (
+      {Boolean(filters.q || filters.status || filters.flag || filters.severity || filters.scac || filters.range || filters.wh || filters.sort) && (
         <Button type="button" variant="ghost" onClick={() => router.push(`${pathname}?tab=pos`)}>
           Clear
         </Button>

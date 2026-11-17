@@ -4,15 +4,15 @@ import { audit } from "@/lib/audit";
 import { getBranding } from "@/lib/branding";
 import { loadLogistics } from "@/lib/logistics/data";
 import { logisticsWorkbook } from "@/lib/logistics/export";
-import { filterPos } from "@/lib/logistics/views";
+import { filterPos, sortPos } from "@/lib/logistics/views";
 
-/** The POs (as filtered on the page: q, status, flag, severity, scac), their shipments and cartons as xlsx. */
+/** The POs (as filtered and sorted on the page: q, status, flag, severity, scac, wh, date range, sort), their shipments and cartons as xlsx. */
 export async function GET(req: NextRequest) {
   const guard = await requireApiPermission("logistics.view");
   if (guard.error) return guard.error;
   const sp = req.nextUrl.searchParams;
   const l = await loadLogistics();
-  const pos = filterPos(l.pos, { q: sp.get("q") ?? undefined, status: sp.get("status") ?? undefined, flag: sp.get("flag") ?? undefined, severity: sp.get("severity") ?? undefined, scac: sp.get("scac") ?? undefined, range: sp.get("range") ?? undefined, from: sp.get("from") ?? undefined, to: sp.get("to") ?? undefined }, l.today);
+  const pos = sortPos(filterPos(l.pos, { q: sp.get("q") ?? undefined, status: sp.get("status") ?? undefined, flag: sp.get("flag") ?? undefined, severity: sp.get("severity") ?? undefined, scac: sp.get("scac") ?? undefined, wh: sp.get("wh") ?? undefined, range: sp.get("range") ?? undefined, from: sp.get("from") ?? undefined, to: sp.get("to") ?? undefined }, l.today), sp.get("sort") ?? undefined, l.warehouses);
   const buffer = await logisticsWorkbook(l, pos, (await getBranding()).siteName);
   await audit(guard.user.id, "logistics.export", "Logistics", null, { pos: pos.length });
   return new NextResponse(new Uint8Array(buffer), {

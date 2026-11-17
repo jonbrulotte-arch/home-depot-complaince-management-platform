@@ -36,6 +36,7 @@ export function poLine(p: PoView): string {
   const flags = flagLabels(p.flags);
   return [
     `PO ${p.poNumber}`,
+    p.warehouses?.length ? `from ${p.warehouses.map((w) => w.name).join(", ")}` : null,
     p.destination !== "—" ? `to ${p.destination}` : null,
     shipments.length ? shipments.join(", ") : p.ups.length ? `UPS ${p.ups.slice(0, 2).join(", ")}${p.ups.length > 2 ? "…" : ""}` : "no TMS shipment",
     wmsIds.length ? `WMS has TMS ID ${wmsIds.join(", ")}` : null,

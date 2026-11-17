@@ -79,6 +79,7 @@ export function logisticsReportPdf(input: { kind: SelectionKind; pos: PoView[]; 
         .text(
           pdfText(
             [
+              p.warehouses.length ? `Warehouse ${p.warehouses.map((w) => w.name).join(", ")}` : null,
               `Ship-from ${p.origin}`,
               `to ${p.destination}`,
               p.tms ? `TMS PO ${p.tms.status}` : "not in the TMS PO file",

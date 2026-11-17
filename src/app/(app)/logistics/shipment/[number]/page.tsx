@@ -17,6 +17,7 @@ import { LogisticsNotes } from "@/components/logistics/notes";
 import { ComplianceCard, IssuesCard } from "@/components/logistics/related";
 import { Section, Table, n } from "@/app/(app)/insights/ui";
 import { EmailsCard } from "@/components/logistics/emails";
+import { warehouseNames } from "@/lib/logistics/warehouses";
 import { getTimeZone } from "@/lib/time-zone-server";
 
 export default async function LogisticsShipmentPage({ params }: { params: Promise<{ number: string }> }) {
@@ -52,6 +53,7 @@ export default async function LogisticsShipmentPage({ params }: { params: Promis
         <h1 className="text-2xl font-bold text-gray-900">TMS shipment {s.shipmentNumber}</h1>
         <TmsStatusBadge status={s.status} />
         {s.tmsStatus && <span className="text-sm text-gray-500">TMS: {s.tmsStatus} (POs canceled in the Issue Log)</span>}
+        {s.warehouses.length > 0 && <span className="text-sm text-gray-500">Shipped from {warehouseNames(s.warehouses)}</span>}
         {link?.url ? (
           <Button asChild size="sm" variant="outline">
             <a href={link.url} target="_blank" rel="noreferrer">

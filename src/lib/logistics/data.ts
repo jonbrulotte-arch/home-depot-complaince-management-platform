@@ -14,10 +14,10 @@ export async function todayFor(): Promise<string> {
 }
 
 export const loadLogistics = cache(async () => {
-  const [cartons, shipments, pos, parcels, carriers, today, imports, noteCounts] = await Promise.all([
+  const [cartons, shipments, pos, parcels, carriers, today, imports, noteCounts, warehouses] = await Promise.all([
     prisma.wmsCarton.findMany({
       orderBy: { lineKey: "asc" },
-      select: { lineKey: true, label: true, poNumber: true, orderNum: true, customer: true, trackingNumber: true, secondTrack: true, product: true, quantity: true, shippedAt: true, shipCity: true, shipState: true, shipZip: true },
+      select: { lineKey: true, label: true, poNumber: true, orderNum: true, orderNumber: true, customer: true, trackingNumber: true, secondTrack: true, product: true, quantity: true, shippedAt: true, shipCity: true, shipState: true, shipZip: true },
     }),
     prisma.tmsShipment.findMany({
       select: {
@@ -54,6 +54,8 @@ export const loadLogistics = cache(async () => {
       ),
     ),
     prisma.logisticsNote.groupBy({ by: ["poNumber", "shipmentNumber"], _count: { _all: true } }),
+    // Admin › Settings › Warehouses: which warehouse shipped, from the WMS OrderNumber prefix
+    prisma.warehouse.findMany({ orderBy: [{ sortOrder: "asc" }, { prefix: "asc" }], select: { prefix: true, name: true } }),
   ]);
   // Shipment POs not in the WMS or TMS PO data: ours only if THD's compliance data or the Issue Log has them
   const seen = new Set([...pos.map((p) => p.poNumber), ...cartons.map((c) => c.poNumber)]);
@@ -82,13 +84,13 @@ export const loadLogistics = cache(async () => {
     issueDate: c.issue.issueDate.toISOString().slice(0, 10),
     poCreateDate: c.poCreateDate ? c.poCreateDate.toISOString().slice(0, 10) : null,
   }));
-  const views = buildLogistics({ cartons, shipments, pos, parcels, knownPos, poCreated, canceledByIssue }, today);
+  const views = buildLogistics({ cartons, shipments, pos, parcels, knownPos, poCreated, canceledByIssue, warehouses }, today);
   const carrierBy = new Map<string, CarrierLinkInfo>(carriers.map((c) => [c.scac, c]));
   const notes = {
     po: new Map(noteCounts.filter((n) => n.poNumber).map((n) => [n.poNumber!, n._count._all])),
     shipment: new Map(noteCounts.filter((n) => n.shipmentNumber).map((n) => [n.shipmentNumber!, n._count._all])),
   };
-  return { ...views, today, carriers, carrierBy, latestImports: imports.filter((i) => i !== null), notes, empty: !cartons.length && !shipments.length && !pos.length };
+  return { ...views, today, warehouses, carriers, carrierBy, latestImports: imports.filter((i) => i !== null), notes, empty: !cartons.length && !shipments.length && !pos.length };
 });
 
 export type LoadedLogistics = Awaited<ReturnType<typeof loadLogistics>>;

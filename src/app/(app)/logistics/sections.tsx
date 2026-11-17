@@ -4,6 +4,8 @@ import { LOGISTICS_KIND_LABELS } from "@/lib/logistics/parse";
 import { scacLink, type LoadedLogistics } from "@/lib/logistics/data";
 import {
   filterPos,
+  filterShipments,
+  sortPos,
   logisticsOverview,
   rangeBounds,
   rangeLabel,
@@ -23,6 +25,8 @@ import {
 import { Section, Table, n } from "@/app/(app)/insights/ui";
 import { PoFiltersBar } from "./po-filters";
 import { OverviewRangePicker } from "./range-picker";
+import { ShipmentFiltersBar } from "./shipment-filters";
+import { warehouseNames } from "@/lib/logistics/warehouses";
 import { UpsRefreshButton } from "./ups-refresh-button";
 import { SelectBox, SelectionProvider, type EmailTeam } from "./selection";
 import { poLine, shipmentLine } from "@/lib/logistics/edi";
@@ -52,11 +56,12 @@ export function Dates({
 }
 
 /** Origin over destination */
-export function Route({ from, to }: { from: string; to: string }) {
+export function Route({ from, to, warehouse }: { from: string; to: string; warehouse?: string }) {
   return (
     <span className="block min-w-36 text-xs leading-5">
       <span className="text-gray-500">From</span>{" "}
       <span className="text-gray-900">{from || "—"}</span>
+      {warehouse && <span className="text-gray-500"> · {warehouse}</span>}
       <br />
       <span className="text-gray-500">To</span>{" "}
       <span className="text-gray-900">{to || "—"}</span>
@@ -65,7 +70,7 @@ export function Route({ from, to }: { from: string; to: string }) {
 }
 
 export function OverviewTab({ l, range }: { l: LoadedLogistics; range: Pick<PoFilters, "range" | "from" | "to"> }) {
-  const o = logisticsOverview(l);
+  const o = logisticsOverview(l, l.warehouses);
   // What's flagged follows the date range; the tiles cover every PO
   const inRange = rangeBounds(range, l.today) ? logisticsOverview({ ...l, pos: filterPos(l.pos, range, l.today) }) : o;
   const rangeQuery = Object.entries(range)
@@ -151,6 +156,36 @@ export function OverviewTab({ l, range }: { l: LoadedLogistics; range: Pick<PoFi
           bar={{ header: "POs", value: (f) => f.pos }}
         />
       </Section>
+      {o.warehouses.length > 0 && (
+        <Section title="By warehouse" description="Where POs and TMS shipments shipped from, by the WMS OrderNumber (canceled left out). Click one to list its POs.">
+          <Table
+            rows={o.warehouses}
+            cols={[
+              {
+                header: "Warehouse",
+                cell: (w) => (
+                  <Link href={`/logistics?tab=pos&wh=${encodeURIComponent(w.prefix)}`} className="font-medium text-blue-600 hover:underline">
+                    {w.name}
+                  </Link>
+                ),
+              },
+              { header: "POs", cell: (w) => n(w.pos), align: "right" },
+              { header: "High flags", cell: (w) => (w.high ? <span className="text-red-700">{n(w.high)}</span> : "—"), align: "right" },
+              { header: "Shipped, not delivered", cell: (w) => n(w.inTransit), align: "right" },
+              {
+                header: "TMS shipments",
+                cell: (w) => (
+                  <Link href={`/logistics?tab=shipments&wh=${encodeURIComponent(w.prefix)}`} className="text-blue-600 hover:underline">
+                    {n(w.shipments)}
+                  </Link>
+                ),
+                align: "right",
+              },
+              { header: "Open", cell: (w) => n(w.openShipments), align: "right" },
+            ]}
+          />
+        </Section>
+      )}
       <div className="grid gap-6 lg:grid-cols-2">
         <Section
           title="By carrier"
@@ -249,7 +284,7 @@ export function PosTab({
   sel: SelectionSettings;
 }) {
   const o = logisticsOverview(l);
-  const rows = filterPos(l.pos, filters, l.today);
+  const rows = sortPos(filterPos(l.pos, filters, l.today), filters.sort, l.warehouses);
   const scacs = [
     ...new Set(
       l.shipments.map((s) => s.scac).filter((s): s is string => Boolean(s)),
@@ -274,6 +309,7 @@ export function PosTab({
             .values(),
         ]}
         scacs={scacs}
+        warehouses={l.warehouses}
       />
       <SelectionProvider
         kind="po"
@@ -290,7 +326,7 @@ export function PosTab({
       >
         <Section
           title={`${n(rows.length)} PO(s)`}
-          description={`Newest PO first (THD numbers POs in the order it creates them). The create date under a PO comes from THD\u2019s compliance data, when it has the PO.${rows.length > PAGE ? ` Showing the latest ${PAGE}; narrow the search or export to Excel for all of them.` : ""}`}
+          description={`${filters.sort === "warehouse" ? "By warehouse, then newest PO first" : filters.sort === "shipped" ? "Latest shipped by the WMS first" : "Newest PO first (THD numbers POs in the order it creates them)"}. The create date under a PO comes from THD\u2019s compliance data, when it has the PO.${rows.length > PAGE ? ` Showing the first ${PAGE}; narrow the search or export to Excel for all of them.` : ""}`}
         >
           <Table
             rows={rows.slice(0, PAGE)}
@@ -328,9 +364,16 @@ export function PosTab({
               {
                 header: "Shipped (WMS)",
                 cell: (p) => (
-                  <span className="whitespace-nowrap">
-                    {day(p.firstShipped)}
-                  </span>
+                  <>
+                    <span className="whitespace-nowrap">
+                      {day(p.firstShipped)}
+                    </span>
+                    {p.warehouses.length > 0 && (
+                      <span className="block text-xs text-gray-500">
+                        {warehouseNames(p.warehouses)}
+                      </span>
+                    )}
+                  </>
                 ),
               },
               {
@@ -402,23 +445,21 @@ export function ShipmentsTab({
   l,
   scac,
   late,
+  wh,
+  sort,
   sel,
 }: {
   l: LoadedLogistics;
   scac?: string;
   late?: boolean;
+  wh?: string;
+  sort?: string;
   sel: SelectionSettings;
 }) {
-  const rows = l.shipments.filter(
-    (s) =>
-      (!scac || s.scac === scac) &&
-      (!late ||
-        s.flags.some(
-          (f) => f.code === "DELIVERY_OVERDUE" || f.code === "PICKUP_PASSED",
-        )),
-  );
+  const rows = filterShipments(l.shipments, { scac, late, wh, sort }, l.warehouses);
   return (
     <div className="space-y-4">
+      <ShipmentFiltersBar filters={{ scac, late: late ? "1" : undefined, wh, sort }} warehouses={l.warehouses} />
       <SelectionProvider
         kind="shipment"
         items={rows
@@ -502,6 +543,7 @@ export function ShipmentsTab({
                 header: "Route",
                 cell: (s) => (
                   <Route
+                    warehouse={warehouseNames(s.warehouses) || undefined}
                     from={[s.originCity, s.originState]
                       .filter(Boolean)
                       .join(", ")}
