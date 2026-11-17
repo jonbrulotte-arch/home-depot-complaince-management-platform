@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { cityLine, destinationName, emptySlip, itemsFromCartons, slipFileName, slipSchema, totalUnits } from "@/lib/packing-slip";
+import { cityLine, destinationName, emptySlip, itemsFromCartons, needsPackingSlip, packingSlipHref, slipFileName, slipSchema, totalUnits } from "@/lib/packing-slip";
 
 describe("itemsFromCartons", () => {
   it("adds units up per product, in first-shipped order, with THD's SKU and description", () => {
@@ -54,4 +54,15 @@ describe("slipSchema", () => {
 it("names files safely", () => {
   expect(slipFileName("4156/2087", "pdf")).toBe("Packing_Slip_4156_2087.pdf");
   expect(slipFileName("", "xlsx")).toBe("Packing_Slip_PO.xlsx");
+});
+
+describe("needsPackingSlip", () => {
+  it("finds a packing list or slip among a reason code's documents", () => {
+    expect(needsPackingSlip("Packing list, Bill of Lading, or Proof of Delivery")).toBe(true);
+    expect(needsPackingSlip(null, "Signed packing slips")).toBe(true);
+    expect(needsPackingSlip("Packslip")).toBe(true);
+    expect(needsPackingSlip("Bill of Lading or Proof of Delivery")).toBe(false);
+    expect(needsPackingSlip(null, undefined)).toBe(false);
+    expect(packingSlipHref("0041 562")).toBe("/packing-slips?po=0041%20562");
+  });
 });

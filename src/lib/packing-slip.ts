@@ -108,6 +108,14 @@ export function cityLine(city: string | null, state: string | null, zip: string 
   return [[city, state].filter(Boolean).join(", "), zip].filter(Boolean).join(" ");
 }
 
+/** Whether a dispute reason code's documents include a packing slip (THD calls it a "packing list") */
+export function needsPackingSlip(...docs: (string | null | undefined)[]): boolean {
+  return docs.some((d) => Boolean(d && /\bpack(?:ing)?\s*(?:list|slip)s?\b|\bpackslips?\b/i.test(d)));
+}
+
+/** The Packing Slip Generator, filled in for a PO */
+export const packingSlipHref = (poNumber: string) => `/packing-slips?po=${encodeURIComponent(poNumber)}`;
+
 export const slipFileName = (poNumber: string, ext: "pdf" | "xlsx") => `Packing_Slip_${poNumber.replace(/[^\w-]/g, "_") || "PO"}.${ext}`;
 
 export const totalUnits = (items: SlipItem[]) => items.reduce((n, i) => n + (Number(i.units) || 0), 0);

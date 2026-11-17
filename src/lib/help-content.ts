@@ -187,7 +187,7 @@ export const HELP_TOPICS: HelpTopic[] = [
       },
       {
         steps: [
-          "**To prepare**: confirm the reason code, work through the document checklist built from THD's dispute matrix, and attach files (up to 10 MB each) or, for documents kept in OneDrive or SharePoint, **+ Link Resource** (Link Text and URL; the link opens in a new tab). The review's decision, team, root cause, notes and research are shown under **From the violation review**.",
+          "**To prepare**: confirm the reason code, work through the document checklist built from THD's dispute matrix, and attach files (up to 10 MB each) or, for documents kept in OneDrive or SharePoint, **+ Link Resource** (Link Text and URL; the link opens in a new tab). When the reason code's documents include a packing list, **Create Packslip** opens the Packing Slip Generator in a new tab, filled in for the dispute's PO; download the slip and attach it. The review's decision, team, root cause, notes and research are shown under **From the violation review**.",
           "**Submit in SPM**: copy the ready-made comment into SPM before the **SPM dispute window** closes (THD's rule by default: opens the 2nd Wednesday, closes the 2nd Tuesday of the following month; editable), then mark it submitted.",
           "**Decided**: record THD's decision (approved, partially approved or denied), the review code and the amount recovered.",
         ],
@@ -476,7 +476,7 @@ export const HELP_TOPICS: HelpTopic[] = [
     anyOf: ["packingslips.use"],
     blocks: [
       {
-        p: "**Packing Slips** in the sidebar (or **Packing slip** on a Logistics PO page) makes a packing slip for a PO. Enter the PO number and click **Fill from data**: the platform fills in what it knows, and the badges beside the button say where it came from.",
+        p: "**Packing Slips** in the sidebar (or **Packing slip** on a Logistics PO page, or **Create Packslip** on a dispute whose reason code needs a packing list) makes a packing slip for a PO. Enter the PO number and click **Fill from data**: the platform fills in what it knows, and the badges beside the button say where it came from.",
       },
       {
         list: [

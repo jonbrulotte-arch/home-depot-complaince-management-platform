@@ -111,6 +111,7 @@ export default async function ReportDisputesPage({ params, searchParams }: { par
         reasonCodes={reasonCodes.map((r) => ({ id: r.id, metricId: r.metricId, code: r.code, whenToUse: r.whenToUse, requiredDocs: r.requiredDocs, docDetails: r.docDetails }))}
         initialId={d ?? null}
         canEdit={canEdit}
+        canPackingSlip={user.permissions.has("packingslips.use")}
         email={{
           teams: mailTeams,
           sender: user.name,

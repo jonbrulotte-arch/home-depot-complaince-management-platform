@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { AlertTriangle, CalendarClock, Check, ChevronDown, ChevronRight, Copy, Download, FileText, Mail, Paperclip, Plus, RefreshCw, Trash2, X } from "lucide-react";
+import { AlertTriangle, CalendarClock, Check, ChevronDown, ChevronRight, Copy, Download, FileText, Mail, PackageCheck, Paperclip, Plus, RefreshCw, Trash2, X } from "lucide-react";
 import type { Disposition, DisputeEventType, DisputeStatus, ReportStatus } from "@prisma/client";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -19,6 +19,7 @@ import { useTimeZone } from "@/components/time-zone";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { EmailComposer, type EmailTeam } from "@/components/email/email-composer";
 import { LinkResourceButton, ResourceLinkItem, removeResourceLink, type ResourceLinkView } from "@/components/shared/resource-links";
+import { needsPackingSlip, packingSlipHref } from "@/lib/packing-slip";
 import { DISPUTE_REQUESTS, MAX_DISPUTE_SELECTION, disputeDraft, disputeReportFileName, suggestedDisputeRequests, type DisputeEmailItem } from "@/lib/dispute-email";
 
 export interface DisputeView {
@@ -125,6 +126,7 @@ export function DisputeWorkspace({
   reasonCodes,
   initialId,
   canEdit,
+  canPackingSlip,
   email,
 }: {
   reportId: string;
@@ -134,6 +136,8 @@ export function DisputeWorkspace({
   reasonCodes: ReasonCode[];
   initialId: string | null;
   canEdit: boolean;
+  /** packingslips.use: offer Create Packslip where the reason code needs a packing slip */
+  canPackingSlip: boolean;
   email: DisputeEmailSettings;
 }) {
   const router = useRouter();
@@ -273,6 +277,7 @@ export function DisputeWorkspace({
                 dispute={selected}
                 reasonCodes={reasonCodes.filter((r) => r.metricId === selected.metricId)}
                 canEdit={canEdit}
+                canPackingSlip={canPackingSlip}
                 emails={email.log.filter((e) => e.disputeIds.includes(selected.id))}
                 reportId={reportId}
               />
@@ -428,7 +433,7 @@ function Step({ n, title, done, children }: { n: number; title: string; done?: b
   );
 }
 
-function DisputeDetail({ dispute, reasonCodes, canEdit, emails, reportId }: { dispute: DisputeView; reasonCodes: ReasonCode[]; canEdit: boolean; emails: DisputeEmailRow[]; reportId: string }) {
+function DisputeDetail({ dispute, reasonCodes, canEdit, canPackingSlip, emails, reportId }: { dispute: DisputeView; reasonCodes: ReasonCode[]; canEdit: boolean; canPackingSlip: boolean; emails: DisputeEmailRow[]; reportId: string }) {
   const tz = useTimeZone();
   const router = useRouter();
   const [busy, setBusy] = useState(false);
@@ -445,6 +450,8 @@ function DisputeDetail({ dispute, reasonCodes, canEdit, emails, reportId }: { di
   const [copied, setCopied] = useState(false);
   const reason = reasonCodes.find((r) => r.id === dispute.reasonCodeId);
   const editable = canEdit && dispute.status !== "WITHDRAWN";
+  // The reason code asks for a packing slip (packing list): offer to make one for the PO
+  const packslip = canPackingSlip && Boolean(dispute.poNumber) && needsPackingSlip(reason?.requiredDocs, reason?.docDetails);
   const prepEditable = editable && (dispute.status === "PREPARING" || dispute.status === "READY");
   const allowed = allowedTransitions(dispute.status);
   const docsDone = items.length > 0 && items.every((c) => c.done);
@@ -669,14 +676,30 @@ function DisputeDetail({ dispute, reasonCodes, canEdit, emails, reportId }: { di
               ))}
             </ul>
           )}
-          {editable && (
+          {(editable || packslip) && (
             <div className="mt-2 flex flex-wrap items-center gap-2">
+              {editable && (
+              <>
               <label className="inline-flex cursor-pointer items-center gap-1.5 rounded-md border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50">
                 <Plus className="h-4 w-4" />
                 Attach document
                 <input type="file" className="hidden" onChange={(e) => { upload(e.target.files?.[0]); e.target.value = ""; }} />
               </label>
               <LinkResourceButton endpoint={`/api/disputes/${dispute.id}/links`} className="h-auto px-3 py-1.5 text-xs" />
+              </>
+              )}
+              {packslip && (
+                <a
+                  href={packingSlipHref(dispute.poNumber!)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  title="Open the Packing Slip Generator in a new tab, filled in for this PO"
+                  className="inline-flex items-center gap-1.5 rounded-md border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50"
+                >
+                  <PackageCheck className="h-4 w-4" />
+                  Create Packslip
+                </a>
+              )}
             </div>
           )}
         </div>
