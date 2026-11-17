@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { apiFetch } from "@/lib/client-api";
 import { formatDateTime } from "@/lib/utils";
 import { useTimeZone } from "@/components/time-zone";
+import { LinkResourceButton, ResourceLinkItem, removeResourceLink, type ResourceLinkView } from "@/components/shared/resource-links";
 
 interface Attachment {
   id: string;
@@ -16,8 +17,8 @@ interface Attachment {
   uploadedBy: string | null;
 }
 
-/** An issue's files: download for everyone who can see the issue; attach and remove with issues.manage. */
-export function IssueAttachments({ issueId, attachments, canEdit }: { issueId: string; attachments: Attachment[]; canEdit: boolean }) {
+/** An issue's files and linked resources: open for everyone who can see the issue; add and remove with issues.manage. */
+export function IssueAttachments({ issueId, attachments, links, canEdit }: { issueId: string; attachments: Attachment[]; links: ResourceLinkView[]; canEdit: boolean }) {
   const tz = useTimeZone();
   const router = useRouter();
   const input = useRef<HTMLInputElement>(null);
@@ -53,9 +54,9 @@ export function IssueAttachments({ issueId, attachments, canEdit }: { issueId: s
 
   return (
     <div className="space-y-3">
-      {attachments.length === 0 ? (
-        <p className="text-sm text-gray-400">No files yet.</p>
-      ) : (
+      {attachments.length === 0 && links.length === 0 ? (
+        <p className="text-sm text-gray-400">No files or links yet.</p>
+      ) : attachments.length === 0 ? null : (
         <ul className="divide-y divide-gray-200 rounded-md border border-gray-200">
           {attachments.map((a) => (
             <li key={a.id} className="flex items-center justify-between gap-3 px-3 py-2">
@@ -77,13 +78,34 @@ export function IssueAttachments({ issueId, attachments, canEdit }: { issueId: s
           ))}
         </ul>
       )}
+      {links.length > 0 && (
+        <ul className="divide-y divide-gray-200 rounded-md border border-gray-200">
+          {links.map((l) => (
+            <li key={l.id} className="flex items-center gap-3 px-3 py-2">
+              <ResourceLinkItem
+                link={l}
+                onRemove={
+                  canEdit
+                    ? async () => {
+                        const err = await removeResourceLink(`/api/issues/${issueId}/links`, l);
+                        if (err) setError(err);
+                        else router.refresh();
+                      }
+                    : undefined
+                }
+              />
+            </li>
+          ))}
+        </ul>
+      )}
       {canEdit && (
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3">
           <input ref={input} type="file" className="hidden" onChange={(e) => e.target.files?.[0] && upload(e.target.files[0])} />
           <Button variant="outline" size="sm" onClick={() => input.current?.click()} disabled={busy}>
             <Paperclip className="h-4 w-4 mr-1.5" />
             {busy ? "Uploading…" : "Attach a file"}
           </Button>
+          <LinkResourceButton endpoint={`/api/issues/${issueId}/links`} />
           <span className="text-xs text-gray-400">PDF, images, Excel/CSV, Word, Outlook .msg/.eml or text, up to 10 MB</span>
         </div>
       )}

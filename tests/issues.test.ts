@@ -117,3 +117,19 @@ describe("lineItem", () => {
     expect(lineItem({})).toEqual({ primary: "—", secondary: null, qty: null });
   });
 });
+
+describe("Link Resource", () => {
+  it("accepts web addresses only, adding https:// when left out", async () => {
+    const { cleanResourceUrl, linkHost, parseResourceLink } = await import("@/lib/resource-links");
+    expect(cleanResourceUrl(" https://jsproducts-my.sharepoint.com/:b:/p/jon/Abc?e=1 ")).toBe("https://jsproducts-my.sharepoint.com/:b:/p/jon/Abc?e=1");
+    expect(cleanResourceUrl("onedrive.live.com/view?id=1")).toBe("https://onedrive.live.com/view?id=1");
+    expect(cleanResourceUrl("javascript:alert(1)")).toBeNull();
+    expect(cleanResourceUrl("file:///C:/docs/bol.pdf")).toBeNull();
+    expect(cleanResourceUrl("not a link")).toBeNull();
+    expect(cleanResourceUrl("")).toBeNull();
+    expect(linkHost("https://www.example.com/a")).toBe("example.com");
+    expect(parseResourceLink({ label: "  Signed   BOL ", url: "example.com/bol.pdf" })).toEqual({ label: "Signed BOL", url: "https://example.com/bol.pdf" });
+    expect(parseResourceLink({ label: "", url: "https://x.com" })).toEqual({ error: "Enter the link text" });
+    expect(parseResourceLink({ label: "x", url: "ftp://x.com" })).toEqual({ error: "Enter a web address (https://…)" });
+  });
+});

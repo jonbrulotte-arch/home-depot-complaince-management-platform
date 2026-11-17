@@ -74,6 +74,7 @@ export default async function IssuePage({ params }: { params: Promise<{ id: stri
             issueId={issue.id}
             canEdit={canEdit}
             attachments={issue.attachments.map((a) => ({ id: a.id, fileName: a.fileName, size: a.size, createdAt: a.createdAt.toISOString(), uploadedBy: a.uploadedBy?.name ?? null }))}
+            links={issue.links.map((l) => ({ id: l.id, label: l.label, url: l.url, createdAt: l.createdAt.toISOString(), createdBy: l.createdBy?.name ?? null }))}
           />
         }
       />

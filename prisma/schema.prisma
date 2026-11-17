@@ -59,6 +59,7 @@ model User {
   logisticsImports    LogisticsImport[]
   logisticsNotes      LogisticsNote[]
   logisticsEmails     LogisticsEmail[]
+  resourceLinks       ResourceLink[]
   disputeEmails       DisputeEmail[]
 }
 
@@ -481,6 +482,7 @@ model Dispute {
   updatedAt       DateTime            @updatedAt
   events          DisputeEvent[]
   attachments     DisputeAttachment[]
+  links           ResourceLink[]
 
   @@index([status])
 }
@@ -747,6 +749,7 @@ model Issue {
   pos            IssuePo[]
   notes          IssueNote[]
   attachments    IssueAttachment[]
+  links          ResourceLink[]
   share          IssueShare?
 
   @@index([issueDate])
@@ -1122,4 +1125,23 @@ model Warehouse {
   sortOrder Int      @default(0)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+/// A link to a document kept elsewhere (OneDrive, SharePoint…), added beside a dispute's or an issue's
+/// files with "+ Link Resource"; it opens in a new tab. Exactly one of disputeId and issueId is set.
+model ResourceLink {
+  id          String   @id @default(cuid())
+  label       String
+  /// http(s) only
+  url         String
+  disputeId   String?
+  dispute     Dispute? @relation(fields: [disputeId], references: [id], onDelete: Cascade)
+  issueId     String?
+  issue       Issue?   @relation(fields: [issueId], references: [id], onDelete: Cascade)
+  createdById String?
+  createdBy   User?    @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt   DateTime @default(now())
+
+  @@index([disputeId])
+  @@index([issueId])
 }

@@ -16,7 +16,7 @@ export async function loadDisputesForEmail(reportId: string, ids: string[]) {
       // Only this report's disputes, as its Disputes page lists them
       line: { ...linesInPeriod(await getPeriodField(), report.period.fiscalMonth), metric: { programId: { in: report.programs.map((p) => p.programId) } } },
     },
-    include: { line: { include: { metric: { include: { program: true } }, review: true } }, reasonCode: true },
+    include: { line: { include: { metric: { include: { program: true } }, review: true } }, reasonCode: true, links: { orderBy: { createdAt: "asc" }, select: { label: true, url: true } } },
   });
   const byId = new Map(found.map((d) => [d.id, d]));
   const disputes = ids.map((id) => byId.get(id)).filter((d): d is (typeof found)[number] => Boolean(d));

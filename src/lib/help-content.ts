@@ -187,7 +187,7 @@ export const HELP_TOPICS: HelpTopic[] = [
       },
       {
         steps: [
-          "**To prepare**: confirm the reason code, work through the document checklist built from THD's dispute matrix, and attach files (up to 10 MB each). The review's decision, team, root cause, notes and research are shown under **From the violation review**.",
+          "**To prepare**: confirm the reason code, work through the document checklist built from THD's dispute matrix, and attach files (up to 10 MB each) or, for documents kept in OneDrive or SharePoint, **+ Link Resource** (Link Text and URL; the link opens in a new tab). The review's decision, team, root cause, notes and research are shown under **From the violation review**.",
           "**Submit in SPM**: copy the ready-made comment into SPM before the **SPM dispute window** closes (THD's rule by default: opens the 2nd Wednesday, closes the 2nd Tuesday of the following month; editable), then mark it submitted.",
           "**Decided**: record THD's decision (approved, partially approved or denied), the review code and the amount recovered.",
         ],
@@ -353,7 +353,7 @@ export const HELP_TOPICS: HelpTopic[] = [
       },
       { h: "Find and export" },
       {
-        p: "Search by PO number, an HD Support ticket number (exact), issue number (ISS-0001) or any word, and filter by status, category and date. **Export to Excel** downloads the filtered issues, with a second sheet of their POs and what the compliance data holds for each.",
+        p: "Search by PO number, an HD Support ticket number (exact), issue number (ISS-0001) or any word, and filter by status, category and date. **Export to Excel** downloads the filtered issues, with a second sheet of their POs and what the compliance data holds for each. Beside an issue's files, **+ Link Resource** adds a link to a document kept in OneDrive or SharePoint (Link Text and URL); it opens in a new tab and, like the files, isn't shown on the public page.",
       },
       { h: "Canceled orders" },
       {
@@ -465,7 +465,7 @@ export const HELP_TOPICS: HelpTopic[] = [
         ],
       },
       {
-        p: "The **POs** tab lists the newest PO first (THD numbers POs in the order it creates them; a PO's create date shows under its number when THD's compliance data has it). It searches by PO, shipment, tracking or PRO number, order or DC, and filters by status, flag, carrier, **Warehouse** and **Date** (last 7 days, last 2 weeks, last 30 or 90 days, last 12 months, all time, or **Custom** from and to dates; a PO's date is when the WMS shipped it, else its TMS pickup, else its create date). **Sort** lists them newest PO first, by warehouse, or latest shipped first. The warehouse is where the WMS shipped the PO from, read from the start of the WMS report's OrderNumber (3- is Ohio Warehouse (Site 3), 0- is LV Warehouse (Site 0); an administrator manages the list under Admin › Settings › Warehouses); it shows under the WMS ship date, on PO and shipment pages and in the Excel export, and **No WMS cartons yet** finds POs the warehouse hasn't shipped. The **Shipments** tab filters and sorts by warehouse too, and the Overview has **By warehouse** (POs, high flags, shipped not delivered and TMS shipments for each). On the **Overview**, **What's flagged** has the same date range, and clicking a flag lists those POs with the range kept; **Export to Excel** downloads the POs shown with their shipments and WMS lines.",
+        p: "The **POs** tab lists the newest PO first (THD numbers POs in the order it creates them; a PO's create date shows under its number when THD's compliance data has it). It searches by PO, shipment, tracking or PRO number, order or DC, and filters by status, flag, carrier, **Warehouse** and **Date** (last 7 days, last 2 weeks, last 30 or 90 days, last 12 months, all time, or **Custom** from and to dates; a PO's date is when the WMS shipped it, else its TMS pickup, else its create date). **Sort** lists them newest PO first, by warehouse, or latest shipped first. The warehouse is where the WMS shipped the PO from, read from the start of the WMS report's OrderNumber (3- is Ohio Warehouse (Site 3), 0- is LV Warehouse (Site 0); an administrator manages the list under Admin › Settings › Warehouses); it shows under the WMS ship date, on PO and shipment pages and in the Excel export, and **No WMS cartons yet** finds POs the warehouse hasn't shipped. The **Shipments** tab filters and sorts by warehouse too, and the Overview has **By warehouse** (POs, high flags, shipped not delivered and TMS shipments for each). On the **Overview**, **What's flagged** has the same warehouse filter and date range, and clicking a flag lists those POs with the range kept; **Export to Excel** downloads the POs shown with their shipments and WMS lines.",
       },
     ],
   },

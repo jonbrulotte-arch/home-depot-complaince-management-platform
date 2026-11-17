@@ -26,7 +26,7 @@ import { Section, Table, n } from "@/app/(app)/insights/ui";
 import { PoFiltersBar } from "./po-filters";
 import { OverviewRangePicker } from "./range-picker";
 import { ShipmentFiltersBar } from "./shipment-filters";
-import { warehouseNames } from "@/lib/logistics/warehouses";
+import { UNKNOWN_WAREHOUSE, warehouseNames } from "@/lib/logistics/warehouses";
 import { UpsRefreshButton } from "./ups-refresh-button";
 import { SelectBox, SelectionProvider, type EmailTeam } from "./selection";
 import { poLine, shipmentLine } from "@/lib/logistics/edi";
@@ -69,10 +69,11 @@ export function Route({ from, to, warehouse }: { from: string; to: string; wareh
   );
 }
 
-export function OverviewTab({ l, range }: { l: LoadedLogistics; range: Pick<PoFilters, "range" | "from" | "to"> }) {
+export function OverviewTab({ l, range }: { l: LoadedLogistics; range: Pick<PoFilters, "range" | "from" | "to" | "wh"> }) {
   const o = logisticsOverview(l, l.warehouses);
   // What's flagged follows the date range; the tiles cover every PO
-  const inRange = rangeBounds(range, l.today) ? logisticsOverview({ ...l, pos: filterPos(l.pos, range, l.today) }) : o;
+  const inRange = rangeBounds(range, l.today) || range.wh ? logisticsOverview({ ...l, pos: filterPos(l.pos, range, l.today) }) : o;
+  const whName = range.wh ? (range.wh === UNKNOWN_WAREHOUSE ? "no WMS cartons yet" : (l.warehouses.find((w) => w.prefix === range.wh)?.name ?? range.wh)) : null;
   const rangeQuery = Object.entries(range)
     .filter(([, v]) => v)
     .map(([k, v]) => `&${k}=${encodeURIComponent(v!)}`)
@@ -120,10 +121,10 @@ export function OverviewTab({ l, range }: { l: LoadedLogistics; range: Pick<PoFi
         title="What's flagged"
         description={
           <span title="A PO's date is when the WMS shipped it, else its TMS pickup, else its create date">
-            POs with each flag ({rangeLabel(range, l.today)}, by ship date). Click a flag to list them.
+            POs with each flag ({[whName, `${rangeLabel(range, l.today)}, by ship date`].filter(Boolean).join(" · ")}). Click a flag to list them.
           </span>
         }
-        action={<OverviewRangePicker value={range} />}
+        action={<OverviewRangePicker value={range} warehouses={l.warehouses} />}
       >
         <Table
           rows={inRange.flags}

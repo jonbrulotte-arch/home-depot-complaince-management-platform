@@ -131,7 +131,7 @@ export default async function LogisticsPage({
           </CardContent>
         </Card>
       ) : tab === "overview" ? (
-        <OverviewTab l={l} range={{ range: sp.range, from: sp.from, to: sp.to }} />
+        <OverviewTab l={l} range={{ range: sp.range, from: sp.from, to: sp.to, wh: sp.wh }} />
       ) : tab === "pos" ? (
         <PosTab
           l={l}

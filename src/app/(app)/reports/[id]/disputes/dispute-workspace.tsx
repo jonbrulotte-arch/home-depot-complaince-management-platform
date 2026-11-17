@@ -18,6 +18,7 @@ import { cn, formatCurrency, formatDateTime, formatUtcDate, formatUtcDateTime } 
 import { useTimeZone } from "@/components/time-zone";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { EmailComposer, type EmailTeam } from "@/components/email/email-composer";
+import { LinkResourceButton, ResourceLinkItem, removeResourceLink, type ResourceLinkView } from "@/components/shared/resource-links";
 import { DISPUTE_REQUESTS, MAX_DISPUTE_SELECTION, disputeDraft, disputeReportFileName, suggestedDisputeRequests, type DisputeEmailItem } from "@/lib/dispute-email";
 
 export interface DisputeView {
@@ -47,6 +48,8 @@ export interface DisputeView {
   spmDecisionSeen: string | null;
   events: { id: string; type: DisputeEventType; body: string | null; fromStatus: DisputeStatus | null; toStatus: DisputeStatus | null; user: string | null; at: string }[];
   attachments: { id: string; fileName: string; size: number; uploadedAt: string; uploadedBy: string | null }[];
+  /** Links to documents kept elsewhere (OneDrive…) */
+  links: ResourceLinkView[];
 }
 
 /** An email from the report's Send Email log */
@@ -627,7 +630,7 @@ function DisputeDetail({ dispute, reasonCodes, canEdit, emails, reportId }: { di
 
         <div>
           <p className="text-sm font-medium text-gray-700 mb-1.5">Attachments</p>
-          {dispute.attachments.length === 0 && <p className="text-xs text-gray-400">No documents attached yet.</p>}
+          {dispute.attachments.length === 0 && dispute.links.length === 0 && <p className="text-xs text-gray-400">No documents attached or linked yet.</p>}
           <ul className="space-y-1">
             {dispute.attachments.map((a) => (
               <li key={a.id} className="flex items-center gap-2 text-sm">
@@ -645,12 +648,36 @@ function DisputeDetail({ dispute, reasonCodes, canEdit, emails, reportId }: { di
               </li>
             ))}
           </ul>
+          {dispute.links.length > 0 && (
+            <ul className="mt-1 space-y-1">
+              {dispute.links.map((l) => (
+                <li key={l.id} className="flex items-center">
+                  <ResourceLinkItem
+                    link={l}
+                    compact
+                    onRemove={
+                      editable
+                        ? async () => {
+                            const err = await removeResourceLink(`/api/disputes/${dispute.id}/links`, l);
+                            if (err) setError(err);
+                            else router.refresh();
+                          }
+                        : undefined
+                    }
+                  />
+                </li>
+              ))}
+            </ul>
+          )}
           {editable && (
-            <label className="mt-2 inline-flex cursor-pointer items-center gap-1.5 rounded-md border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50">
-              <Plus className="h-4 w-4" />
-              Attach document
-              <input type="file" className="hidden" onChange={(e) => { upload(e.target.files?.[0]); e.target.value = ""; }} />
-            </label>
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              <label className="inline-flex cursor-pointer items-center gap-1.5 rounded-md border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50">
+                <Plus className="h-4 w-4" />
+                Attach document
+                <input type="file" className="hidden" onChange={(e) => { upload(e.target.files?.[0]); e.target.value = ""; }} />
+              </label>
+              <LinkResourceButton endpoint={`/api/disputes/${dispute.id}/links`} className="h-auto px-3 py-1.5 text-xs" />
+            </div>
           )}
         </div>
 

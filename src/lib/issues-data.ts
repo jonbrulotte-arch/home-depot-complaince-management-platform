@@ -34,6 +34,8 @@ export async function getIssue(id: string) {
       pos: { orderBy: { poNumber: "asc" } },
       notes: { include: { author: { select: { name: true } } }, orderBy: { createdAt: "asc" } },
       attachments: { select: { id: true, fileName: true, size: true, createdAt: true, uploadedBy: { select: { name: true } } }, orderBy: { createdAt: "asc" } },
+      // Links to documents kept elsewhere (OneDrive…); not shown on the public page, like the files
+      links: { select: { id: true, label: true, url: true, createdAt: true, createdBy: { select: { name: true } } }, orderBy: { createdAt: "asc" } },
     },
   });
   if (!issue) return null;

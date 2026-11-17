@@ -97,6 +97,8 @@ export function disputeReportPdf(input: { reportTitle: string; disputes: LoadedD
     const list = checklistOf(d);
     if (list.length) line("Checklist", list.map((c) => `[${c.done ? "x" : " "}] ${c.label}`).join("   "));
     line("Due", d.dueDate ? formatUtcDate(d.dueDate) : null);
+    // Linked resources (OneDrive…): the report goes to internal teams, who can open them
+    if (d.links.length) line("Linked documents", d.links.map((k) => `${k.label} (${k.url})`).join("   "));
     line("Comment for SPM", d.supplierComment);
     if (d.line.review) {
       const r = d.line.review;

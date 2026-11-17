@@ -24,6 +24,7 @@ export default async function ReportDisputesPage({ params, searchParams }: { par
       reasonCode: true,
       events: { orderBy: { at: "desc" }, include: { user: { select: { name: true } } } },
       attachments: { orderBy: { uploadedAt: "asc" }, select: { id: true, fileName: true, size: true, uploadedAt: true, uploadedBy: { select: { name: true } } } },
+      links: { orderBy: { createdAt: "asc" }, select: { id: true, label: true, url: true, createdAt: true, createdBy: { select: { name: true } } } },
     },
     orderBy: [{ line: { metric: { program: { sortOrder: "asc" } } } }, { line: { metric: { sortOrder: "asc" } } }, { line: { poNumber: "asc" } }],
   });
@@ -82,6 +83,7 @@ export default async function ReportDisputesPage({ params, searchParams }: { par
       spmDecisionSeen: x.spmDecisionSeen,
       events: x.events.map((e) => ({ id: e.id, type: e.type, body: e.body, fromStatus: e.fromStatus, toStatus: e.toStatus, user: e.user?.name ?? null, at: e.at.toISOString() })),
       attachments: x.attachments.map((a) => ({ id: a.id, fileName: a.fileName, size: a.size, uploadedAt: a.uploadedAt.toISOString(), uploadedBy: a.uploadedBy?.name ?? null })),
+      links: x.links.map((l) => ({ id: l.id, label: l.label, url: l.url, createdAt: l.createdAt.toISOString(), createdBy: l.createdBy?.name ?? null })),
     };
   });
 

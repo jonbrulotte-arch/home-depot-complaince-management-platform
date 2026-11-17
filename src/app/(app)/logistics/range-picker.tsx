@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { PO_RANGES, type PoFilters } from "@/lib/logistics/views";
+import { UNKNOWN_WAREHOUSE, type WarehouseInfo } from "@/lib/logistics/warehouses";
 
 type Range = Pick<PoFilters, "range" | "from" | "to">;
 
@@ -52,19 +53,32 @@ export function PoRangePicker({ value, onChange, id = "po-range" }: { value: Ran
   );
 }
 
-/** The range picker on the Overview's What's flagged, kept in the address */
-export function OverviewRangePicker({ value }: { value: Range }) {
+/** The warehouse and date range on the Overview's What's flagged, kept in the address */
+export function OverviewRangePicker({ value, warehouses }: { value: Range & { wh?: string }; warehouses: WarehouseInfo[] }) {
   const router = useRouter();
   const pathname = usePathname();
+  const go = (next: Partial<Range & { wh?: string }>) => {
+    const p = new URLSearchParams({ tab: "overview" });
+    for (const [k, v] of Object.entries({ ...value, ...next })) if (v) p.set(k, v);
+    router.push(`${pathname}?${p}`, { scroll: false });
+  };
   return (
-    <PoRangePicker
-      id="flag-range"
-      value={value}
-      onChange={(r) => {
-        const p = new URLSearchParams({ tab: "overview" });
-        for (const [k, v] of Object.entries(r)) if (v) p.set(k, v);
-        router.push(`${pathname}?${p}`, { scroll: false });
-      }}
-    />
+    <div className="flex flex-wrap items-end justify-end gap-2">
+      <Select value={value.wh || "all"} onValueChange={(v) => go({ wh: v === "all" ? undefined : v })}>
+        <SelectTrigger id="flag-wh" className="w-56" aria-label="Warehouse">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="all">Any warehouse</SelectItem>
+          {warehouses.map((w) => (
+            <SelectItem key={w.prefix} value={w.prefix}>
+              {w.name}
+            </SelectItem>
+          ))}
+          <SelectItem value={UNKNOWN_WAREHOUSE}>No WMS cartons yet</SelectItem>
+        </SelectContent>
+      </Select>
+      <PoRangePicker id="flag-range" value={value} onChange={(r) => go({ range: r.range, from: r.from, to: r.to })} />
+    </div>
   );
 }
