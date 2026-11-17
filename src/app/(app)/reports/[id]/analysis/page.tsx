@@ -5,9 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { requirePagePermission } from "@/lib/auth-guard";
 import { LINE_FIELD_LABELS } from "@/lib/line-fields";
 import { getPeriodField, linesInPeriod } from "@/lib/periods";
-import { issuesForPoRecords } from "@/lib/issues-data";
-import { ISSUE_STATUSES, issueLabel } from "@/lib/issues";
-import { formatUtcDate } from "@/lib/utils";
+import { reviewIssues, reviewLogistics, type ReviewIssue } from "@/lib/review-context";
 import { TriageWorkspace, type TriageLine } from "./triage-workspace";
 import { getTeams } from "@/lib/teams";
 
@@ -23,14 +21,21 @@ export default async function AnalysisPage({ params }: { params: Promise<{ id: s
   const programIds = report.programs.map((p) => p.programId);
   const lines = await prisma.complianceLine.findMany({
     where: { ...linesInPeriod(await getPeriodField(), report.period.fiscalMonth), isCompliant: false, metric: { programId: { in: programIds } } },
-    include: { metric: { include: { program: true } }, review: true, dispute: { select: { id: true, status: true } } },
+    include: { metric: { include: { program: true } }, review: true, dispute: { select: { id: true, status: true } }, poRecord: { select: { id: true, poCreateDate: true } } },
     orderBy: [{ metric: { program: { sortOrder: "asc" } } }, { metric: { sortOrder: "asc" } }, { poNumber: "asc" }, { sourceRow: "asc" }],
   });
 
   const metricIds = [...new Set(lines.map((l) => l.metricId))];
   const poNumbers = [...new Set(lines.map((l) => l.poNumber).filter((p): p is string => Boolean(p)))];
   const recordIds = [...new Set(lines.flatMap((l) => (l.poRecordId ? [l.poRecordId] : [])))];
-  const [reasonCodes, history, issues] = await Promise.all([
+  // Research beside each line: Logistics keyed by PO record (THD reuses PO numbers), else by PO number
+  const researchKey = (l: (typeof lines)[number]) => l.poRecordId ?? `po:${l.poNumber}`;
+  const canLogistics = user.permissions.has("logistics.view");
+  const canIssues = user.permissions.has("issues.view");
+  const logisticsItems = canLogistics
+    ? [...new Map(lines.filter((l) => l.poNumber).map((l) => [researchKey(l), { key: researchKey(l), poNumber: l.poNumber!, poCreateDate: l.poRecord?.poCreateDate ?? null }])).values()]
+    : [];
+  const [reasonCodes, history, issues, logistics] = await Promise.all([
     prisma.disputeReasonCode.findMany({ where: { metricId: { in: metricIds }, active: true }, orderBy: { code: "asc" } }),
     poNumbers.length
       ? prisma.complianceLine.findMany({
@@ -39,7 +44,8 @@ export default async function AnalysisPage({ params }: { params: Promise<{ id: s
           orderBy: { fiscalMonth: "desc" },
         })
       : Promise.resolve([]),
-    user.permissions.has("issues.view") ? issuesForPoRecords(recordIds) : Promise.resolve(new Map<string, never[]>()),
+    canIssues ? reviewIssues(recordIds) : Promise.resolve(new Map<string, ReviewIssue[]>()),
+    canLogistics ? reviewLogistics(logisticsItems) : Promise.resolve({}),
   ]);
 
   const toTriage = (l: (typeof lines)[number]): TriageLine => {
@@ -60,14 +66,10 @@ export default async function AnalysisPage({ params }: { params: Promise<{ id: s
       }),
       raw: l.raw as Record<string, string | number | boolean | null>,
       dispute: l.dispute,
-      issues: (l.poRecordId ? (issues.get(l.poRecordId) ?? []) : []).map((i) => ({
-        id: i.id,
-        label: issueLabel(i.number),
-        title: i.title,
-        date: formatUtcDate(i.issueDate),
-        status: ISSUE_STATUSES[i.status].label,
-        statusVariant: ISSUE_STATUSES[i.status].variant,
-      })),
+      issues: l.poRecordId ? (issues.get(l.poRecordId) ?? []) : [],
+      researchKey: researchKey(l),
+      poRecordId: l.poRecordId,
+      poCreateDate: l.poRecord?.poCreateDate ? l.poRecord.poCreateDate.toISOString().slice(0, 10) : null,
       review: l.review
         ? {
             disposition: l.review.disposition,
@@ -104,6 +106,8 @@ export default async function AnalysisPage({ params }: { params: Promise<{ id: s
           disposition: h.review?.disposition ?? null,
         }))}
         reportId={id}
+        logistics={logistics}
+        access={{ logistics: canLogistics, issues: canIssues, logIssues: user.permissions.has("issues.manage"), poRecords: user.permissions.has("view.polookup") }}
         canEdit={user.permissions.has("lines.triage") && report.status !== "PUBLISHED"}
       />
     </div>

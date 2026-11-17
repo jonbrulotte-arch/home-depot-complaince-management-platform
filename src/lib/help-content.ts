@@ -140,7 +140,21 @@ export const HELP_TOPICS: HelpTopic[] = [
     anyOf: ["lines.triage", "reports.view"],
     blocks: [
       {
-        p: "Click **Review lines** on the report. Violations are grouped by program and metric on the left; each line shows every field THD sent, the PO's other violations, and the dispute reason codes that apply with the documents each needs.",
+        p: "Click **Review lines** on the report. Violations are grouped by program and metric on the left; each line shows every field THD sent and the dispute reason codes that apply with the documents each needs.",
+      },
+      {
+        p: "Above the decision, **Research** puts everything about the PO in one place. Its header shows the PO's logistics status, its flags and how many issues it has, with links to the **PO record**, its **Logistics page** and **Log an issue** (each opens in a new tab). The tabs stay as you picked them while you move from line to line:",
+      },
+      {
+        terms: [
+          ["Logistics", "What the WMS and TMS show: status, ship-from, destination, when the WMS shipped it, cartons and units, the TMS ID on the cartons, PROs, every flag explained, UPS tracking, the WMS shipped lines (open the list) and the Logistics notes on the PO and its shipments. Needs Logistics access."],
+          ["Shipments", "The TMS shipments the PO is on: status, carrier (click the SCAC for its tracking page), pickup and delivery, route, the POs on the truck (this one in bold) and the shipment's flags."],
+          ["Issues", "The Issue Log issues for this PO: status, category, severity, team, estimated maximum fine, HD Support tickets, what happened and the resolution. Needs Issue Log access."],
+          ["Other violations", "The PO's violations in other months, with their offsets and decisions."],
+        ],
+      },
+      {
+        p: "Logistics holds the latest use of a PO number (the WMS report covers about 60 days). When THD reused the number and the violation is about an earlier use, Research says so instead of showing the later order's data.",
       },
       {
         steps: [
@@ -320,7 +334,7 @@ export const HELP_TOPICS: HelpTopic[] = [
       },
       { h: "Issues and compliance data" },
       {
-        p: "Each PO on an issue is matched to its PO record when THD's exports for it are imported: by the PO create date when you gave one, otherwise the use of that PO number created on or before the issue date. The issue page then shows that PO's compliance lines (result, offset, decision, team and dispute). The other way round, the PO record shows its issues, and the violation review shows **Issues logged for this PO** beside the line, so analysts can use them when deciding and disputing.",
+        p: "Each PO on an issue is matched to its PO record when THD's exports for it are imported: by the PO create date when you gave one, otherwise the use of that PO number created on or before the issue date. The issue page then shows that PO's compliance lines (result, offset, decision, team and dispute). The other way round, the PO record shows its issues, and the violation review shows them in **Research › Issues** beside the line, so analysts can use them when deciding and disputing.",
       },
       { h: "PDF and sharing" },
       {

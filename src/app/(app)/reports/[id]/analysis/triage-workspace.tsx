@@ -13,6 +13,8 @@ import { DISPOSITIONS, DispositionBadge, DisputeStatusBadge } from "@/components
 import { apiFetch } from "@/lib/client-api";
 import { pickerTeams, type TeamOption } from "@/lib/team-options";
 import { cn, formatCurrency, formatUtcDateTime } from "@/lib/utils";
+import type { ReviewIssue, ReviewLogisticsResult } from "@/lib/review-context";
+import { ResearchPanel, type HistoryItem, type ResearchAccess, type ResearchTab } from "./research-panel";
 
 export interface TriageReview {
   disposition: Disposition;
@@ -37,7 +39,12 @@ export interface TriageLine {
   review: TriageReview | null;
   dispute: { id: string; status: DisputeStatus } | null;
   /** Issue Log entries for this line's PO; only for people who can see the Issue Log */
-  issues: { id: string; label: string; title: string; date: string; status: string; statusVariant: "destructive" | "warning" | "success" | "secondary" }[];
+  issues: ReviewIssue[];
+  /** Key into the page's logistics research (the PO record id, else the PO number) */
+  researchKey: string;
+  poRecordId: string | null;
+  /** YYYY-MM-DD */
+  poCreateDate: string | null;
 }
 
 interface ReasonCode {
@@ -47,14 +54,6 @@ interface ReasonCode {
   whenToUse: string | null;
   requiredDocs: string | null;
   docDetails: string | null;
-}
-
-interface HistoryItem {
-  poNumber: string;
-  fiscalMonth: number;
-  label: string;
-  offset: number;
-  disposition: Disposition | null;
 }
 
 const NONE = "__none__";
@@ -77,12 +76,17 @@ export function TriageWorkspace({
   reportId,
   canEdit,
   teams,
+  logistics,
+  access,
 }: {
   lines: TriageLine[];
   reasonCodes: ReasonCode[];
   history: HistoryItem[];
   reportId: string;
   canEdit: boolean;
+  /** Logistics research by line research key (empty without logistics.view) */
+  logistics: Record<string, ReviewLogisticsResult>;
+  access: ResearchAccess;
   /** Admin › Teams, in order */
   teams: TeamOption[];
 }) {
@@ -100,6 +104,8 @@ export function TriageWorkspace({
 
   const [groupKey, setGroupKey] = useState(groups[0]?.key ?? "");
   const [onlyOpen, setOnlyOpen] = useState(false);
+  // The research tab stays as picked while moving from line to line
+  const [researchTab, setResearchTab] = useState<ResearchTab>("logistics");
   const group = groups.find((g) => g.key === groupKey) ?? groups[0];
   const visible = (group?.ids ?? []).map((id) => byId.get(id)!).filter((l) => !onlyOpen || !isDone(l));
   const [selectedId, setSelectedId] = useState<string | null>(visible[0]?.id ?? null);
@@ -189,11 +195,23 @@ export function TriageWorkspace({
             key={selected.id}
             line={selected}
             reasonCodes={reasonCodes.filter((r) => r.metricId === selected.metricId)}
-            history={history.filter((h) => h.poNumber === selected.poNumber)}
             reportId={reportId}
             canEdit={canEdit}
             onSaved={onSaved}
             teams={teams}
+            research={
+              <ResearchPanel
+                poNumber={selected.poNumber}
+                poRecordId={selected.poRecordId}
+                poCreateDate={selected.poCreateDate}
+                logistics={logistics[selected.researchKey]}
+                issues={selected.issues}
+                history={history.filter((h) => h.poNumber === selected.poNumber)}
+                access={access}
+                tab={researchTab}
+                onTab={setResearchTab}
+              />
+            }
           />
         ) : (
           <p className="text-sm text-gray-400">Select a line to review.</p>
@@ -206,15 +224,16 @@ export function TriageWorkspace({
 function LineDetail({
   line,
   reasonCodes,
-  history,
   reportId,
   canEdit,
   onSaved,
   teams,
+  research,
 }: {
   line: TriageLine;
   reasonCodes: ReasonCode[];
-  history: HistoryItem[];
+  /** The research panel (logistics, shipments, issues, other violations) */
+  research: React.ReactNode;
   reportId: string;
   canEdit: boolean;
   onSaved: (id: string, review: TriageReview, advance: boolean) => void;
@@ -299,43 +318,7 @@ function LineDetail({
         )}
       </div>
 
-      {line.issues.length > 0 && (
-        <div className="rounded-lg border border-amber-200 bg-amber-50 p-4">
-          <p className="mb-2 text-sm font-semibold text-gray-900">Issues logged for this PO</p>
-          <ul className="space-y-1 text-sm">
-            {line.issues.map((i) => (
-              <li key={i.id} className="flex items-center justify-between gap-2">
-                <span className="min-w-0">
-                  <Link href={`/issues/${i.id}`} target="_blank" className="font-medium text-blue-600 hover:underline">
-                    {i.label}
-                  </Link>{" "}
-                  <span className="text-gray-700">
-                    {i.title} · {i.date}
-                  </span>
-                </span>
-                <Badge variant={i.statusVariant}>{i.status}</Badge>
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
-
-      {history.length > 0 && (
-        <div className="rounded-lg border border-gray-200 bg-white p-4">
-          <p className="mb-2 text-sm font-semibold text-gray-900">Other violations on this PO</p>
-          <ul className="space-y-1 text-sm">
-            {history.map((h, i) => (
-              <li key={i} className="flex items-center justify-between gap-2">
-                <span className="text-gray-700">FM {h.fiscalMonth} · {h.label}</span>
-                <span className="flex items-center gap-2">
-                  <span className="text-gray-900">{formatCurrency(h.offset)}</span>
-                  <DispositionBadge disposition={h.disposition} />
-                </span>
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
+      {research}
 
       <div className="space-y-4 rounded-lg border border-gray-200 bg-white p-4">
         <p className="text-sm font-semibold text-gray-900">Decision</p>
