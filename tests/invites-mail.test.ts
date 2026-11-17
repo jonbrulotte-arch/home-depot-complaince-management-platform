@@ -97,3 +97,28 @@ describe("invitations", () => {
     expect(inviteState({ ...base, revokedAt: now }, now)).toBe("revoked");
   });
 });
+
+describe("unmonitored mailbox notice", () => {
+  it("is added to every email: inside a branded email's card, else at the end of the body", async () => {
+    const { withMailboxNotice, MAILBOX_NOTICE, emailHtml: branded } = await import("@/lib/mail");
+    const plain = withMailboxNotice("<html><body><p>Hi</p></body></html>");
+    expect(plain).toMatch(new RegExp(`<p>Hi</p><p [^>]+>${MAILBOX_NOTICE.replace(/[.]/g, "\\.")}</p></body></html>$`));
+    expect(withMailboxNotice("<p>x</p>").endsWith(`${MAILBOX_NOTICE}</p>`)).toBe(true);
+    const card = withMailboxNotice(branded({ siteName: "S", heading: "H", paragraphs: ["p"] }));
+    expect(card.indexOf(MAILBOX_NOTICE)).toBeLessThan(card.indexOf("</td></tr></table>"));
+    expect(card).not.toContain("<!--mailbox-notice-->");
+  });
+
+  it("goes out with the message", async () => {
+    const env = { MS_GRAPH_TENANT_ID: "t9", MS_GRAPH_CLIENT_ID: "c", MS_GRAPH_CLIENT_SECRET: "s", MS_GRAPH_SENDER: "noreply@x.com" };
+    const bodies: string[] = [];
+    const fetchMock = (async (url: string, init?: RequestInit) => {
+      if (String(url).includes("/oauth2/")) return new Response(JSON.stringify({ access_token: "tok", expires_in: 3600 }), { status: 200 });
+      bodies.push(String(init?.body));
+      return new Response(null, { status: 202 });
+    }) as unknown as typeof fetch;
+    const { sendMail: send, mailConfig: config, MAILBOX_NOTICE } = await import("@/lib/mail");
+    await send({ to: "a@b.com", subject: "Hi", html: "<p>x</p>" }, config(env).config, fetchMock);
+    expect(JSON.parse(bodies[0]).message.body.content).toContain(MAILBOX_NOTICE);
+  });
+});

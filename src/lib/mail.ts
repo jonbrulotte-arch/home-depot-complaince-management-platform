@@ -75,7 +75,7 @@ export async function sendMail(mail: Mail, config = mailConfig().config, fetchIm
     body: JSON.stringify({
       message: {
         subject: mail.subject,
-        body: { contentType: "HTML", content: mail.html },
+        body: { contentType: "HTML", content: withMailboxNotice(mail.html) },
         toRecipients: recipients(Array.isArray(mail.to) ? mail.to : [mail.to]),
         ...(mail.cc?.length ? { ccRecipients: recipients(mail.cc) } : {}),
         ...(mail.replyTo ? { replyTo: recipients([mail.replyTo]) } : {}),
@@ -116,5 +116,21 @@ export function emailHtml({ siteName, heading, paragraphs, button }: { siteName:
 ${paragraphs.map(p).join("\n")}
 ${button ? `<p style="margin:20px 0"><a href="${escapeHtml(button.url)}" style="display:inline-block;background:#2563eb;color:#ffffff;text-decoration:none;padding:10px 18px;border-radius:6px;font-size:14px;font-weight:600">${escapeHtml(button.label)}</a></p>
 <p style="margin:0;font-size:12px;color:#6b7280">Or open this link: ${escapeHtml(button.url)}</p>` : ""}
+${NOTICE_SLOT}
 </td></tr></table></body></html>`;
+}
+
+/** Added to every email: the sending mailbox isn't monitored, so replies must include everyone. */
+export const MAILBOX_NOTICE =
+  "Please note: this message was sent from an unmonitored mailbox. To ensure your response is received, please use Reply All when replying.";
+
+/** Where emailHtml wants the notice: inside its card */
+const NOTICE_SLOT = "<!--mailbox-notice-->";
+
+/** The email's HTML with the unmonitored-mailbox notice: in the card of a branded email, else at the end of the body */
+export function withMailboxNotice(html: string): string {
+  const notice = `<p style="margin:24px 0 0 0;padding-top:12px;border-top:1px solid #e5e7eb;font-family:Segoe UI,Calibri,Arial,sans-serif;font-size:12px;line-height:1.5;color:#6b7280">${MAILBOX_NOTICE}</p>`;
+  if (html.includes(NOTICE_SLOT)) return html.replace(NOTICE_SLOT, notice);
+  const end = html.toLowerCase().lastIndexOf("</body>");
+  return end === -1 ? html + notice : html.slice(0, end) + notice + html.slice(end);
 }
