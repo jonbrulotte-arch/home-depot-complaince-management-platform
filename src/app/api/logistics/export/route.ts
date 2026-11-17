@@ -12,7 +12,7 @@ export async function GET(req: NextRequest) {
   if (guard.error) return guard.error;
   const sp = req.nextUrl.searchParams;
   const l = await loadLogistics();
-  const pos = filterPos(l.pos, { q: sp.get("q") ?? undefined, status: sp.get("status") ?? undefined, flag: sp.get("flag") ?? undefined, severity: sp.get("severity") ?? undefined, scac: sp.get("scac") ?? undefined });
+  const pos = filterPos(l.pos, { q: sp.get("q") ?? undefined, status: sp.get("status") ?? undefined, flag: sp.get("flag") ?? undefined, severity: sp.get("severity") ?? undefined, scac: sp.get("scac") ?? undefined, range: sp.get("range") ?? undefined, from: sp.get("from") ?? undefined, to: sp.get("to") ?? undefined }, l.today);
   const buffer = await logisticsWorkbook(l, pos, (await getBranding()).siteName);
   await audit(guard.user.id, "logistics.export", "Logistics", null, { pos: pos.length });
   return new NextResponse(new Uint8Array(buffer), {

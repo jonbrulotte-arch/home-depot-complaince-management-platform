@@ -37,6 +37,9 @@ import {
 
 type Search = {
   add?: string;
+  range?: string;
+  from?: string;
+  to?: string;
   tab?: string;
   q?: string;
   status?: string;
@@ -126,7 +129,7 @@ export default async function LogisticsPage({
           </CardContent>
         </Card>
       ) : tab === "overview" ? (
-        <OverviewTab l={l} />
+        <OverviewTab l={l} range={{ range: sp.range, from: sp.from, to: sp.to }} />
       ) : tab === "pos" ? (
         <PosTab
           l={l}
@@ -136,6 +139,9 @@ export default async function LogisticsPage({
             flag: sp.flag,
             severity: sp.severity,
             scac: sp.scac,
+            range: sp.range,
+            from: sp.from,
+            to: sp.to,
           }}
           notes={l.notes.po}
           sel={sel}

@@ -465,7 +465,7 @@ export const HELP_TOPICS: HelpTopic[] = [
         ],
       },
       {
-        p: "The **POs** tab lists the newest PO first (THD numbers POs in the order it creates them; a PO's create date shows under its number when THD's compliance data has it). It searches by PO, shipment, tracking or PRO number, order or DC, and filters by status, flag and carrier; **Export to Excel** downloads the POs shown with their shipments and WMS lines.",
+        p: "The **POs** tab lists the newest PO first (THD numbers POs in the order it creates them; a PO's create date shows under its number when THD's compliance data has it). It searches by PO, shipment, tracking or PRO number, order or DC, and filters by status, flag, carrier and **Date** (last 7 days, last 2 weeks, last 30 or 90 days, last 12 months, all time, or **Custom** from and to dates; a PO's date is when the WMS shipped it, else its TMS pickup, else its create date). On the **Overview**, **What's flagged** has the same date range, and clicking a flag lists those POs with the range kept; **Export to Excel** downloads the POs shown with their shipments and WMS lines.",
       },
     ],
   },

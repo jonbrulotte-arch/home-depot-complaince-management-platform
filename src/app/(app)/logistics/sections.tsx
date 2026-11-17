@@ -5,6 +5,8 @@ import { scacLink, type LoadedLogistics } from "@/lib/logistics/data";
 import {
   filterPos,
   logisticsOverview,
+  rangeBounds,
+  rangeLabel,
   type PoFilters,
   PO_STATUSES,
 } from "@/lib/logistics/views";
@@ -20,6 +22,7 @@ import {
 } from "@/components/logistics/parts";
 import { Section, Table, n } from "@/app/(app)/insights/ui";
 import { PoFiltersBar } from "./po-filters";
+import { OverviewRangePicker } from "./range-picker";
 import { UpsRefreshButton } from "./ups-refresh-button";
 import { SelectBox, SelectionProvider, type EmailTeam } from "./selection";
 import { poLine, shipmentLine } from "@/lib/logistics/edi";
@@ -61,8 +64,14 @@ export function Route({ from, to }: { from: string; to: string }) {
   );
 }
 
-export function OverviewTab({ l }: { l: LoadedLogistics }) {
+export function OverviewTab({ l, range }: { l: LoadedLogistics; range: Pick<PoFilters, "range" | "from" | "to"> }) {
   const o = logisticsOverview(l);
+  // What's flagged follows the date range; the tiles cover every PO
+  const inRange = rangeBounds(range, l.today) ? logisticsOverview({ ...l, pos: filterPos(l.pos, range, l.today) }) : o;
+  const rangeQuery = Object.entries(range)
+    .filter(([, v]) => v)
+    .map(([k, v]) => `&${k}=${encodeURIComponent(v!)}`)
+    .join("");
   const count = (s: string) =>
     o.byStatus.find((b) => b.status === s)?.count ?? 0;
   return (
@@ -104,17 +113,22 @@ export function OverviewTab({ l }: { l: LoadedLogistics }) {
       />
       <Section
         title="What's flagged"
-        description="POs with each flag. Click one to list them."
+        description={
+          <span title="A PO's date is when the WMS shipped it, else its TMS pickup, else its create date">
+            POs with each flag ({rangeLabel(range, l.today)}, by ship date). Click a flag to list them.
+          </span>
+        }
+        action={<OverviewRangePicker value={range} />}
       >
         <Table
-          rows={o.flags}
+          rows={inRange.flags}
           empty="Nothing flagged."
           cols={[
             {
               header: "Flag",
               cell: (f) => (
                 <Link
-                  href={`/logistics?tab=pos&flag=${f.code}&severity=${f.severity}`}
+                  href={`/logistics?tab=pos&flag=${f.code}&severity=${f.severity}${rangeQuery}`}
                   className="font-medium text-blue-600 hover:underline"
                 >
                   {f.label}
@@ -235,7 +249,7 @@ export function PosTab({
   sel: SelectionSettings;
 }) {
   const o = logisticsOverview(l);
-  const rows = filterPos(l.pos, filters);
+  const rows = filterPos(l.pos, filters, l.today);
   const scacs = [
     ...new Set(
       l.shipments.map((s) => s.scac).filter((s): s is string => Boolean(s)),

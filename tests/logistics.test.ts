@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { detectKind, localDateOf, parseCsv, parseHtmlTable, parseTmsTime, parseWmsTime, splitPos } from "@/lib/logistics/parse";
 import { readLogisticsFile } from "@/lib/logistics/read";
 import { carrierUrl, cartonRefs, cleanTrackingUrl } from "@/lib/logistics/refs";
-import { buildLogistics, cancellationApplies, editDistance, filterPos, logisticsOverview, type IssueCancellation, type Shipment } from "@/lib/logistics/views";
+import { buildLogistics, cancellationApplies, editDistance, filterPos, logisticsOverview, poDate, rangeBounds, rangeLabel, type IssueCancellation, type Shipment } from "@/lib/logistics/views";
 
 const fixture = (n: string) => readLogisticsFile(new Uint8Array(readFileSync(`tests/fixtures/logistics/${n}`)));
 
@@ -342,5 +342,40 @@ describe("Logistics email log", () => {
     expect(recipientsSummary({ teamName: null, to: ["a@x.com", "b@x.com", "d@x.com"], cc: [] })).toBe("a@x.com, b@x.com +1");
     expect(selectionSummary({ kind: "po", selected: ["1", "2", "3", "4"] })).toBe("4 POs: 1, 2, 3…");
     expect(selectionSummary({ kind: "shipment", selected: ["9"] })).toBe("1 shipment: 9");
+  });
+});
+
+describe("Date ranges for POs", () => {
+  it("dates a PO by the WMS ship date, else its TMS pickup, else its create date", () => {
+    const ship = (pickupLocal: string | null) => ({ pickupLocal, pickupAt: null }) as unknown as Shipment;
+    expect(poDate({ firstShipped: new Date("2026-11-12T05:43:00Z"), shipments: [ship("11/17/26 00:01 EST")], createdAt: new Date("2026-11-01") })).toBe("2026-11-12");
+    expect(poDate({ firstShipped: null, shipments: [ship("11/20/26 00:01 EST"), ship("11/17/26 00:01 EST")], createdAt: new Date("2026-11-01") })).toBe("2026-11-17");
+    expect(poDate({ firstShipped: null, shipments: [], createdAt: new Date("2026-11-01") })).toBe("2026-11-01");
+    expect(poDate({ firstShipped: null, shipments: [], createdAt: null })).toBeNull();
+  });
+
+  it("turns a range into bounds and words", () => {
+    expect(rangeBounds({ range: "14" }, "2026-11-17")).toEqual({ from: "2026-11-03", to: null });
+    expect(rangeBounds({ range: "all" }, "2026-11-17")).toBeNull();
+    expect(rangeBounds({}, "2026-11-17")).toBeNull();
+    expect(rangeBounds({ range: "custom", from: "2026-11-10", to: "2026-11-01" }, "2026-11-17")).toEqual({ from: "2026-11-01", to: "2026-11-10" });
+    expect(rangeBounds({ range: "custom", from: "nope" }, "2026-11-17")).toBeNull();
+    expect(rangeLabel({ range: "14" }, "2026-11-17")).toBe("Last 2 weeks");
+    expect(rangeLabel({ range: "custom", from: "2026-11-01", to: "2026-11-15" }, "2026-11-17")).toBe("Nov 1, 2026 – Nov 15, 2026");
+    expect(rangeLabel({ range: "custom", from: "2026-11-01" }, "2026-11-17")).toBe("From Nov 1, 2026");
+  });
+
+  it("filters POs and the flag counts by the range", async () => {
+    const { views } = await sample();
+    const all = filterPos(views.pos, {}, "2026-11-14");
+    expect(all.length).toBe(views.pos.length);
+    const week = filterPos(views.pos, { range: "7" }, "2026-11-14");
+    expect(week.length).toBeGreaterThan(0);
+    expect(week.length).toBeLessThan(all.length);
+    expect(week.every((p) => (poDate(p) ?? "") >= "2026-11-07")).toBe(true);
+    const day = filterPos(views.pos, { range: "custom", from: "2026-11-12", to: "2026-11-12" }, "2026-11-14");
+    expect(day.every((p) => poDate(p) === "2026-11-12")).toBe(true);
+    const counts = logisticsOverview({ ...views, pos: week }).flags.reduce((n, f) => n + f.pos, 0);
+    expect(counts).toBeLessThanOrEqual(logisticsOverview(views).flags.reduce((n, f) => n + f.pos, 0));
   });
 });

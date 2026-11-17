@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import type { PoFilters } from "@/lib/logistics/views";
+import { PoRangePicker } from "./range-picker";
 
 const ALL = "all";
 
@@ -64,11 +65,17 @@ export function PoFiltersBar({ filters, statuses, flags, scacs }: { filters: PoF
       {pick("log-sev", "Needs attention", filters.severity, [[ALL, "All POs"], ["any", "Flagged (high or medium)"], ["high", "High"], ["medium", "Medium"], ["info", "Info"]], "severity", "w-52")}
       {pick("log-flag", "Flag", filters.flag, [[ALL, "Any flag"], ...flags.map((f): [string, string] => [f.code, `${f.label} (${f.pos})`])], "flag", "w-60")}
       {pick("log-scac", "Carrier", filters.scac, [[ALL, "Any carrier"], ...scacs.map((s): [string, string] => [s, s])], "scac", "w-36")}
+      <div>
+        <label htmlFor="log-range" className="mb-1 block text-xs font-medium text-gray-500">
+          Date
+        </label>
+        <PoRangePicker id="log-range" value={{ range: filters.range, from: filters.from, to: filters.to }} onChange={(r) => apply({ range: r.range, from: r.from, to: r.to })} />
+      </div>
       <Button type="submit" variant="outline">
         <Search className="h-4 w-4 mr-1.5" />
         Search
       </Button>
-      {Boolean(filters.q || filters.status || filters.flag || filters.severity || filters.scac) && (
+      {Boolean(filters.q || filters.status || filters.flag || filters.severity || filters.scac || filters.range) && (
         <Button type="button" variant="ghost" onClick={() => router.push(`${pathname}?tab=pos`)}>
           Clear
         </Button>

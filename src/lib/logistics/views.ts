@@ -480,12 +480,71 @@ export interface PoFilters {
   flag?: string;
   severity?: string;
   scac?: string;
+  /** A date range (PO_RANGES key); "custom" uses from and to (YYYY-MM-DD) */
+  range?: string;
+  from?: string;
+  to?: string;
 }
 
-/** POs matching a search (PO, shipment, tracking, PRO, order or DC) and filters. */
-export function filterPos(pos: PoView[], f: PoFilters): PoView[] {
+/** Date ranges for POs, by the PO's date (poDate) */
+export const PO_RANGES = [
+  { key: "7", label: "Last 7 days", days: 7 },
+  { key: "14", label: "Last 2 weeks", days: 14 },
+  { key: "30", label: "Last 30 days", days: 30 },
+  { key: "90", label: "Last 90 days", days: 90 },
+  { key: "365", label: "Last 12 months", days: 365 },
+  { key: "all", label: "All time", days: 0 },
+  { key: "custom", label: "Custom", days: 0 },
+] as const;
+
+const isDay = (s: string | undefined): s is string => Boolean(s && /^\d{4}-\d{2}-\d{2}$/.test(s) && !Number.isNaN(Date.parse(s)));
+
+/**
+ * A PO's date for date ranges (YYYY-MM-DD): when the WMS first shipped it, else its earliest TMS
+ * pickup, else its create date; null when none is known (such POs are only in All time).
+ */
+export function poDate(p: Pick<PoView, "firstShipped" | "shipments" | "createdAt">): string | null {
+  if (p.firstShipped) return isoDate(p.firstShipped);
+  const pickups = p.shipments.map((s) => localDateOf(s.pickupLocal) ?? (s.pickupAt ? isoDate(s.pickupAt) : null)).filter((d): d is string => Boolean(d)).sort();
+  if (pickups.length) return pickups[0];
+  return p.createdAt ? isoDate(p.createdAt) : null;
+}
+
+/**
+ * The bounds a range stands for, given today (YYYY-MM-DD): "Last N days" runs from N days before
+ * today with no end, so POs scheduled ahead still count; Custom runs from and to, inclusive, either
+ * one optional. Null for All time (or no range, or a custom range with no dates).
+ */
+export function rangeBounds(f: Pick<PoFilters, "range" | "from" | "to">, today: string): { from: string | null; to: string | null } | null {
+  if (f.range === "custom") {
+    const from = isDay(f.from) ? f.from : null;
+    const to = isDay(f.to) ? f.to : null;
+    if (!from && !to) return null;
+    return from && to && from > to ? { from: to, to: from } : { from, to };
+  }
+  const r = PO_RANGES.find((x) => x.key === f.range);
+  if (!r || !r.days) return null;
+  return { from: isoDate(new Date(Date.parse(`${today}T00:00:00Z`) - r.days * 86_400_000)), to: null };
+}
+
+/** A range in words, e.g. "Last 2 weeks" or "Nov 1, 2026 – Nov 15, 2026" */
+export function rangeLabel(f: Pick<PoFilters, "range" | "from" | "to">, today: string): string {
+  const b = rangeBounds(f, today);
+  if (!b) return "All time";
+  if (f.range !== "custom") return PO_RANGES.find((x) => x.key === f.range)!.label;
+  const fmt = (d: string) => new Date(`${d}T00:00:00Z`).toLocaleDateString("en-US", { timeZone: "UTC", month: "short", day: "numeric", year: "numeric" });
+  return b.from && b.to ? `${fmt(b.from)} – ${fmt(b.to)}` : b.from ? `From ${fmt(b.from)}` : `Up to ${fmt(b.to!)}`;
+}
+
+/** POs matching a search (PO, shipment, tracking, PRO, order or DC) and filters; date ranges need today (YYYY-MM-DD). */
+export function filterPos(pos: PoView[], f: PoFilters, today?: string): PoView[] {
   const q = f.q?.trim().toUpperCase();
+  const bounds = today ? rangeBounds(f, today) : null;
   return pos.filter((p) => {
+    if (bounds) {
+      const d = poDate(p);
+      if (!d || (bounds.from && d < bounds.from) || (bounds.to && d > bounds.to)) return false;
+    }
     if (f.status && p.status !== f.status) return false;
     // With a flag, the priority applies to that flag; on its own, to any flag
     const pool = f.flag ? p.flags.filter((x) => x.code === f.flag) : p.flags;
