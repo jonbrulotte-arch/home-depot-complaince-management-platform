@@ -2,7 +2,8 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { AlertTriangle, CalendarClock, Check, ChevronDown, ChevronRight, Copy, Download, Paperclip, Plus, RefreshCw, Trash2 } from "lucide-react";
+import Link from "next/link";
+import { AlertTriangle, CalendarClock, Check, ChevronDown, ChevronRight, Copy, Download, FileText, Mail, Paperclip, Plus, RefreshCw, Trash2, X } from "lucide-react";
 import type { Disposition, DisputeEventType, DisputeStatus, ReportStatus } from "@prisma/client";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -15,6 +16,9 @@ import { copyText } from "@/lib/clipboard";
 import { allowedTransitions, DISPUTE_STATUS_LABELS, MAX_ATTACHMENT_BYTES, type ChecklistItem } from "@/lib/disputes";
 import { cn, formatCurrency, formatDateTime, formatUtcDate, formatUtcDateTime } from "@/lib/utils";
 import { useTimeZone } from "@/components/time-zone";
+import { Dialog, DialogContent } from "@/components/ui/dialog";
+import { EmailComposer, type EmailTeam } from "@/components/email/email-composer";
+import { DISPUTE_REQUESTS, MAX_DISPUTE_SELECTION, disputeDraft, disputeReportFileName, suggestedDisputeRequests, type DisputeEmailItem } from "@/lib/dispute-email";
 
 export interface DisputeView {
   id: string;
@@ -23,6 +27,8 @@ export interface DisputeView {
   metricId: string;
   metricName: string;
   poNumber: string | null;
+  /** The line's SKU (or order reference), e.g. "SKU 41562" */
+  item: string | null;
   lineOffset: number;
   /** What was recorded for the line in the violation review */
   review: { disposition: Disposition; teamInfluence: string | null; rootCause: string | null; notes: string | null; extraFields: [string, string][] } | null;
@@ -41,6 +47,28 @@ export interface DisputeView {
   spmDecisionSeen: string | null;
   events: { id: string; type: DisputeEventType; body: string | null; fromStatus: DisputeStatus | null; toStatus: DisputeStatus | null; user: string | null; at: string }[];
   attachments: { id: string; fileName: string; size: number; uploadedAt: string; uploadedBy: string | null }[];
+}
+
+/** An email from the report's Send Email log */
+export interface DisputeEmailRow {
+  id: string;
+  createdAt: string;
+  senderName: string;
+  teamName: string | null;
+  to: string[];
+  cc: string[];
+  subject: string;
+  requests: string[];
+  sent: boolean;
+  disputeIds: string[];
+}
+
+/** Send Email: the teams with addresses (for people who can manage disputes), the sender, and the log */
+export interface DisputeEmailSettings {
+  teams: EmailTeam[];
+  sender: string;
+  reportTitle: string;
+  log: DisputeEmailRow[];
 }
 
 interface ReasonCode {
@@ -94,6 +122,7 @@ export function DisputeWorkspace({
   reasonCodes,
   initialId,
   canEdit,
+  email,
 }: {
   reportId: string;
   reportStatus: ReportStatus;
@@ -102,6 +131,7 @@ export function DisputeWorkspace({
   reasonCodes: ReasonCode[];
   initialId: string | null;
   canEdit: boolean;
+  email: DisputeEmailSettings;
 }) {
   const router = useRouter();
   const [chosenId, setSelectedId] = useState(initialId);
@@ -111,6 +141,20 @@ export function DisputeWorkspace({
   const [message, setMessage] = useState<string | null>(null);
   const [syncing, setSyncing] = useState(false);
   const selected = disputes.find((d) => d.id === selectedId) ?? null;
+  // Disputes ticked for the dispute report and Send Email, in the order listed
+  const [ticked, setTicked] = useState<Set<string>>(new Set());
+  const [emailing, setEmailing] = useState(false);
+  const listed = GROUP_ORDER.flatMap((g) => disputes.filter((d) => g.statuses.includes(d.status)));
+  const tickedList = listed.filter((d) => ticked.has(d.id));
+  const allTicked = listed.length > 0 && listed.slice(0, MAX_DISPUTE_SELECTION).every((d) => ticked.has(d.id));
+  const toggle = (id: string) =>
+    setTicked((t) => {
+      const next = new Set(t);
+      if (next.has(id)) next.delete(id);
+      else if (next.size < MAX_DISPUTE_SELECTION) next.add(id);
+      return next;
+    });
+  const reportHref = `/api/reports/${reportId}/disputes/report?ids=${encodeURIComponent(tickedList.map((d) => d.id).join(","))}`;
 
   const active = disputes.filter((d) => d.status !== "WITHDRAWN");
   const disputed = active.reduce((s, d) => s + d.amountDisputed, 0);
@@ -155,6 +199,38 @@ export function DisputeWorkspace({
       ) : (
         <div className="flex min-h-0 flex-1">
           <aside className="w-80 shrink-0 overflow-y-auto border-r border-gray-200 bg-white">
+            <div className="sticky top-0 z-10 space-y-2 border-b border-gray-200 bg-white px-4 py-2.5">
+              <label className="flex items-center gap-2 text-sm text-gray-700">
+                <input
+                  type="checkbox"
+                  className="h-4 w-4 rounded border-gray-300"
+                  checked={allTicked}
+                  onChange={() => setTicked(allTicked ? new Set() : new Set(listed.slice(0, MAX_DISPUTE_SELECTION).map((d) => d.id)))}
+                  aria-label="Select every dispute"
+                />
+                {tickedList.length ? `${tickedList.length} selected` : "Select disputes to export or email"}
+              </label>
+              {tickedList.length > 0 && (
+                <div className="flex flex-wrap gap-2">
+                  <Button asChild size="sm" variant="outline">
+                    <a href={reportHref}>
+                      <FileText className="h-4 w-4 mr-1.5" />
+                      PDF
+                    </a>
+                  </Button>
+                  {canEdit && (
+                    <Button size="sm" onClick={() => setEmailing(true)}>
+                      <Mail className="h-4 w-4 mr-1.5" />
+                      Send Email
+                    </Button>
+                  )}
+                  <Button size="sm" variant="ghost" onClick={() => setTicked(new Set())}>
+                    <X className="h-4 w-4 mr-1" />
+                    Clear
+                  </Button>
+                </div>
+              )}
+            </div>
             {GROUP_ORDER.map((g) => {
               const items = disputes.filter((d) => g.statuses.includes(d.status));
               if (!items.length) return null;
@@ -162,10 +238,17 @@ export function DisputeWorkspace({
                 <div key={g.label}>
                   <p className="bg-gray-50 px-4 py-2 text-xs font-semibold uppercase tracking-wider text-gray-500">{g.label} ({items.length})</p>
                   {items.map((d) => (
+                    <div key={d.id} className={cn("flex items-start gap-2 border-t border-gray-100 pl-4 hover:bg-gray-50", d.id === selectedId && "bg-blue-50")}>
+                    <input
+                      type="checkbox"
+                      className="mt-3.5 h-4 w-4 shrink-0 rounded border-gray-300"
+                      checked={ticked.has(d.id)}
+                      onChange={() => toggle(d.id)}
+                      aria-label={`Select PO ${d.poNumber ?? "—"} ${d.metricName}`}
+                    />
                     <button
-                      key={d.id}
                       onClick={() => setSelectedId(d.id)}
-                      className={cn("flex w-full items-start justify-between gap-2 border-t border-gray-100 px-4 py-3 text-left hover:bg-gray-50", d.id === selectedId && "bg-blue-50")}
+                      className="flex min-w-0 flex-1 items-start justify-between gap-2 py-3 pr-4 text-left"
                     >
                       <div className="min-w-0">
                         <p className="truncate text-sm font-medium text-gray-900">PO {d.poNumber ?? "—"}</p>
@@ -174,6 +257,7 @@ export function DisputeWorkspace({
                       </div>
                       <DisputeStatusBadge status={d.status} />
                     </button>
+                    </div>
                   ))}
                 </div>
               );
@@ -181,14 +265,100 @@ export function DisputeWorkspace({
           </aside>
           <section className="min-w-0 flex-1 overflow-y-auto p-6">
             {selected ? (
-              <DisputeDetail key={selected.id} dispute={selected} reasonCodes={reasonCodes.filter((r) => r.metricId === selected.metricId)} canEdit={canEdit} />
+              <DisputeDetail
+                key={selected.id}
+                dispute={selected}
+                reasonCodes={reasonCodes.filter((r) => r.metricId === selected.metricId)}
+                canEdit={canEdit}
+                emails={email.log.filter((e) => e.disputeIds.includes(selected.id))}
+                reportId={reportId}
+              />
             ) : (
               <p className="text-sm text-gray-400">Select a dispute.</p>
             )}
           </section>
         </div>
       )}
+      <Dialog open={emailing} onOpenChange={setEmailing}>
+        <DialogContent className="max-w-3xl">
+          {emailing && (
+            <DisputeEmail
+              reportId={reportId}
+              disputes={tickedList}
+              reasonCodes={reasonCodes}
+              settings={email}
+              windowCloses={period.disputeClose}
+              reportHref={reportHref}
+              onSent={() => {
+                setEmailing(false);
+                setTicked(new Set());
+                router.refresh();
+              }}
+            />
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
+  );
+}
+
+/** What the email draft needs about each dispute */
+function emailItems(disputes: DisputeView[], reasonCodes: ReasonCode[]): DisputeEmailItem[] {
+  const codes = new Map(reasonCodes.map((r) => [r.id, r]));
+  return disputes.map((d) => {
+    const code = d.reasonCodeId ? codes.get(d.reasonCodeId) : undefined;
+    return {
+      poNumber: d.poNumber,
+      program: d.programName,
+      metric: d.metricName,
+      amountDisputed: d.amountDisputed,
+      status: d.status,
+      statusLabel: DISPUTE_STATUS_LABELS[d.status],
+      reasonCode: code?.code ?? null,
+      requiredDocs: code?.requiredDocs ?? null,
+      openItems: d.checklist.filter((c) => !c.done).length,
+      item: d.item,
+      decision: [d.decisionCode, d.amountRecovered ? `${formatCurrency(d.amountRecovered)} recovered` : null].filter(Boolean).join(", ") || null,
+    };
+  });
+}
+
+/** Send Email for ticked disputes: the dispute requests and draft, the dispute report attached */
+function DisputeEmail({
+  reportId,
+  disputes,
+  reasonCodes,
+  settings,
+  windowCloses,
+  reportHref,
+  onSent,
+}: {
+  reportId: string;
+  disputes: DisputeView[];
+  reasonCodes: ReasonCode[];
+  settings: DisputeEmailSettings;
+  windowCloses: string | null;
+  reportHref: string;
+  onSent: () => void;
+}) {
+  const items = emailItems(disputes, reasonCodes);
+  const fileName = disputeReportFileName(disputes.length, today());
+  return (
+    <EmailComposer
+      title={`Send email: ${disputes.length} dispute${disputes.length > 1 ? "s" : ""}`}
+      typesHint="Ticked from the disputes' status and checklists; change them as needed."
+      requestTypes={DISPUTE_REQUESTS}
+      initialTypes={suggestedDisputeRequests(items)}
+      draft={(types, team) =>
+        disputeDraft({ items, types, sender: settings.sender, fileName, reportTitle: settings.reportTitle, windowCloses: windowCloses ? formatUtcDate(windowCloses) : null, team })
+      }
+      teams={settings.teams}
+      storeKey="disputes.emailTeam"
+      attachment={{ href: reportHref, name: fileName }}
+      endpoint={`/api/reports/${reportId}/disputes/email`}
+      payload={{ ids: disputes.map((d) => d.id) }}
+      onSent={onSent}
+    />
   );
 }
 
@@ -255,7 +425,7 @@ function Step({ n, title, done, children }: { n: number; title: string; done?: b
   );
 }
 
-function DisputeDetail({ dispute, reasonCodes, canEdit }: { dispute: DisputeView; reasonCodes: ReasonCode[]; canEdit: boolean }) {
+function DisputeDetail({ dispute, reasonCodes, canEdit, emails, reportId }: { dispute: DisputeView; reasonCodes: ReasonCode[]; canEdit: boolean; emails: DisputeEmailRow[]; reportId: string }) {
   const tz = useTimeZone();
   const router = useRouter();
   const [busy, setBusy] = useState(false);
@@ -602,6 +772,31 @@ function DisputeDetail({ dispute, reasonCodes, canEdit }: { dispute: DisputeView
             </li>
           ))}
         </ol>
+      </div>
+
+      <div className="space-y-3 rounded-lg border border-gray-200 bg-white p-4">
+        <p className="text-sm font-semibold text-gray-900">Emails</p>
+        {emails.length ? (
+          <ul className="space-y-2">
+            {emails.map((e) => (
+              <li key={e.id} className="flex items-start justify-between gap-2 rounded-md border border-gray-200 px-3 py-2">
+                <span className="min-w-0">
+                  <Link href={`/reports/${reportId}/disputes/email/${e.id}`} className="text-sm font-medium text-blue-600 hover:underline">
+                    {e.subject}
+                  </Link>
+                  <span className="block text-xs text-gray-500">
+                    {formatDateTime(e.createdAt, tz)} · {e.senderName} to {e.teamName ?? e.to.slice(0, 2).join(", ")}
+                    {e.disputeIds.length > 1 ? ` · ${e.disputeIds.length} disputes` : ""}
+                    {e.requests.length ? ` · ${e.requests.join("; ")}` : ""}
+                  </span>
+                </span>
+                <Badge variant={e.sent ? "success" : "destructive"}>{e.sent ? "Sent" : "Not sent"}</Badge>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="text-sm text-gray-500">No emails sent about this dispute. Tick it in the list and press Send Email.</p>
+        )}
       </div>
     </div>
   );

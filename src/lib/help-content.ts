@@ -199,6 +199,14 @@ export const HELP_TOPICS: HelpTopic[] = [
           "If you change a review after disputes were created, **Sync from review** adds or withdraws disputes to match.",
         ],
       },
+      { h: "Export or email disputes" },
+      {
+        list: [
+          "Tick disputes in the list on the left (the box at the top ticks them all). **PDF** downloads a dispute report of them: a summary, then each dispute with the line, the reason code, its required documents, the checklist, the SPM comment, the review and THD's decision.",
+          "**Send Email** (needs Disputes manage) emails a team about them, with that report attached, the same way as Logistics: pick the **Team** (addresses under Admin › Teams; the one you picked last is chosen for you), add others in **Also to** and **Also cc** (or pick **No team** for a one-off email), tick what's needed (supporting documents, proof of delivery, bill of lading, confirm what shipped, explain what happened, share THD's decision, other; documents are ticked for disputes still being prepared, the decision for decided ones), and edit the drafted subject and message, which list every dispute and the dispute window's last day.",
+          "Replies go to you and a copy is kept in the mailbox's Sent Items. Each dispute's timeline gets a note, and its **Emails** list links to the full email (sender, team, To, Cc, requests, the message and the report as attached). Emails that couldn't be sent are listed too, marked **Not sent**. Everyone who can see the report can read them.",
+        ],
+      },
     ],
   },
   {

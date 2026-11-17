@@ -37,6 +37,7 @@ export const TABLE_ORDER = [
   "Dispute",
   "DisputeEvent",
   "DisputeAttachment",
+  "DisputeEmail",
   "Scorecard",
   "ShipmentCount",
   "LineCount",

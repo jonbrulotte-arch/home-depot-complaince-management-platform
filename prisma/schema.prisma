@@ -59,6 +59,7 @@ model User {
   logisticsImports    LogisticsImport[]
   logisticsNotes      LogisticsNote[]
   logisticsEmails     LogisticsEmail[]
+  disputeEmails       DisputeEmail[]
 }
 
 model AuditLog {
@@ -214,6 +215,7 @@ model ComplianceReport {
   lineCounts     LineCount[]
   packages       ChargebackPackage[]
   feedback       ScorecardFeedback[]
+  disputeEmails  DisputeEmail[]
 
   @@index([periodId])
 }
@@ -1075,4 +1077,37 @@ model LogisticsEmail {
   @@index([createdAt])
   @@index([poNumbers], type: Gin)
   @@index([shipmentNumbers], type: Gin)
+}
+
+/// Every Send Email from a report's Disputes page, sent or failed: who sent it, to whom, which
+/// disputes, the message and the dispute report PDF attached. Read by everyone who can see the report.
+model DisputeEmail {
+  id          String            @id @default(cuid())
+  createdAt   DateTime          @default(now())
+  reportId    String
+  report      ComplianceReport  @relation(fields: [reportId], references: [id], onDelete: Cascade)
+  senderId    String?
+  sender      User?             @relation(fields: [senderId], references: [id], onDelete: SetNull)
+  /// The sender as they were when it was sent (replies went to this address)
+  senderName  String
+  senderEmail String
+  disputeIds  String[]
+  poNumbers   String[]
+  teamKey     String?
+  /// The team's name when it was sent
+  teamName    String?
+  to          String[]
+  cc          String[]
+  subject     String
+  /// The message as written (plain text; sent as HTML)
+  body        String
+  /// The requests ticked (labels)
+  requests    String[]
+  fileName    String
+  attachment  Bytes
+  sent        Boolean
+  error       String?
+
+  @@index([reportId, createdAt])
+  @@index([disputeIds], type: Gin)
 }

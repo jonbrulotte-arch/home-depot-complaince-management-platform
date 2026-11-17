@@ -4,7 +4,8 @@ import { ChevronLeft } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { requirePagePermission } from "@/lib/auth-guard";
 import { LINE_FIELD_LABELS } from "@/lib/line-fields";
-import { teamNames } from "@/lib/teams";
+import { emailTeams, teamNames } from "@/lib/teams";
+import { lineItem } from "@/lib/issues";
 import { getPeriodField, linesInPeriod } from "@/lib/periods";
 import type { ChecklistItem } from "@/lib/disputes";
 import { DisputeWorkspace, type DisputeView } from "./dispute-workspace";
@@ -31,7 +32,17 @@ export default async function ReportDisputesPage({ params, searchParams }: { par
     orderBy: { code: "asc" },
   });
 
-  const teams = await teamNames();
+  const canEdit = user.permissions.has("disputes.manage");
+  const [teams, mailTeams, emails] = await Promise.all([
+    teamNames(),
+    canEdit ? emailTeams() : Promise.resolve([]),
+    // The report's email log (Send Email), newest first
+    prisma.disputeEmail.findMany({
+      where: { reportId: id },
+      orderBy: { createdAt: "desc" },
+      select: { id: true, createdAt: true, senderName: true, teamName: true, to: true, cc: true, subject: true, requests: true, sent: true, disputeIds: true },
+    }),
+  ]);
   const view: DisputeView[] = disputes.map((x) => {
     const line = x.line as unknown as Record<string, unknown>;
     return {
@@ -41,6 +52,7 @@ export default async function ReportDisputesPage({ params, searchParams }: { par
       metricId: x.line.metricId,
       metricName: x.line.metric.name,
       poNumber: x.line.poNumber,
+      item: lineItem(x.line).primary === "—" ? null : lineItem(x.line).primary,
       lineOffset: Number(x.line.offsetAmount),
       review: x.line.review
         ? {
@@ -96,7 +108,13 @@ export default async function ReportDisputesPage({ params, searchParams }: { par
         disputes={view}
         reasonCodes={reasonCodes.map((r) => ({ id: r.id, metricId: r.metricId, code: r.code, whenToUse: r.whenToUse, requiredDocs: r.requiredDocs, docDetails: r.docDetails }))}
         initialId={d ?? null}
-        canEdit={user.permissions.has("disputes.manage")}
+        canEdit={canEdit}
+        email={{
+          teams: mailTeams,
+          sender: user.name,
+          reportTitle: report.title,
+          log: emails.map((e) => ({ ...e, createdAt: e.createdAt.toISOString() })),
+        }}
       />
     </div>
   );
