@@ -5,6 +5,10 @@ import { scacLink, type LoadedLogistics } from "@/lib/logistics/data";
 import {
   filterPos,
   filterShipments,
+  filterParcels,
+  parcelRows,
+  PARCEL_STATES,
+  type ParcelFilters,
   sortPos,
   logisticsOverview,
   rangeBounds,
@@ -26,7 +30,9 @@ import { Section, Table, n } from "@/app/(app)/insights/ui";
 import { PoFiltersBar } from "./po-filters";
 import { OverviewRangePicker } from "./range-picker";
 import { ShipmentFiltersBar } from "./shipment-filters";
+import { ParcelFiltersBar } from "./parcel-filters";
 import { UNKNOWN_WAREHOUSE, warehouseNames } from "@/lib/logistics/warehouses";
+import { channelNames } from "@/lib/logistics/channels";
 import { UpsRefreshButton } from "./ups-refresh-button";
 import { SelectBox, SelectionProvider, type EmailTeam } from "./selection";
 import { poLine, shipmentLine } from "@/lib/logistics/edi";
@@ -311,6 +317,7 @@ export function PosTab({
         ]}
         scacs={scacs}
         warehouses={l.warehouses}
+        channels={l.channels}
       />
       <SelectionProvider
         kind="po"
@@ -327,7 +334,7 @@ export function PosTab({
       >
         <Section
           title={`${n(rows.length)} PO(s)`}
-          description={`${filters.sort === "warehouse" ? "By warehouse, then newest PO first" : filters.sort === "shipped" ? "Latest shipped by the WMS first" : "Newest PO first (THD numbers POs in the order it creates them)"}. The create date under a PO comes from THD\u2019s compliance data, when it has the PO.${rows.length > PAGE ? ` Showing the first ${PAGE}; narrow the search or export to Excel for all of them.` : ""}`}
+          description={`${filters.sort === "warehouse" ? "By warehouse, then newest PO first" : filters.sort === "shipped" ? "Latest shipped by the WMS first" : filters.sort === "dest" ? "By destination Store/DC #" : filters.sort === "city" ? "By destination city" : filters.sort === "state" ? "By destination state, then city" : "Newest PO first (THD numbers POs in the order it creates them)"}. The create date under a PO comes from THD\u2019s compliance data, when it has the PO.${rows.length > PAGE ? ` Showing the first ${PAGE}; narrow the search or export to Excel for all of them.` : ""}`}
         >
           <Table
             rows={rows.slice(0, PAGE)}
@@ -359,7 +366,10 @@ export function PosTab({
               {
                 header: "Destination",
                 cell: (p) => (
-                  <span className="block min-w-32">{p.destination}</span>
+                  <span className="block min-w-32">
+                    {p.destination}
+                    {p.channels.length > 0 && <span className="block text-xs text-gray-500">{channelNames(p.channels)}</span>}
+                  </span>
                 ),
               },
               {
@@ -447,6 +457,7 @@ export function ShipmentsTab({
   scac,
   late,
   wh,
+  ch,
   sort,
   sel,
 }: {
@@ -454,13 +465,14 @@ export function ShipmentsTab({
   scac?: string;
   late?: boolean;
   wh?: string;
+  ch?: string;
   sort?: string;
   sel: SelectionSettings;
 }) {
-  const rows = filterShipments(l.shipments, { scac, late, wh, sort }, l.warehouses);
+  const rows = filterShipments(l.shipments, { scac, late, wh, ch, sort }, l.warehouses);
   return (
     <div className="space-y-4">
-      <ShipmentFiltersBar filters={{ scac, late: late ? "1" : undefined, wh, sort }} warehouses={l.warehouses} />
+      <ShipmentFiltersBar filters={{ scac, late: late ? "1" : undefined, wh, ch, sort }} warehouses={l.warehouses} channels={l.channels} />
       <SelectionProvider
         kind="shipment"
         items={rows
@@ -544,7 +556,7 @@ export function ShipmentsTab({
                 header: "Route",
                 cell: (s) => (
                   <Route
-                    warehouse={warehouseNames(s.warehouses) || undefined}
+                    warehouse={[warehouseNames(s.warehouses), channelNames(s.channels)].filter(Boolean).join(" · ") || undefined}
                     from={[s.originCity, s.originState]
                       .filter(Boolean)
                       .join(", ")}
@@ -611,115 +623,92 @@ export function ParcelsTab({
   upsReady,
   canManage,
   tz,
+  filters,
 }: {
   l: LoadedLogistics;
   upsReady: boolean;
   canManage: boolean;
   tz: string;
+  filters: ParcelFilters;
 }) {
-  const parcels = new Map<
-    string,
-    { number: string; pos: string[]; shipped: Date | null }
-  >();
-  for (const p of l.pos)
-    for (const u of p.ups) {
-      const g = parcels.get(u) ?? { number: u, pos: [], shipped: null };
-      g.pos.push(p.poNumber);
-      const c = p.cartons.find(
-        (c) =>
-          c.trackingNumber?.toUpperCase() === u ||
-          c.secondTrack?.toUpperCase() === u,
-      );
-      if (c && (!g.shipped || c.shippedAt < g.shipped)) g.shipped = c.shippedAt;
-      parcels.set(u, g);
-    }
-  const tracking = new Map(
-    l.pos.flatMap((p) => p.parcels).map((p) => [p.trackingNumber, p]),
-  );
-  const rows = [...parcels.values()].sort(
-    (a, b) => (b.shipped?.getTime() ?? 0) - (a.shipped?.getTime() ?? 0),
-  );
+  const all = parcelRows(l, l.today, l.warehouses, l.channels);
+  const rows = filterParcels(all, filters, l.today);
+  const counts = Object.fromEntries(PARCEL_STATES.map((s) => [s.key, all.filter((r) => r.state === s.key).length]));
   return (
-    <Section
-      title={`${n(rows.length)} UPS parcel(s)`}
-      description={
-        upsReady
-          ? "Status from the UPS tracking API. Numbers are rechecked when refreshed, until delivered."
-          : "UPS tracking isn't set up yet (an administrator adds the UPS credentials under Admin › Settings); the numbers link to ups.com."
-      }
-      action={upsReady && canManage ? <UpsRefreshButton /> : undefined}
-    >
-      <Table
-        rows={rows}
-        empty="No UPS numbers in the WMS data."
-        cols={[
-          { header: "Tracking #", cell: (r) => <UpsLink number={r.number} /> },
-          {
-            header: "PO",
-            cell: (r) => (
-              <span className="space-x-2">
-                {r.pos.map((po) => (
-                  <PoLink key={po} po={po} />
-                ))}
-              </span>
-            ),
-          },
-          {
-            header: "Shipped (WMS)",
-            cell: (r) => (r.shipped ? formatUtcDateTime(r.shipped) : "—"),
-          },
-          {
-            header: "UPS status",
-            cell: (r) => {
-              const t = tracking.get(r.number);
-              if (!t) return <span className="text-gray-400">Not checked</span>;
-              if (t.error && !t.status)
-                return <span className="text-amber-700">{t.error}</span>;
-              return (
-                <span
-                  className={
-                    t.delivered
-                      ? "text-green-700"
-                      : t.statusType === "X"
-                        ? "text-red-700"
-                        : "text-gray-900"
-                  }
-                >
-                  {t.status}
+    <div className="space-y-4">
+      <ParcelFiltersBar filters={filters} warehouses={l.warehouses} channels={l.channels} counts={counts} />
+      <Section
+        title={`${n(rows.length)} UPS parcel(s)${rows.length !== all.length ? ` of ${n(all.length)}` : ""}`}
+        description={
+          upsReady
+            ? "Status from the UPS tracking API. Numbers are rechecked when refreshed, until delivered."
+            : "UPS tracking isn't set up yet (an administrator adds the UPS credentials under Admin › Settings); the numbers link to ups.com."
+        }
+        action={upsReady && canManage ? <UpsRefreshButton /> : undefined}
+      >
+        <Table
+          rows={rows.slice(0, PAGE)}
+          empty={all.length ? "No UPS parcels match." : "No UPS numbers in the WMS data."}
+          cols={[
+            { header: "Tracking #", cell: (r) => <UpsLink number={r.number} /> },
+            {
+              header: "PO",
+              cell: (r) => (
+                <span className="space-x-2">
+                  {r.pos.map((po) => (
+                    <PoLink key={po} po={po} />
+                  ))}
                 </span>
-              );
+              ),
             },
-          },
-          {
-            header: "Last activity",
-            cell: (r) => {
-              const t = tracking.get(r.number);
-              return t?.lastActivity
-                ? `${t.lastActivity}${t.lastLocation ? ` · ${t.lastLocation}` : ""}`
-                : "—";
+            {
+              header: "Destination",
+              cell: (r) => (
+                <span className="block min-w-32">
+                  {r.destination}
+                  {r.channels.length > 0 && <span className="block text-xs text-gray-500">{channelNames(r.channels)}</span>}
+                </span>
+              ),
             },
-          },
-          {
-            header: "Delivered / expected",
-            cell: (r) => {
-              const t = tracking.get(r.number);
-              return t?.deliveredAt
-                ? formatUtcDateTime(t.deliveredAt)
-                : t?.expectedAt
-                  ? `Expected ${formatUtcDate(t.expectedAt)}`
-                  : "—";
+            {
+              header: "Shipped (WMS)",
+              cell: (r) => (
+                <>
+                  <span className="whitespace-nowrap">{r.shipped ? formatUtcDateTime(r.shipped) : "—"}</span>
+                  {r.warehouses.length > 0 && <span className="block text-xs text-gray-500">{warehouseNames(r.warehouses)}</span>}
+                </>
+              ),
             },
-          },
-          {
-            header: "Checked",
-            cell: (r) => {
-              const t = tracking.get(r.number);
-              return t?.checkedAt ? formatDateTime(t.checkedAt, tz) : "—";
+            {
+              header: "UPS status",
+              cell: (r) => {
+                const t = r.tracking;
+                if (!t) return <span className="text-gray-400">Not checked</span>;
+                if (r.state === "error") return <span className="text-amber-700">{t.error}</span>;
+                return (
+                  <span className={r.state === "delivered" ? "text-green-700" : r.state === "exception" ? "text-red-700" : r.state === "late" ? "text-amber-700" : "text-gray-900"}>
+                    {t.status}
+                    {r.state === "late" && <span className="block text-xs">Past expected date</span>}
+                  </span>
+                );
+              },
             },
-          },
-        ]}
-      />
-    </Section>
+            {
+              header: "Last activity",
+              cell: (r) => (r.tracking?.lastActivity ? `${r.tracking.lastActivity}${r.tracking.lastLocation ? ` · ${r.tracking.lastLocation}` : ""}` : "—"),
+            },
+            {
+              header: "Delivered / expected",
+              cell: (r) => (r.tracking?.deliveredAt ? formatUtcDateTime(r.tracking.deliveredAt) : r.tracking?.expectedAt ? `Expected ${formatUtcDate(r.tracking.expectedAt)}` : "—"),
+            },
+            {
+              header: "Checked",
+              cell: (r) => (r.tracking?.checkedAt ? formatDateTime(r.tracking.checkedAt, tz) : "—"),
+            },
+          ]}
+        />
+      </Section>
+    </div>
   );
 }
 

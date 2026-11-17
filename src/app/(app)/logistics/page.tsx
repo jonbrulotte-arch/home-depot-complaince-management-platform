@@ -37,6 +37,8 @@ import {
 
 type Search = {
   add?: string;
+  ch?: string;
+  state?: string;
   wh?: string;
   sort?: string;
   range?: string;
@@ -142,6 +144,7 @@ export default async function LogisticsPage({
             severity: sp.severity,
             scac: sp.scac,
             wh: sp.wh,
+            ch: sp.ch,
             sort: sp.sort,
             range: sp.range,
             from: sp.from,
@@ -151,13 +154,14 @@ export default async function LogisticsPage({
           sel={sel}
         />
       ) : tab === "shipments" ? (
-        <ShipmentsTab l={l} scac={sp.scac} late={sp.late === "1"} wh={sp.wh} sort={sp.sort} sel={sel} />
+        <ShipmentsTab l={l} scac={sp.scac} late={sp.late === "1"} wh={sp.wh} ch={sp.ch} sort={sp.sort} sel={sel} />
       ) : tab === "parcels" ? (
         <ParcelsTab
           l={l}
           upsReady={await upsConfigured()}
           canManage={canManage}
           tz={tz}
+          filters={{ q: sp.q, state: sp.state, ch: sp.ch, wh: sp.wh, range: sp.range, from: sp.from, to: sp.to, sort: sp.sort }}
         />
       ) : tab === "imports" ? (
         <ImportsTab canManage={canManage} tz={tz} />

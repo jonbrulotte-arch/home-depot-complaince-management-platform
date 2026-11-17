@@ -3,11 +3,13 @@
 import { usePathname, useRouter } from "next/navigation";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { UNKNOWN_WAREHOUSE, type WarehouseInfo } from "@/lib/logistics/warehouses";
+import { UNKNOWN_CHANNEL, type ChannelInfo } from "@/lib/logistics/channels";
+import { DEST_SORTS } from "@/lib/logistics/views";
 
 const ALL = "all";
 
 /** Warehouse and sort for the Shipments tab, kept in the address with its carrier and late filters */
-export function ShipmentFiltersBar({ filters, warehouses }: { filters: { scac?: string; late?: string; wh?: string; sort?: string }; warehouses: WarehouseInfo[] }) {
+export function ShipmentFiltersBar({ filters, warehouses, channels }: { filters: { scac?: string; late?: string; wh?: string; ch?: string; sort?: string }; warehouses: WarehouseInfo[]; channels: ChannelInfo[] }) {
   const router = useRouter();
   const pathname = usePathname();
   const apply = (next: Partial<typeof filters>) => {
@@ -15,7 +17,7 @@ export function ShipmentFiltersBar({ filters, warehouses }: { filters: { scac?: 
     for (const [k, v] of Object.entries({ ...filters, ...next })) if (v && v !== ALL) p.set(k, v);
     router.push(`${pathname}?${p}`);
   };
-  const pick = (id: string, label: string, value: string | undefined, options: [string, string][], key: "wh" | "sort", width: string) => (
+  const pick = (id: string, label: string, value: string | undefined, options: [string, string][], key: "wh" | "ch" | "sort", width: string) => (
     <div className={width}>
       <span className="mb-1 block text-xs font-medium text-gray-500" id={id}>
         {label}
@@ -37,7 +39,8 @@ export function ShipmentFiltersBar({ filters, warehouses }: { filters: { scac?: 
   return (
     <div className="flex flex-wrap items-end gap-3">
       {pick("ship-wh", "Warehouse", filters.wh, [[ALL, "Any warehouse"], ...warehouses.map((w): [string, string] => [w.prefix, w.name]), [UNKNOWN_WAREHOUSE, "No WMS cartons yet"]], "wh", "w-56")}
-      {pick("ship-sort", "Sort", filters.sort, [[ALL, "Latest pickup first"], ["warehouse", "Warehouse"]], "sort", "w-48")}
+      {pick("ship-ch", "Channel", filters.ch, [[ALL, "Any channel"], ...channels.map((c): [string, string] => [c.code, c.name]), [UNKNOWN_CHANNEL, "No WMS cartons yet"]], "ch", "w-64")}
+      {pick("ship-sort", "Sort", filters.sort, [[ALL, "Latest pickup first"], ["warehouse", "Warehouse"], ...DEST_SORTS.map((d): [string, string] => [d.key, d.label])], "sort", "w-52")}
     </div>
   );
 }

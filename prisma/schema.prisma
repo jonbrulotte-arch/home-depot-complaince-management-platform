@@ -1145,3 +1145,16 @@ model ResourceLink {
   @@index([disputeId])
   @@index([issueId])
 }
+
+/// A sales channel, recognised by the WMS report's CUST_NUM (e.g. "THD" is the Rapid Distribution
+/// Center, "THD.COM-DFDC" the Direct Fulfillment Center). Managed under Admin › Settings › Channels;
+/// Logistics filters POs, shipments and UPS parcels by it.
+model Channel {
+  id        String   @id @default(cuid())
+  /// The CUST_NUM value, upper case; matched exactly, ignoring case
+  code      String   @unique
+  name      String   @unique
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}

@@ -6,14 +6,15 @@ import { Download, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import type { PoFilters } from "@/lib/logistics/views";
+import { DEST_SORTS, type PoFilters } from "@/lib/logistics/views";
 import { PoRangePicker } from "./range-picker";
 import { UNKNOWN_WAREHOUSE, type WarehouseInfo } from "@/lib/logistics/warehouses";
+import { UNKNOWN_CHANNEL, type ChannelInfo } from "@/lib/logistics/channels";
 
 const ALL = "all";
 
 /** Search and filters for the POs tab, kept in the address. */
-export function PoFiltersBar({ filters, statuses, flags, scacs, warehouses }: { filters: PoFilters; statuses: string[]; flags: { code: string; label: string; pos: number }[]; scacs: string[]; warehouses: WarehouseInfo[] }) {
+export function PoFiltersBar({ filters, statuses, flags, scacs, warehouses, channels }: { filters: PoFilters; statuses: string[]; flags: { code: string; label: string; pos: number }[]; scacs: string[]; warehouses: WarehouseInfo[]; channels: ChannelInfo[] }) {
   const router = useRouter();
   const pathname = usePathname();
   const [q, setQ] = useState(filters.q ?? "");
@@ -67,7 +68,8 @@ export function PoFiltersBar({ filters, statuses, flags, scacs, warehouses }: { 
       {pick("log-flag", "Flag", filters.flag, [[ALL, "Any flag"], ...flags.map((f): [string, string] => [f.code, `${f.label} (${f.pos})`])], "flag", "w-60")}
       {pick("log-scac", "Carrier", filters.scac, [[ALL, "Any carrier"], ...scacs.map((s): [string, string] => [s, s])], "scac", "w-36")}
       {pick("log-wh", "Warehouse", filters.wh, [[ALL, "Any warehouse"], ...warehouses.map((w): [string, string] => [w.prefix, w.name]), [UNKNOWN_WAREHOUSE, "No WMS cartons yet"]], "wh", "w-56")}
-      {pick("log-sort", "Sort", filters.sort, [[ALL, "Newest PO first"], ["warehouse", "Warehouse"], ["shipped", "Latest shipped (WMS)"]], "sort", "w-48")}
+      {pick("log-ch", "Channel", filters.ch, [[ALL, "Any channel"], ...channels.map((c): [string, string] => [c.code, c.name]), [UNKNOWN_CHANNEL, "No WMS cartons yet"]], "ch", "w-64")}
+      {pick("log-sort", "Sort", filters.sort, [[ALL, "Newest PO first"], ["warehouse", "Warehouse"], ["shipped", "Latest shipped (WMS)"], ...DEST_SORTS.map((d): [string, string] => [d.key, d.label])], "sort", "w-52")}
       <div>
         <label htmlFor="log-range" className="mb-1 block text-xs font-medium text-gray-500">
           Date
@@ -78,7 +80,7 @@ export function PoFiltersBar({ filters, statuses, flags, scacs, warehouses }: { 
         <Search className="h-4 w-4 mr-1.5" />
         Search
       </Button>
-      {Boolean(filters.q || filters.status || filters.flag || filters.severity || filters.scac || filters.range || filters.wh || filters.sort) && (
+      {Boolean(filters.q || filters.status || filters.flag || filters.severity || filters.scac || filters.range || filters.wh || filters.ch || filters.sort) && (
         <Button type="button" variant="ghost" onClick={() => router.push(`${pathname}?tab=pos`)}>
           Clear
         </Button>

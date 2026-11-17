@@ -422,3 +422,62 @@ describe("Warehouses", () => {
     expect(by.find((x) => x.prefix === "0-")!.pos).toBe(1);
   });
 });
+
+describe("Channels, destination sorts and UPS parcels", () => {
+  const CH = [
+    { code: "THD", name: "Rapid Distribution Center (RDC)" },
+    { code: "THD.COM-DFDC", name: "Direct Fulfillment Center (DFC)" },
+  ];
+
+  it("reads the channel from the WMS CUST_NUM, exactly and ignoring case", async () => {
+    const { channelOf, matchesChannel } = await import("@/lib/logistics/channels");
+    expect(channelOf("THD", CH)?.name).toBe("Rapid Distribution Center (RDC)");
+    expect(channelOf(" thd.com-dfdc ", CH)?.name).toBe("Direct Fulfillment Center (DFC)");
+    expect(channelOf("THD.CA", CH)).toBeNull();
+    expect(matchesChannel([], "none")).toBe(true);
+    expect(matchesChannel([CH[1]], "THD")).toBe(false);
+  });
+
+  it("gives POs, shipments and parcels their channel and filters by it", async () => {
+    const { w, s, p } = await sample();
+    const shipments = s.parsed.rows.map((r) => ({ ...r, pickupAt: r.pickup?.at ?? null, pickupLocal: r.pickup?.local ?? null, deliveryAt: r.delivery?.at ?? null, deliveryLocal: r.delivery?.local ?? null }));
+    const v = buildLogistics({ cartons: w.parsed.rows, shipments, pos: p.parsed.rows, parcels: [], channels: CH }, "2026-11-14");
+    const withCh = v.pos.filter((x) => x.channels.length);
+    expect(withCh.length).toBeGreaterThan(0);
+    const codes = new Set(withCh.flatMap((x) => x.channels.map((c) => c.code)));
+    for (const code of codes) expect(filterPos(v.pos, { ch: code }).every((x) => x.channels.some((c) => c.code === code))).toBe(true);
+    expect(filterPos(v.pos, { ch: "none" }).every((x) => x.cartonCount === 0)).toBe(true);
+    const { filterShipments, parcelRows, filterParcels } = await import("@/lib/logistics/views");
+    const code = [...codes][0];
+    expect(filterShipments(v.shipments, { ch: code }, []).every((x) => x.channels.some((c) => c.code === code))).toBe(true);
+    const parcels = parcelRows(v, "2026-11-14", [], CH);
+    if (parcels.length) {
+      expect(parcels.every((r) => r.state === "unchecked")).toBe(true);
+      const c0 = parcels.find((r) => r.channels.length)!;
+      expect(filterParcels(parcels, { ch: c0.channels[0].code }, "2026-11-14").length).toBeGreaterThan(0);
+      expect(filterParcels(parcels, { q: c0.pos[0] }, "2026-11-14").every((r) => r.pos.includes(c0.pos[0]))).toBe(true);
+    }
+  });
+
+  it("sorts by destination Store/DC #, city or state, blanks last", async () => {
+    const { destCompare } = await import("@/lib/logistics/views");
+    const d = (facility: string | null, city: string | null, state: string | null) => ({ facility, city, state });
+    const list = [d("6760", "HAGERSTOWN", "MD"), d(null, "AUSTIN", "TX"), d("5023", "DALLAS", "TX"), d("XD05", "MONROE", "OH"), d("650", "ATLANTA", "GA")];
+    expect([...list].sort(destCompare("dest")!).map((x) => x.facility)).toEqual(["650", "5023", "6760", "XD05", null]);
+    expect([...list].sort(destCompare("city")!).map((x) => x.city)).toEqual(["ATLANTA", "AUSTIN", "DALLAS", "HAGERSTOWN", "MONROE"]);
+    expect([...list].sort(destCompare("state")!).map((x) => `${x.state} ${x.city}`)).toEqual(["GA ATLANTA", "MD HAGERSTOWN", "OH MONROE", "TX AUSTIN", "TX DALLAS"]);
+    expect(destCompare("po")).toBeNull();
+  });
+
+  it("works out a UPS parcel's state", async () => {
+    const { parcelState } = await import("@/lib/logistics/views");
+    const t = (o: Record<string, unknown>) => ({ trackingNumber: "1Z", status: "In Transit", statusType: "I", delivered: false, deliveredAt: null, expectedAt: null, lastActivity: null, lastLocation: null, activityAt: null, checkedAt: null, error: null, ...o }) as never;
+    expect(parcelState(null, "2026-11-14")).toBe("unchecked");
+    expect(parcelState(t({ delivered: true }), "2026-11-14")).toBe("delivered");
+    expect(parcelState(t({ statusType: "X" }), "2026-11-14")).toBe("exception");
+    expect(parcelState(t({ expectedAt: new Date("2026-11-10") }), "2026-11-14")).toBe("late");
+    expect(parcelState(t({ statusType: "M" }), "2026-11-14")).toBe("label");
+    expect(parcelState(t({ status: null, error: "Not found" }), "2026-11-14")).toBe("error");
+    expect(parcelState(t({}), "2026-11-14")).toBe("transit");
+  });
+});

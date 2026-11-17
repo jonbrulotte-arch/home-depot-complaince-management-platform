@@ -1,5 +1,6 @@
 import { localDateOf } from "@/lib/logistics/parse";
 import { matchesWarehouse, warehouseRank, warehousesOf, type WarehouseInfo } from "@/lib/logistics/warehouses";
+import { channelsOf, matchesChannel, type ChannelInfo } from "@/lib/logistics/channels";
 import { cartonRefs } from "@/lib/logistics/refs";
 
 // Logistics views: every PO and TMS shipment with the WMS cartons, TMS records and UPS tracking
@@ -194,7 +195,17 @@ export interface PoView {
   origin: string;
   /** The warehouses its WMS cartons shipped from (by OrderNumber prefix) */
   warehouses: WarehouseInfo[];
+  /** Its channels, from its WMS cartons' CUST_NUM */
+  channels: ChannelInfo[];
+  /** The destination's parts, for sorting: Store/DC number, city, state */
+  dest: Destination;
   flags: Flag[];
+}
+
+export interface Destination {
+  facility: string | null;
+  city: string | null;
+  state: string | null;
 }
 
 export interface ShipmentView extends Shipment {
@@ -214,6 +225,8 @@ export interface ShipmentView extends Shipment {
   tmsStatus: string | null;
   /** The warehouses it shipped from: its cartons', else its POs' */
   warehouses: WarehouseInfo[];
+  /** Its channels: its cartons', else its POs' */
+  channels: ChannelInfo[];
 }
 
 /** A PO on a resolved Issue Log issue in the "Order cancellation" category */
@@ -252,6 +265,8 @@ export interface LogisticsData {
   canceledByIssue?: IssueCancellation[];
   /** Warehouses by OrderNumber prefix, in the admins' order */
   warehouses?: WarehouseInfo[];
+  /** Channels by CUST_NUM, in the admins' order */
+  channels?: ChannelInfo[];
   parcels: Parcel[];
 }
 
@@ -384,6 +399,12 @@ export function buildLogistics(input: LogisticsData, today: string) {
       destination: tms ? place(tms.destFacility, tms.destCity, tms.destState) : live[0] ? place(live[0].destFacility, live[0].destCity, live[0].destState) : cartons[0] ? place(null, cartons[0].shipCity, cartons[0].shipState) : "—",
       origin: tms ? place(tms.originFacility, tms.originCity, tms.originState) : live[0] ? place(live[0].originFacility, live[0].originCity, live[0].originState) : "—",
       warehouses: warehousesOf(cartons, data.warehouses ?? []),
+      channels: channelsOf(cartons, data.channels ?? []),
+      dest: tms
+        ? { facility: tms.destFacility, city: tms.destCity, state: tms.destState }
+        : live[0]
+          ? { facility: live[0].destFacility, city: live[0].destCity, state: live[0].destState }
+          : { facility: null, city: cartons[0]?.shipCity ?? null, state: cartons[0]?.shipState ?? null },
       flags: flags.sort(bySeverity),
     };
   });
@@ -421,6 +442,7 @@ export function buildLogistics(input: LogisticsData, today: string) {
         status: canceledByIssue ? "Canceled" : s.status,
         tmsStatus: canceledByIssue ? s.status : null,
         warehouses: cartons.length ? warehousesOf(cartons, data.warehouses ?? []) : (data.warehouses ?? []).filter((w) => ours.some((po) => poByNumber.get(po)?.warehouses.some((x) => x.prefix === w.prefix))),
+        channels: cartons.length ? channelsOf(cartons, data.channels ?? []) : (data.channels ?? []).filter((c) => ours.some((po) => poByNumber.get(po)?.channels.some((x) => x.code === c.code))),
         pos: s.poNumbers.map((po) => ({ poNumber: po, tms: tmsByPo.get(po) ?? null })),
         ourPos: ours,
         otherPos: s.poNumbers.filter((po) => !isOurs(po)),
@@ -512,6 +534,8 @@ export interface PoFilters {
   scac?: string;
   /** A warehouse's OrderNumber prefix, or "none" for unknown */
   wh?: string;
+  /** A channel's CUST_NUM, or "none" for unknown */
+  ch?: string;
   /** "warehouse" or "shipped"; newest PO first otherwise */
   sort?: string;
   /** A date range (PO_RANGES key); "custom" uses from and to (YYYY-MM-DD) */
@@ -587,15 +611,44 @@ export function filterPos(pos: PoView[], f: PoFilters, today?: string): PoView[]
     if (f.severity && f.severity !== "any" && !pool.some((x) => x.severity === f.severity)) return false;
     if (f.scac && !p.shipments.some((s) => s.scac === f.scac)) return false;
     if (!matchesWarehouse(p.warehouses, f.wh)) return false;
+    if (!matchesChannel(p.channels, f.ch)) return false;
     if (!q) return true;
     const hay = [p.poNumber, p.destination, p.origin, ...p.wmsTms, ...p.ups, ...p.pros, ...p.shipments.map((s) => s.shipmentNumber), ...p.cartons.map((c) => c.orderNum), ...p.cartons.map((c) => c.label)].join(" ").toUpperCase();
     return hay.includes(q);
   });
 }
 
-/** POs in the order asked: by warehouse (admins' order, unknown last), by WMS ship date (newest first), else newest PO first */
+/** Sorts offered on the POs, Shipments and UPS parcels tabs, besides each tab's default */
+export const DEST_SORTS = [
+  { key: "dest", label: "Destination Store/DC #" },
+  { key: "city", label: "Destination city" },
+  { key: "state", label: "Destination state" },
+] as const;
+
+const text = (v: string | null | undefined) => (v ?? "").trim().toUpperCase();
+const byText = (a: string, b: string) => (!a ? (b ? 1 : 0) : !b ? -1 : a.localeCompare(b, "en", { numeric: true }));
+
+/** Compares destinations by Store/DC number, city or state (then the others); blanks last */
+export function destCompare(sort: string): ((a: Destination, b: Destination) => number) | null {
+  const order: (keyof Destination)[] | null = sort === "dest" ? ["facility", "state", "city"] : sort === "city" ? ["city", "state", "facility"] : sort === "state" ? ["state", "city", "facility"] : null;
+  if (!order) return null;
+  return (a, b) => {
+    for (const k of order) {
+      const c = byText(text(a[k]), text(b[k]));
+      if (c) return c;
+    }
+    return 0;
+  };
+}
+
+/** A shipment's destination parts */
+export const shipmentDest = (s: Pick<Shipment, "destFacility" | "destCity" | "destState">): Destination => ({ facility: s.destFacility, city: s.destCity, state: s.destState });
+
+/** POs in the order asked: by warehouse (admins' order, unknown last), by WMS ship date (newest first), by destination, else newest PO first */
 export function sortPos(pos: PoView[], sort: string | undefined, warehouses: WarehouseInfo[]): PoView[] {
   const out = [...pos].sort(byPoNumberDesc);
+  const dest = sort ? destCompare(sort) : null;
+  if (dest) return out.sort((a, b) => dest(a.dest, b.dest));
   if (sort === "warehouse") return out.sort((a, b) => warehouseRank(a.warehouses, warehouses) - warehouseRank(b.warehouses, warehouses));
   if (sort === "shipped") return out.sort((a, b) => (b.firstShipped?.getTime() ?? 0) - (a.firstShipped?.getTime() ?? 0));
   return out;
@@ -603,6 +656,8 @@ export function sortPos(pos: PoView[], sort: string | undefined, warehouses: War
 
 export interface ShipmentFilters {
   scac?: string;
+  /** A channel's CUST_NUM, or "none" */
+  ch?: string;
   /** Only shipments past their pickup or delivery date */
   late?: boolean;
   wh?: string;
@@ -613,8 +668,105 @@ export interface ShipmentFilters {
 /** Shipments matching the Shipments tab's filters, in the order asked */
 export function filterShipments(shipments: ShipmentView[], f: ShipmentFilters, warehouses: WarehouseInfo[]): ShipmentView[] {
   const rows = shipments.filter(
-    (s) => (!f.scac || s.scac === f.scac) && (!f.late || s.flags.some((x) => x.code === "DELIVERY_OVERDUE" || x.code === "PICKUP_PASSED")) && matchesWarehouse(s.warehouses, f.wh),
+    (s) =>
+      (!f.scac || s.scac === f.scac) &&
+      (!f.late || s.flags.some((x) => x.code === "DELIVERY_OVERDUE" || x.code === "PICKUP_PASSED")) &&
+      matchesWarehouse(s.warehouses, f.wh) &&
+      matchesChannel(s.channels, f.ch),
   );
+  const dest = f.sort ? destCompare(f.sort) : null;
+  if (dest) return [...rows].sort((a, b) => dest(shipmentDest(a), shipmentDest(b)));
   // Array sort is stable: within a warehouse, the latest pickup stays first
   return f.sort === "warehouse" ? [...rows].sort((a, b) => warehouseRank(a.warehouses, warehouses) - warehouseRank(b.warehouses, warehouses)) : rows;
+}
+
+/** What the UPS parcels tab can filter by, worked out from UPS tracking and today */
+export const PARCEL_STATES = [
+  { key: "transit", label: "In transit" },
+  { key: "label", label: "Label created" },
+  { key: "late", label: "Past expected date" },
+  { key: "exception", label: "UPS exception" },
+  { key: "delivered", label: "Delivered" },
+  { key: "unchecked", label: "Not checked yet" },
+  { key: "error", label: "Tracking error" },
+] as const;
+export type ParcelState = (typeof PARCEL_STATES)[number]["key"];
+
+export interface ParcelRow {
+  number: string;
+  pos: string[];
+  shipped: Date | null;
+  tracking: Parcel | null;
+  state: ParcelState;
+  destination: string;
+  dest: Destination;
+  warehouses: WarehouseInfo[];
+  channels: ChannelInfo[];
+}
+
+export interface ParcelFilters {
+  /** Tracking number, PO or destination */
+  q?: string;
+  ch?: string;
+  wh?: string;
+  state?: string;
+  range?: string;
+  from?: string;
+  to?: string;
+  /** "expected", "status", or a destination sort; latest shipped first otherwise */
+  sort?: string;
+}
+
+/** A UPS parcel's state from its tracking (UPS status types: D delivered, X exception, M label created) */
+export function parcelState(t: Parcel | null, today: string): ParcelState {
+  if (!t) return "unchecked";
+  if (t.delivered) return "delivered";
+  if (t.error && !t.status) return "error";
+  if (t.statusType === "X") return "exception";
+  if (t.expectedAt && isoDate(t.expectedAt) < today) return "late";
+  if (t.statusType === "M") return "label";
+  return "transit";
+}
+
+/** One row per UPS number on the POs' WMS cartons, with its POs, tracking, warehouse and channel */
+export function parcelRows(views: Pick<LogisticsViews, "pos">, today: string, warehouses: WarehouseInfo[] = [], channels: ChannelInfo[] = []): ParcelRow[] {
+  const rows = new Map<string, ParcelRow & { cartons: Carton[] }>();
+  for (const p of views.pos)
+    for (const u of p.ups) {
+      const cartons = p.cartons.filter((c) => c.trackingNumber?.toUpperCase() === u || c.secondTrack?.toUpperCase() === u);
+      const row = rows.get(u) ?? { number: u, pos: [], shipped: null, tracking: null, state: "unchecked" as ParcelState, destination: p.destination, dest: p.dest, warehouses: [], channels: [], cartons: [] };
+      row.pos.push(p.poNumber);
+      row.cartons.push(...cartons);
+      row.tracking ??= p.parcels.find((x) => x.trackingNumber === u) ?? null;
+      for (const c of cartons) if (!row.shipped || c.shippedAt < row.shipped) row.shipped = c.shippedAt;
+      rows.set(u, row);
+    }
+  return [...rows.values()].map(({ cartons, ...r }) => ({ ...r, state: parcelState(r.tracking, today), warehouses: warehousesOf(cartons, warehouses), channels: channelsOf(cartons, channels) }));
+}
+
+/** The UPS parcels tab's rows as filtered and sorted */
+export function filterParcels(rows: ParcelRow[], f: ParcelFilters, today: string): ParcelRow[] {
+  const q = f.q?.trim().toUpperCase();
+  const bounds = rangeBounds(f, today);
+  const out = rows.filter((r) => {
+    if (f.state && r.state !== f.state) return false;
+    if (!matchesWarehouse(r.warehouses, f.wh) || !matchesChannel(r.channels, f.ch)) return false;
+    if (bounds) {
+      const d = r.shipped ? isoDate(r.shipped) : null;
+      if (!d || (bounds.from && d < bounds.from) || (bounds.to && d > bounds.to)) return false;
+    }
+    return !q || [r.number, ...r.pos, r.destination].join(" ").toUpperCase().includes(q);
+  });
+  const dest = f.sort ? destCompare(f.sort) : null;
+  if (dest) return out.sort((a, b) => dest(a.dest, b.dest));
+  if (f.sort === "expected") {
+    // Soonest expected first; then those with no expected date; delivered last
+    const at = (r: ParcelRow) => (r.tracking?.delivered ? Number.MAX_SAFE_INTEGER : (r.tracking?.expectedAt?.getTime() ?? Number.MAX_SAFE_INTEGER - 1));
+    return out.sort((a, b) => at(a) - at(b));
+  }
+  if (f.sort === "status") {
+    const rank = (r: ParcelRow) => PARCEL_STATES.findIndex((s) => s.key === r.state);
+    return out.sort((a, b) => rank(a) - rank(b) || (b.shipped?.getTime() ?? 0) - (a.shipped?.getTime() ?? 0));
+  }
+  return out.sort((a, b) => (b.shipped?.getTime() ?? 0) - (a.shipped?.getTime() ?? 0));
 }
