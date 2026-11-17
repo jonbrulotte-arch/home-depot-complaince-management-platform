@@ -79,7 +79,7 @@ describe("logistics views of the sample files", () => {
     expect(po("1191142969").flags.find((f) => f.code === "SUSPECT_TMS_ID")!.severity).toBe("high");
     expect(codes("1191142969")).toContain("CROSSDOCK");
     // Crossdock shipments: check the destination in PlanEx (a warning until delivered)
-    expect(po("1191515251").flags.find((f) => f.code === "CHECK_PLANEX")!.severity).toBe("medium");
+    expect(po("1191515251").flags.find((f) => f.code === "CHECK_PLANEX")!.severity).toBe("high");
     expect(po("1191142969").flags.find((f) => f.code === "CHECK_PLANEX")!.severity).toBe("info");
     // WMS cartons carry 233565631; TMS has the PO on 233586508, to XD05
     expect(po("1191515251").flags.find((f) => f.code === "TMS_ID_MISMATCH")!.severity).toBe("high");
@@ -128,7 +128,7 @@ describe("logistics views of the sample files", () => {
     expect(filterPos(views.pos, { flag: "SUSPECT_TMS_ID", severity: "high" })).toHaveLength(1);
     expect(filterPos(views.pos, { flag: "SUSPECT_TMS_ID", severity: "info" })).toHaveLength(0);
     expect(o.flags.find((f) => f.code === "SUSPECT_TMS_ID")).toMatchObject({ severity: "high", pos: 1 });
-    expect(filterPos(views.pos, { flag: "CHECK_PLANEX", severity: "medium" }).length).toBeGreaterThan(0);
+    expect(filterPos(views.pos, { flag: "CHECK_PLANEX", severity: "high" }).length).toBeGreaterThan(0);
   });
 });
 
@@ -153,7 +153,7 @@ describe("TMS IDs and crossdocks", () => {
     expect(codes("200")).toContain("CROSSDOCK:info");
     expect(codes("200")).toContain("TMS_ID_MISMATCH:high");
     expect(codes("300")).toContain("SUSPECT_TMS_ID:high");
-    expect(codes("300")).toContain("CHECK_PLANEX:medium");
+    expect(codes("300")).toContain("CHECK_PLANEX:high");
     expect(codes("100").some((c) => c.startsWith("CHECK_PLANEX"))).toBe(false);
     expect(v.shipments.find((s) => s.shipmentNumber === "233000008")!.flags.map((f) => f.code)).toEqual(expect.arrayContaining(["CROSSDOCK", "CHECK_PLANEX"]));
   });

@@ -89,7 +89,7 @@ export const FLAGS = {
   CITY_SPELLING: { severity: "medium", label: "Ship-to city misspelled" },
   ORIGIN_MISMATCH: { severity: "info", label: "Different ship-from" },
   NOT_IN_TMS: { severity: "info", label: "PO not in TMS file" },
-  CHECK_PLANEX: { severity: "medium", label: "Check destination in PlanEx" },
+  CHECK_PLANEX: { severity: "high", label: "Check destination in PlanEx" },
   CROSSDOCK: { severity: "info", label: "Crossdock (IFC)" },
   DATES_REVERSED: { severity: "info", label: "Delivery before pickup" },
   TMS_FLAGGED: { severity: "info", label: "TMS errors or alerts" },
@@ -160,7 +160,7 @@ function shipmentFlags(s: Shipment, today: string): Flag[] {
       flag(
         "CHECK_PLANEX",
         `Shipment ${s.shipmentNumber} goes to crossdock ${s.destFacility}${s.destCity ? ` (${[s.destCity, s.destState].filter(Boolean).join(", ")})` : ""}: the shipping address received over EDI may not be accurate. Check the destination in Vendor PlanEx.`,
-        isDelivered(s.status) ? "info" : "medium",
+        isDelivered(s.status) ? "info" : "high",
       ),
     );
   }
