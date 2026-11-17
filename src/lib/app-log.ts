@@ -103,6 +103,7 @@ export const ACTION_LABELS: Record<string, string> = {
   "logistics.report": "Exported a Logistics report of selected POs or shipments",
   "logistics.email": "Emailed a team about POs or shipments",
   "logistics.emailAttachment": "Downloaded the report attached to a Logistics email",
+  "packingslip.download": "Downloaded a packing slip",
   "disputes.report": "Downloaded a dispute report",
   "disputes.email": "Emailed a team about disputes",
   "disputes.emailAttachment": "Downloaded the report attached to a dispute email",
@@ -123,7 +124,7 @@ export const LOG_CATEGORIES = [
   { key: "exports", label: "Lookups & exports", prefixes: ["package", "summary", "appLog", "insights"] },
   { key: "access", label: "Users & roles", prefixes: ["user", "role", "account"] },
   { key: "config", label: "Configuration & settings", prefixes: ["metric", "rule", "alias", "reasonCode", "settings", "email", "team", "sop"] },
-  { key: "logistics", label: "Logistics", prefixes: ["logistics"] },
+  { key: "logistics", label: "Logistics", prefixes: ["logistics", "packingslip"] },
   { key: "backups", label: "Backups", prefixes: ["backup"] },
 ] as const;
 

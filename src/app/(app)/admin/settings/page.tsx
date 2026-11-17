@@ -17,7 +17,7 @@ export default async function SettingsPage() {
   const [sops, roles, warehouses, channels] = await Promise.all([
     prisma.sopDocument.findMany({ orderBy: [{ sortOrder: "asc" }, { title: "asc" }], select: { id: true, title: true, fileName: true, size: true, roleIds: true, updatedAt: true } }),
     prisma.role.findMany({ orderBy: { name: "asc" }, select: { id: true, name: true } }),
-    prisma.warehouse.findMany({ orderBy: [{ sortOrder: "asc" }, { prefix: "asc" }], select: { id: true, prefix: true, name: true } }),
+    prisma.warehouse.findMany({ orderBy: [{ sortOrder: "asc" }, { prefix: "asc" }], select: { id: true, prefix: true, name: true, shipFromName: true, address: true } }),
     prisma.channel.findMany({ orderBy: [{ sortOrder: "asc" }, { code: "asc" }], select: { id: true, code: true, name: true } }),
   ]);
   return (

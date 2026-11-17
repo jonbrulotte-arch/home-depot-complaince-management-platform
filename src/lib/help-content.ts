@@ -52,7 +52,7 @@ export const HELP_TOPICS: HelpTopic[] = [
       {
         terms: [
           ["Admin", "Everything, including users, roles, programs and rules, settings and backups."],
-          ["Analyst", "Creates reports, imports data, reviews violations, works disputes, publishes scorecards, reads and answers feedback, logs issues and uses the Summarizer."],
+          ["Analyst", "Creates reports, imports data, reviews violations, works disputes, publishes scorecards, reads and answers feedback, logs issues, makes packing slips and uses the Summarizer."],
           ["Viewer", "The dashboard, published scorecards, PO Lookup and the Issue Log, read-only."],
           ["Warehouse", "Scorecard Feedback (reads published violations and adds comments) and the Issue Log (logs and updates issues)."],
           ["Finance", "PO Lookup (including chargeback packages), Scorecard Feedback without commenting, the Issue Log and the Summarizer, all read-only."],
@@ -470,6 +470,29 @@ export const HELP_TOPICS: HelpTopic[] = [
     ],
   },
   {
+    id: "packing-slips",
+    title: "Packing Slip Generator",
+    summary: "A packing slip for a PO, filled in from the WMS, TMS and THD's data, as a PDF or Excel file.",
+    anyOf: ["packingslips.use"],
+    blocks: [
+      {
+        p: "**Packing Slips** in the sidebar (or **Packing slip** on a Logistics PO page) makes a packing slip for a PO. Enter the PO number and click **Fill from data**: the platform fills in what it knows, and the badges beside the button say where it came from.",
+      },
+      {
+        list: [
+          "**Ship Date**, **Cartons** and the **items** (one row per product, units added up) come from the WMS shipped lines. A PO the warehouse hasn't shipped yet takes its items and ordered quantities from THD's compliance data instead.",
+          "**Home Depot SKU #** and **Description** come from THD's compliance data for each of our SKUs, when THD's data has the product.",
+          "**Shipment ID** and **Carrier** come from the PO's TMS shipment (else the TMS ID in the WMS data; UPS parcel POs show UPSN). **PO Date** is THD's PO create date.",
+          "**Ship From** is the warehouse that shipped the PO, with the ship-from name and address set under Admin › Settings › Warehouses; pick another warehouse, or **Other**, and type it.",
+          "**Ship To** is the destination Store/DC # with its saved address. The first time, only the city, state and ZIP are known: type the full address and it is saved for that Store/DC # when you download, so the next slip to it is filled in.",
+        ],
+      },
+      {
+        p: "Everything can be edited before downloading: add or remove item rows, change units, and edit the notes. **Download PDF** gives a Letter page to print and sign (Received By, Date Received); **Export to Excel** gives the same slip as a spreadsheet. **Clear** starts a blank slip, which you can fill in by hand for a PO the platform doesn't know.",
+      },
+    ],
+  },
+  {
     id: "dashboards",
     title: "Dashboards",
     summary: "The internal dashboard, the rolling 12-month chart and the public dashboard.",
@@ -500,7 +523,7 @@ export const HELP_TOPICS: HelpTopic[] = [
           ["Roles & Access", "A grid of roles and permissions. The built-in Admin role always has everything; add roles for other teams as needed."],
           ["Teams", "The **Team responsible** choices for violation reviews and issues. **Add team**, rename it or give it a description (the pencil), change the order with the arrows, and **Turn off** a team you no longer use: it leaves the pickers but stays on the reviews and issues that have it. A new name shows everywhere at once, except on published scorecards, which keep the name they were generated with until regenerated. Only a team nothing uses can be deleted. A team can also have **Email** addresses, To and Cc (several separated by commas): picking it in Logistics › **Send Email** sends to them."],
           ["Programs & Rules", "Each program's metrics, goals and offset rules (with the fiscal month they take effect, so past months keep their rules), dispute reason codes with required documents, the SPM sheet names, and **Column mappings** from THD's column names to the platform's fields."],
-          ["Settings", "**Report periods** (month received or THD fiscal month), the **Public dashboard**, **Email Configuration (MS Graph)** (whether email is set up for invitations and password resets, the sender, and **Send Test**; every email the platform sends ends with a note that the mailbox isn't monitored and to use Reply All) and **Custom Branding** (site name and logo) and **SOP documents** (the SOP PDFs: **Add SOP** with a title, the PDF and the roles it is for; **Replace PDF** when an SOP is updated, keeping its title and roles; each role finds its SOPs at the bottom of the Help & Docs contents). **WMS report link**: the address **Sync WMS lines** in Logistics retrieves. **Channels**: each channel's CUST_NUM value from the WMS report (matched exactly) and name; Logistics filters POs, shipments and UPS parcels by it. **Warehouses**: each warehouse's OrderNumber prefix (the start of the WMS report's OrderNumber, e.g. 3-) and name; Logistics shows, filters and sorts POs and shipments by it, and changes show at once. **UPS tracking**: the UPS Developer Portal client ID and secret for UPS parcel tracking (the secret is never shown again; **Test connection** checks them with UPS)."],
+          ["Settings", "**Report periods** (month received or THD fiscal month), the **Public dashboard**, **Email Configuration (MS Graph)** (whether email is set up for invitations and password resets, the sender, and **Send Test**; every email the platform sends ends with a note that the mailbox isn't monitored and to use Reply All) and **Custom Branding** (site name and logo) and **SOP documents** (the SOP PDFs: **Add SOP** with a title, the PDF and the roles it is for; **Replace PDF** when an SOP is updated, keeping its title and roles; each role finds its SOPs at the bottom of the Help & Docs contents). **WMS report link**: the address **Sync WMS lines** in Logistics retrieves. **Channels**: each channel's CUST_NUM value from the WMS report (matched exactly) and name; Logistics filters POs, shipments and UPS parcels by it. **Warehouses**: each warehouse's OrderNumber prefix (the start of the WMS report's OrderNumber, e.g. 3-) and name; Logistics shows, filters and sorts POs and shipments by it, and changes show at once. Each warehouse also has the **Packing slip ship-from** name and address the Packing Slip Generator prints. **UPS tracking**: the UPS Developer Portal client ID and secret for UPS parcel tracking (the secret is never shown again; **Test connection** checks them with UPS)."],
           ["Backup & Restore", "**Back up now** saves everything, attachments included, on the server; download any backup, or restore one (type RESTORE to confirm; a safety backup is taken first)."],
           ["View Analytics", "Hits on each published scorecard, in the app and through its public link: **Hits** (views plus PDF and Excel downloads), **Unique sessions** (a session is one browser's visit and ends after 30 minutes without activity), **Signed-in users**, and **Public-link hits**. Open a scorecard for hits per day, the signed-in users who opened it, and the latest hits. Choose the period at the top right."],
           ["App Log", "Every event in the platform, newest first: sign-ins, **failed sign-ins** (with the email typed and the reason), report work, imports, reviews, disputes, scorecards, feedback, exports, and changes to users, roles, configuration and backups. Filter by search text, user, category and dates; **Show all** opens an event's full details; **Export CSV** downloads what the filters show."],

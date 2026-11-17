@@ -15,6 +15,7 @@ export const PERMISSIONS = {
   "insights.view": "View Reports & Insights (program, time, team, issue, dispute and location insights)",
   "logistics.view": "View Logistics (POs, shipments, tracking and flags) and add notes",
   "logistics.manage": "Import logistics files, refresh WMS and UPS tracking, and edit carrier links",
+  "packingslips.use": "Generate packing slips (filled in from a PO's WMS, TMS and THD data)",
   "admin.users": "Manage users",
   "admin.rbac": "Manage roles and permissions",
   "admin.programs": "Manage programs, metrics, thresholds and column mappings",
@@ -48,6 +49,7 @@ export const DEFAULT_ROLES: { name: string; description: string; permissions: Pe
       "summarizer.use",
       "issues.view",
       "issues.manage",
+      "packingslips.use",
     ],
   },
   { name: "Viewer", description: "Read-only dashboard, PO Lookup and Issue Log", permissions: ["view.dashboard", "view.polookup", "issues.view"] },
@@ -83,6 +85,7 @@ const HOME_PAGES: [Permission, string][] = [
   ["issues.view", "/issues"],
   ["view.polookup", "/po-lookup"],
   ["logistics.view", "/logistics"],
+  ["packingslips.use", "/packing-slips"],
   ["admin.users", "/admin/users"],
   ["admin.settings", "/admin/settings"],
 ];

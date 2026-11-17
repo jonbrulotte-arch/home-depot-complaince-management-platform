@@ -1122,6 +1122,10 @@ model Warehouse {
   /// The OrderNumber prefix, e.g. "3-"; the longest matching prefix wins
   prefix    String   @unique
   name      String   @unique
+  /// The name packing slips show as the ship-from, e.g. "JS PRODUCTS - 875062OH001"
+  shipFromName String?
+  /// The warehouse's street address for packing slips (lines separated by newlines)
+  address   String?
   sortOrder Int      @default(0)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1157,4 +1161,16 @@ model Channel {
   sortOrder Int      @default(0)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+/// The Packing Slip Generator's address book: a THD store or DC's name and address as last used on a
+/// slip, filled in the next time a PO goes there (the WMS and TMS data carry only city, state and ZIP).
+model DestinationAddress {
+  id          String   @id @default(cuid())
+  /// The Store/DC number, e.g. "5023" or "XD05", upper case
+  facility    String   @unique
+  name        String
+  address     String
+  updatedAt   DateTime @updatedAt
+  updatedById String?
 }

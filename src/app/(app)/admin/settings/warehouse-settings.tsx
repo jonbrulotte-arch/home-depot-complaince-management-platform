@@ -6,6 +6,7 @@ import { Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { apiFetch } from "@/lib/client-api";
 
 interface Row {
@@ -13,6 +14,9 @@ interface Row {
   /** The value matched in the WMS data: an OrderNumber prefix or a CUST_NUM */
   key: string;
   name: string;
+  /** Warehouses only: what packing slips print as the ship-from */
+  shipFromName?: string;
+  address?: string;
 }
 
 export interface MappingConfig {
@@ -28,22 +32,25 @@ export interface MappingConfig {
   noun: string;
   removedNote: string;
   endpoint: string;
+  /** Warehouses: also edit the packing slip's ship-from name and address */
+  shipFrom?: boolean;
 }
 
 const th = "px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider";
 
 /** Warehouses: which warehouse shipped a WMS carton, from the start of its OrderNumber ("3-…"). */
-export function WarehouseSettings({ warehouses }: { warehouses: { id: string; prefix: string; name: string }[] }) {
+export function WarehouseSettings({ warehouses }: { warehouses: { id: string; prefix: string; name: string; shipFromName: string | null; address: string | null }[] }) {
   return (
     <MappingSettings
-      rows={warehouses.map((w) => ({ id: w.id, key: w.prefix, name: w.name }))}
+      rows={warehouses.map((w) => ({ id: w.id, key: w.prefix, name: w.name, shipFromName: w.shipFromName ?? "", address: w.address ?? "" }))}
       config={{
         id: "warehouses",
         title: "Warehouses",
         description: (
           <>
             Which warehouse shipped a carton, from the start of the WMS report&apos;s <span className="font-mono">OrderNumber</span> (for example <span className="font-mono">3-S-ORD1005437</span> starts with{" "}
-            <span className="font-mono">3-</span>). Logistics filters and sorts POs and shipments by it. Changes show at once; nothing needs importing again.
+            <span className="font-mono">3-</span>). Logistics filters and sorts POs and shipments by it. Changes show at once; nothing needs importing again. The
+            ship-from name and address are what the Packing Slip Generator prints for the warehouse.
           </>
         ),
         keyLabel: "OrderNumber prefix",
@@ -53,6 +60,7 @@ export function WarehouseSettings({ warehouses }: { warehouses: { id: string; pr
         noun: "warehouse",
         removedNote: "Its POs and shipments will show as an unknown warehouse.",
         endpoint: "/api/admin/warehouses",
+        shipFrom: true,
       }}
     />
   );
@@ -123,7 +131,7 @@ function MappingSettings({ rows: items, config }: { rows: Row[]; config: Mapping
           </thead>
           <tbody>
             {items.map((w) => (
-              <MappingRow key={`${w.id}-${w.key}-${w.name}`} row={w} config={config} busy={busy} run={run} />
+              <MappingRow key={`${w.id}-${w.key}-${w.name}-${w.shipFromName}-${w.address}`} row={w} config={config} busy={busy} run={run} />
             ))}
             <tr className="border-t border-gray-200 bg-gray-50/50">
               <td className="px-4 py-2">
@@ -157,8 +165,13 @@ function MappingSettings({ rows: items, config }: { rows: Row[]; config: Mapping
 function MappingRow({ row, config, busy, run }: { row: Row; config: MappingConfig; busy: boolean; run: (a: () => Promise<unknown>) => Promise<boolean> }) {
   const [key, setKey] = useState(row.key);
   const [name, setName] = useState(row.name);
-  const changed = key.trim().toUpperCase() !== row.key || name.trim() !== row.name;
+  const [shipFromName, setShipFromName] = useState(row.shipFromName ?? "");
+  const [address, setAddress] = useState(row.address ?? "");
+  const changed =
+    key.trim().toUpperCase() !== row.key || name.trim() !== row.name || (config.shipFrom && (shipFromName.trim() !== (row.shipFromName ?? "") || address.trim() !== (row.address ?? "")));
+  const body = { [config.keyField]: key, name, ...(config.shipFrom ? { shipFromName, address } : {}) };
   return (
+    <>
     <tr className="border-t border-gray-200">
       <td className="px-4 py-2">
         <Input aria-label={`${config.keyLabel} for ${row.name}`} value={key} onChange={(e) => setKey(e.target.value)} className="font-mono" maxLength={40} />
@@ -168,7 +181,7 @@ function MappingRow({ row, config, busy, run }: { row: Row; config: MappingConfi
       </td>
       <td className="px-4 py-2">
         <div className="flex items-center justify-end gap-1">
-          <Button size="sm" variant="outline" disabled={busy || !changed || !key.trim() || !name.trim()} onClick={() => run(() => apiFetch(`${config.endpoint}/${row.id}`, { method: "PATCH", body: { [config.keyField]: key, name } }))}>
+          <Button size="sm" variant="outline" disabled={busy || !changed || !key.trim() || !name.trim()} onClick={() => run(() => apiFetch(`${config.endpoint}/${row.id}`, { method: "PATCH", body }))}>
             Save
           </Button>
           <button
@@ -184,5 +197,18 @@ function MappingRow({ row, config, busy, run }: { row: Row; config: MappingConfi
         </div>
       </td>
     </tr>
+    {config.shipFrom && (
+      <tr>
+        <td className="px-4 pb-3 pt-0 align-top text-xs text-gray-500">Packing slip ship-from</td>
+        <td className="px-4 pb-3 pt-0">
+          <div className="grid gap-2 sm:grid-cols-2">
+            <Input aria-label={`Ship-from name for ${row.name}`} value={shipFromName} onChange={(e) => setShipFromName(e.target.value)} placeholder="e.g. JS PRODUCTS - 875062OH001" maxLength={120} />
+            <Textarea aria-label={`Ship-from address for ${row.name}`} value={address} onChange={(e) => setAddress(e.target.value)} placeholder={"Street\nCity, ST ZIP"} rows={2} maxLength={500} />
+          </div>
+        </td>
+        <td />
+      </tr>
+    )}
+    </>
   );
 }

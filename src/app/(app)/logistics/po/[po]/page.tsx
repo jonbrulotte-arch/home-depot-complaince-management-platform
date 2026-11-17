@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, PackageCheck } from "lucide-react";
 import { requirePagePermission } from "@/lib/auth-guard";
 import { prisma } from "@/lib/prisma";
 import { issuesForPoNumbers, type IssueSummary } from "@/lib/issues-data";
@@ -47,6 +47,15 @@ export default async function LogisticsPoPage({ params }: { params: Promise<{ po
         <PoStatusBadge status={p.status} />
         {p.tms && <span className="text-sm text-gray-500">TMS: {p.tms.status}</span>}
         {p.warehouses.length > 0 && <span className="text-sm text-gray-500">Shipped from {warehouseNames(p.warehouses)}</span>}
+        {user.permissions.has("packingslips.use") && (
+          <Link
+            href={`/packing-slips?po=${encodeURIComponent(p.poNumber)}`}
+            className="ml-auto inline-flex h-9 items-center gap-1.5 rounded-md border border-gray-300 bg-white px-3 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50"
+          >
+            <PackageCheck className="h-4 w-4" />
+            Packing slip
+          </Link>
+        )}
       </div>
       <StatTiles
         stats={[

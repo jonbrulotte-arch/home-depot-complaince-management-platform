@@ -25,6 +25,7 @@ import {
   ScrollText,
   NotebookPen,
   Truck,
+  PackageCheck,
   PieChart,
   UsersRound,
 } from "lucide-react";
@@ -43,6 +44,7 @@ const navItems: NavItem[] = [
   { href: "/po-lookup", label: "PO Lookup", icon: Search, permission: "view.polookup" },
   { href: "/issues", label: "Issue Log", icon: NotebookPen, permission: "issues.view" },
   { href: "/logistics", label: "Logistics", icon: Truck, permission: "logistics.view" },
+  { href: "/packing-slips", label: "Packing Slips", icon: PackageCheck, permission: "packingslips.use" },
   { href: "/insights", label: "Reports & Insights", icon: PieChart, permission: "insights.view" },
   { href: "/feedback", label: "Scorecard Feedback", icon: MessageSquare, permission: "feedback.view" },
   { href: "/summarizer", label: "Summarizer", icon: FileText, permission: "summarizer.use" },
