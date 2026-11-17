@@ -94,6 +94,7 @@ export const ACTION_LABELS: Record<string, string> = {
   "settings.upsTest": "Tested the UPS connection",
   "logistics.import": "Imported a logistics file",
   "logistics.fetchWms": "Pulled the WMS report",
+  "logistics.fetchWmsScheduledFailed": "The scheduled WMS sync failed",
   "logistics.upsRefresh": "Refreshed UPS tracking",
   "logistics.note": "Added a logistics note",
   "logistics.noteDelete": "Deleted a logistics note",

@@ -9,11 +9,14 @@ import { SopSettings } from "./sop-settings";
 import { WmsReportSettings } from "./wms-report-settings";
 import { UpsSettings } from "./ups-settings";
 import { ChannelSettings, WarehouseSettings } from "./warehouse-settings";
+import { formatDateTime } from "@/lib/utils";
+import { getTimeZone } from "@/lib/time-zone-server";
 
 export default async function SettingsPage() {
   await requirePagePermission("admin.settings");
-  const s = await prisma.siteSettings.findUnique({ where: { id: "site" }, select: { brandingEnabled: true, siteName: true, logoContentType: true, updatedAt: true, reportPeriodBasis: true, publicDashboardToken: true, wmsReportUrl: true, upsClientId: true, upsClientSecret: true, upsTestMode: true } });
+  const s = await prisma.siteSettings.findUnique({ where: { id: "site" }, select: { brandingEnabled: true, siteName: true, logoContentType: true, updatedAt: true, reportPeriodBasis: true, publicDashboardToken: true, wmsReportUrl: true, wmsSyncMinutes: true, wmsSyncNextAt: true, wmsSyncLastAt: true, wmsSyncLastOk: true, wmsSyncLastMessage: true, upsClientId: true, upsClientSecret: true, upsTestMode: true } });
   const mail = mailConfig();
+  const tz = await getTimeZone();
   const [sops, roles, warehouses, channels] = await Promise.all([
     prisma.sopDocument.findMany({ orderBy: [{ sortOrder: "asc" }, { title: "asc" }], select: { id: true, title: true, fileName: true, size: true, roleIds: true, updatedAt: true } }),
     prisma.role.findMany({ orderBy: { name: "asc" }, select: { id: true, name: true } }),
@@ -28,7 +31,12 @@ export default async function SettingsPage() {
       </div>
       <ReportPeriodSettings initial={s?.reportPeriodBasis ?? "RECEIVED_MONTH"} />
       <PublicDashboardSettings initialToken={s?.publicDashboardToken ?? null} />
-      <WmsReportSettings initial={s?.wmsReportUrl ?? null} />
+      <WmsReportSettings
+        initial={s?.wmsReportUrl ?? null}
+        initialMinutes={s?.wmsSyncMinutes ?? 0}
+        nextAt={s?.wmsSyncMinutes && s.wmsSyncNextAt ? formatDateTime(s.wmsSyncNextAt, tz) : null}
+        last={s?.wmsSyncLastAt ? { at: formatDateTime(s.wmsSyncLastAt, tz), ok: s.wmsSyncLastOk !== false, message: s.wmsSyncLastMessage ?? "" } : null}
+      />
       <WarehouseSettings warehouses={warehouses} />
       <ChannelSettings channels={channels} />
       <UpsSettings initial={{ clientId: s?.upsClientId ?? null, hasSecret: Boolean(s?.upsClientSecret), testMode: s?.upsTestMode ?? false }} />

@@ -680,6 +680,14 @@ model SiteSettings {
   publicDashboardToken String?     @unique
   /// The WMS "shipped last 60 days" report link that Logistics › Sync WMS lines retrieves; null when not set
   wmsReportUrl         String?
+  /// Scheduled WMS sync: every this many minutes (Admin › Settings); 0 = off
+  wmsSyncMinutes       Int         @default(0)
+  /// When the next scheduled sync is due; claimed atomically so only one server process runs it
+  wmsSyncNextAt        DateTime?
+  /// The last scheduled sync: when it ran, whether it worked, and its result or error
+  wmsSyncLastAt        DateTime?
+  wmsSyncLastOk        Boolean?
+  wmsSyncLastMessage   String?
   /// UPS Tracking API credentials (Admin › Settings); the secret is never sent back to the browser
   upsClientId          String?
   upsClientSecret      String?

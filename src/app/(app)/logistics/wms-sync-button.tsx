@@ -9,7 +9,7 @@ import { apiFetch } from "@/lib/client-api";
 type Result = { rows: number; created: number; updated: number; skipped: { row: number; reason: string }[] };
 
 /** Retrieves the WMS shipped-lines report from its link and syncs it into Logistics. */
-export function WmsSyncButton({ lastSync }: { lastSync: string | null }) {
+export function WmsSyncButton({ lastSync, schedule }: { lastSync: string | null; /** e.g. "every hour", when a sync schedule is set */ schedule: string | null }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
@@ -34,7 +34,13 @@ export function WmsSyncButton({ lastSync }: { lastSync: string | null }) {
         <RefreshCw className={`h-4 w-4 mr-1.5 ${busy ? "animate-spin" : ""}`} />
         {busy ? "Syncing WMS lines…" : "Sync WMS lines"}
       </Button>
-      {msg ? <span className={`max-w-sm text-right text-xs ${msg.ok ? "text-green-700" : "text-red-700"}`}>{msg.text}</span> : lastSync && <span className="text-xs text-gray-500">Last synced {lastSync}</span>}
+      {msg ? <span className={`max-w-sm text-right text-xs ${msg.ok ? "text-green-700" : "text-red-700"}`}>{msg.text}</span> : (lastSync || schedule) && (
+          <span className="text-xs text-gray-500">
+            {lastSync && `Last synced ${lastSync}`}
+            {lastSync && schedule && " · "}
+            {schedule && `Syncs ${schedule}`}
+          </span>
+        )}
     </div>
   );
 }

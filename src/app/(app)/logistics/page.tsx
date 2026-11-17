@@ -3,6 +3,7 @@ import { requirePagePermission } from "@/lib/auth-guard";
 import { prisma } from "@/lib/prisma";
 import { loadLogistics } from "@/lib/logistics/data";
 import { wmsReportUrl } from "@/lib/logistics/import";
+import { syncFrequencyLabel } from "@/lib/logistics/sync-schedule";
 import { LOGISTICS_KIND_LABELS } from "@/lib/logistics/parse";
 import { upsConfigured } from "@/lib/logistics/ups";
 import { getTimeZone } from "@/lib/time-zone-server";
@@ -64,7 +65,7 @@ export default async function LogisticsPage({
   const tab: LogisticsTab = LOGISTICS_TABS.some((t) => t.key === sp.tab)
     ? (sp.tab as LogisticsTab)
     : "overview";
-  const [l, tz, lastSync, wmsUrl] = await Promise.all([
+  const [l, tz, lastSync, wmsUrl, schedule] = await Promise.all([
     loadLogistics(),
     getTimeZone(),
     prisma.logisticsImport.findFirst({
@@ -73,6 +74,7 @@ export default async function LogisticsPage({
       select: { importedAt: true },
     }),
     wmsReportUrl(),
+    prisma.siteSettings.findUnique({ where: { id: "site" }, select: { wmsSyncMinutes: true } }),
   ]);
   // The selection toolbar: export for everyone here; Send Email (to the teams with addresses) needs logistics.manage
   const sel = { canEmail: canManage, teams: canManage ? await emailTeams() : [], sender: user.name };
@@ -104,6 +106,7 @@ export default async function LogisticsPage({
           (wmsUrl ? (
             <WmsSyncButton
               lastSync={lastSync ? formatDateTime(lastSync.importedAt, tz) : null}
+              schedule={schedule?.wmsSyncMinutes ? syncFrequencyLabel(schedule.wmsSyncMinutes).toLowerCase() : null}
             />
           ) : (
             <p className="max-w-xs text-right text-xs text-gray-500">
