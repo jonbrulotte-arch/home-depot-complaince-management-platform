@@ -49,11 +49,20 @@ export async function getIssue(id: string) {
           receivedMonth: true,
           isCompliant: true,
           offsetAmount: true,
+          // What tells a PO's lines apart: THD lists one line per SKU or order line
+          sku: true,
+          vendorSku: true,
+          skuDescription: true,
+          orderedQty: true,
+          receivedQty: true,
+          omsId: true,
+          customerOrder: true,
+          docTraceId: true,
           metric: { select: { name: true, program: { select: { name: true } } } },
           review: { select: { disposition: true, teamInfluence: true, rootCause: true } },
           dispute: { select: { status: true, amountRecovered: true } },
         },
-        orderBy: [{ fiscalMonth: "asc" }, { metric: { sortOrder: "asc" } }],
+        orderBy: [{ fiscalMonth: "asc" }, { metric: { sortOrder: "asc" } }, { vendorSku: "asc" }, { sku: "asc" }, { sourceRow: "asc" }],
       })
     : [];
   return {

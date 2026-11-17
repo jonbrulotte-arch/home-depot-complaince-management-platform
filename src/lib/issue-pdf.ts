@@ -1,7 +1,7 @@
 import { DEFAULT_SITE_NAME } from "@/lib/brand";
 import { DISPUTE_STATUS_LABELS } from "@/lib/disputes";
 import { fiscalLabel } from "@/lib/fiscal";
-import { ISSUE_SEVERITIES, ISSUE_STATUSES, issueLabel } from "@/lib/issues";
+import { ISSUE_SEVERITIES, ISSUE_STATUSES, issueLabel, lineItem } from "@/lib/issues";
 import type { getIssue } from "@/lib/issues-data";
 import { C, MARGIN, createPdf, money } from "@/lib/summary-pdf-layout";
 import { formatDateTime, formatUtcDate } from "@/lib/utils";
@@ -104,10 +104,11 @@ export function issuePdf(found: Found, opts: { timeZone: string; siteName?: stri
   } else {
     table(
       [
-        { header: "PO #", width: 2.3 },
+        { header: "PO #", width: 2.1 },
         { header: "Month", width: 1.6 },
-        { header: "Program · Metric", width: 3.2 },
-        { header: "Result", width: 1.6 },
+        { header: "Program · Metric", width: 2.9 },
+        { header: "Item", width: 2.4 },
+        { header: "Result", width: 2 },
         { header: "Offset", width: 1.4, align: "right" },
         { header: "Decision", width: 1.8 },
         { header: "Team", width: 1.9 },
@@ -118,11 +119,13 @@ export function issuePdf(found: Found, opts: { timeZone: string; siteName?: stri
         const est = p.estimatedFine !== null ? `\nEst. fine ${money(p.estimatedFine).replace(/\.00$/, "")}` : "";
         const po = { text: `${p.poNumber}${created ? `\nCreated ${formatUtcDate(created)}` : ""}${est}`, color: C.text };
         // The note goes in the wide Program · Metric column (the table has no merged cells)
-        if (!p.record || !p.lines.length) return [[po, "", { text: p.record ? "In the PO records, with no compliance lines." : "Not in the compliance data yet.", color: C.muted }, "", "", "", "", ""]];
+        if (!p.record || !p.lines.length) return [[po, "", { text: p.record ? "In the PO records, with no compliance lines." : "Not in the compliance data yet.", color: C.muted }, "", "", "", "", "", ""]];
         return p.lines.map((l, i) => [
           i === 0 ? po : "",
           `${fiscalLabel(l.receivedMonth ?? l.fiscalMonth)}\nFM ${l.fiscalMonth}`,
           `${l.metric.program.name}\n${l.metric.name}`,
+          // Just the SKU and quantities: the portrait page has no room for descriptions
+          pdfText([lineItem(l).primary, lineItem(l).qty].filter(Boolean).join("\n")),
           l.isCompliant ? { text: "Compliant", color: C.green } : { text: "Violation", color: C.red, bold: true },
           Number(l.offsetAmount) ? money(Number(l.offsetAmount)) : "—",
           l.isCompliant ? "—" : DISPOSITIONS[l.review?.disposition ?? "PENDING"].label,

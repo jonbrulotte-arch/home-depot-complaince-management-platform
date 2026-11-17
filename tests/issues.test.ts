@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { cleanPos, issueData, issueInput, issueLabel, issueWhere, normalizePoNumber, parsePoList, poNumberVariants, resolveIssuePo } from "@/lib/issues";
+import { cleanPos, issueData, issueInput, issueLabel, issueWhere, lineItem, normalizePoNumber, parsePoList, poNumberVariants, resolveIssuePo } from "@/lib/issues";
 
 const d = (s: string) => new Date(`${s}T00:00:00Z`);
 const base = {
@@ -101,5 +101,19 @@ describe("estimates per PO", () => {
     expect(issueEstimate(5950, [{ estimatedFine: null }, {}])).toBe(5950);
     expect(issueEstimate(null, [])).toBeNull();
     expect(issueEstimate(null, [{ estimatedFine: 0 }])).toBe(0);
+  });
+});
+
+describe("lineItem", () => {
+  it("tells a PO's lines apart by SKU, else an order reference", () => {
+    expect(lineItem({ vendorSku: "56829", sku: "1003043946", skuDescription: "DEWALT 6FT STORAGE RACK", orderedQty: 14, receivedQty: 0 })).toEqual({
+      primary: "SKU 56829",
+      secondary: "THD SKU 1003043946 · DEWALT 6FT STORAGE RACK · ordered 14, received 0",
+      qty: "ordered 14, received 0",
+    });
+    expect(lineItem({ sku: "1003043946" })).toEqual({ primary: "THD SKU 1003043946", secondary: null, qty: null });
+    expect(lineItem({ omsId: "301771362", customerOrder: "WM49638419" })).toEqual({ primary: "OMS 301771362", secondary: null, qty: null });
+    expect(lineItem({ vendorSku: "41562", omsId: "301771363" }).secondary).toBe("OMS 301771363");
+    expect(lineItem({})).toEqual({ primary: "—", secondary: null, qty: null });
   });
 });

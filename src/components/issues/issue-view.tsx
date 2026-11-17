@@ -1,6 +1,6 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
-import { ISSUE_SEVERITIES } from "@/lib/issues";
+import { ISSUE_SEVERITIES, lineItem } from "@/lib/issues";
 import type { getIssue } from "@/lib/issues-data";
 import { fiscalLabel } from "@/lib/fiscal";
 import { teamNames } from "@/lib/teams";
@@ -122,7 +122,7 @@ export async function IssueBody({
             <table className="min-w-full">
               <thead className="bg-gray-50">
                 <tr>
-                  {["PO #", "Month", "Program · Metric", "Result", "Offset", "Decision", "Team", "Dispute"].map((h) => (
+                  {["PO #", "Month", "Program · Metric", "Item", "Result", "Offset", "Decision", "Team", "Dispute"].map((h) => (
                     <th key={h} className={th}>
                       {h}
                     </th>
@@ -148,7 +148,7 @@ export async function IssueBody({
                     return [
                       <tr key={p.id} className="border-t border-gray-200">
                         {poCell(1)}
-                        <td className={cn(td, "text-gray-400")} colSpan={7}>
+                        <td className={cn(td, "text-gray-400")} colSpan={8}>
                           {p.record ? "In the PO records, with no compliance lines." : "Not in the compliance data yet."}
                         </td>
                       </tr>,
@@ -164,6 +164,10 @@ export async function IssueBody({
                       <td className={cn(td, "text-gray-900")}>
                         {l.metric.program.name}
                         <div className="text-xs text-gray-500">{l.metric.name}</div>
+                      </td>
+                      <td className={cn(td, "text-gray-900")}>
+                        {lineItem(l).primary}
+                        {lineItem(l).secondary && <div className="max-w-56 text-xs text-gray-500">{lineItem(l).secondary}</div>}
                       </td>
                       <td className={td}>
                         <ComplianceBadge compliant={l.isCompliant} />

@@ -256,3 +256,30 @@ export function issueWhere(f: IssueFilters): Prisma.IssueWhereInput {
   if (isDay(f.to)) and.push({ issueDate: { lte: asDate(f.to) } });
   return and.length ? { AND: and } : {};
 }
+
+/**
+ * What a compliance line is for, so a PO's several lines in one metric can be told apart (THD
+ * lists one line per SKU or order line): the vendor SKU, else THD's SKU, else an order reference.
+ */
+export function lineItem(l: {
+  sku?: string | null;
+  vendorSku?: string | null;
+  skuDescription?: string | null;
+  orderedQty?: unknown;
+  receivedQty?: unknown;
+  omsId?: string | null;
+  customerOrder?: string | null;
+  docTraceId?: string | null;
+}): { primary: string; secondary: string | null; qty: string | null } {
+  const qty = (v: unknown) => (v === null || v === undefined ? null : Number(v));
+  const ordered = qty(l.orderedQty);
+  const received = qty(l.receivedQty);
+  const parts = [
+    l.vendorSku && l.sku ? `THD SKU ${l.sku}` : null,
+    l.skuDescription?.trim() || null,
+    ordered !== null ? `ordered ${ordered}${received !== null ? `, received ${received}` : ""}` : null,
+    l.vendorSku || l.sku ? (l.omsId ? `OMS ${l.omsId}` : l.customerOrder ? `order ${l.customerOrder}` : null) : null,
+  ].filter(Boolean);
+  const primary = l.vendorSku ? `SKU ${l.vendorSku}` : l.sku ? `THD SKU ${l.sku}` : l.omsId ? `OMS ${l.omsId}` : l.customerOrder ? `Order ${l.customerOrder}` : l.docTraceId ? `Doc ${l.docTraceId}` : "—";
+  return { primary, secondary: parts.length ? parts.join(" · ") : null, qty: ordered !== null ? `ordered ${ordered}${received !== null ? `, received ${received}` : ""}` : null };
+}

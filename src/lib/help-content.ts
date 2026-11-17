@@ -334,7 +334,7 @@ export const HELP_TOPICS: HelpTopic[] = [
       },
       { h: "Issues and compliance data" },
       {
-        p: "Each PO on an issue is matched to its PO record when THD's exports for it are imported: by the PO create date when you gave one, otherwise the use of that PO number created on or before the issue date. The issue page then shows that PO's compliance lines (result, offset, decision, team and dispute). The other way round, the PO record shows its issues, and the violation review shows them in **Research › Issues** beside the line, so analysts can use them when deciding and disputing.",
+        p: "Each PO on an issue is matched to its PO record when THD's exports for it are imported: by the PO create date when you gave one, otherwise the use of that PO number created on or before the issue date. The issue page then shows that PO's compliance lines (result, offset, decision, team and dispute). THD lists one line per SKU (or order line), so a PO can have several lines in the same month and metric; the **Item** column shows each line's SKU, THD SKU, description and quantities. The other way round, the PO record shows its issues, and the violation review shows them in **Research › Issues** beside the line, so analysts can use them when deciding and disputing.",
       },
       { h: "PDF and sharing" },
       {
