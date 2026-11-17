@@ -415,7 +415,7 @@ export const HELP_TOPICS: HelpTopic[] = [
           ["Pickup date passed", "The pickup date has passed and TMS still shows Accepted, Tendered or Available."],
           ["Delivery overdue", "The delivery date has passed and TMS doesn't show it delivered."],
           ["Shipped after pickup date", "The WMS shipped it after the TMS pickup date."],
-          ["On several shipments", "The PO is on more than one TMS shipment."],
+          ["On several shipments (info)", "The PO is on more than one TMS shipment (often a split shipment); for information."],
           ["No carrier", "The TMS shipment has no carrier (SCAC) assigned."],
           ["UPS exception / UPS past expected date", "From UPS tracking: an exception, or not delivered by the expected date."],
           ["Crossdock (IFC) (info)", "The shipment goes to a THD crossdock (its Dest. Facility starts with **XD**), where THD consolidates the POs with other shipments. TMS ID problems are flagged there like anywhere else."],

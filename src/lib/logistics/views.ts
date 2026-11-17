@@ -82,7 +82,7 @@ export const FLAGS = {
   PICKUP_PASSED: { severity: "high", label: "Pickup date passed" },
   UPS_EXCEPTION: { severity: "high", label: "UPS exception" },
   TMS_ID_NOT_FOUND: { severity: "medium", label: "TMS ID not in TMS file" },
-  MULTIPLE_SHIPMENTS: { severity: "medium", label: "On several shipments" },
+  MULTIPLE_SHIPMENTS: { severity: "info", label: "On several shipments" },
   SHIPPED_AFTER_PICKUP: { severity: "medium", label: "Shipped after pickup date" },
   NO_CARRIER: { severity: "medium", label: "No carrier" },
   UPS_LATE: { severity: "medium", label: "UPS past expected date" },
