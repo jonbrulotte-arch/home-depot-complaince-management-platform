@@ -115,6 +115,7 @@ export const LOGISTICS_TABS = [
   { key: "pos", label: "POs" },
   { key: "shipments", label: "Shipments" },
   { key: "parcels", label: "UPS parcels" },
+  { key: "emails", label: "Emails" },
   { key: "imports", label: "Imports" },
   { key: "carriers", label: "Carriers" },
 ] as const;

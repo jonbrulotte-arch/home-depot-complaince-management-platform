@@ -4,6 +4,7 @@ import { issuesForPoRecords } from "@/lib/issues-data";
 import { loadLogistics, scacLink } from "@/lib/logistics/data";
 import type { Flag, PoStatus, PoView } from "@/lib/logistics/views";
 import { teamNames } from "@/lib/teams";
+import { recipientsSummary } from "@/lib/logistics/email-summary";
 
 // The research a violation review shows beside each line: the PO's logistics (WMS, TMS, UPS and
 // notes), its TMS shipments and its Issue Log issues. Built on the server once per page and passed
@@ -51,6 +52,8 @@ export interface ReviewLogistics {
   cartons: { label: string; order: string | null; tracking: string | null; product: string | null; quantity: number | null; shippedAt: string; shipTo: string }[];
   parcels: { number: string; status: string | null; delivered: boolean; deliveredAt: string | null; expectedAt: string | null; lastActivity: string | null; lastLocation: string | null; checkedAt: string | null }[];
   notes: { body: string; author: string; at: string; shipment: string | null }[];
+  /** Logistics emails about the PO or its shipments (the email log), newest first */
+  emails: { id: string; at: string; sender: string; to: string; subject: string; requests: string[]; sent: boolean }[];
 }
 
 /** A line's PO as the review sees it in Logistics: found, not in the data, or only a later use of the number */
@@ -80,6 +83,12 @@ export async function reviewLogistics(items: { key: string; poNumber: string; po
 
   const numbers = [...new Set([...found.values()].map((p) => p.poNumber))];
   const shipmentNumbers = [...new Set([...found.values()].flatMap((p) => p.shipments.map((s) => s.shipmentNumber)))];
+  const emails = await prisma.logisticsEmail.findMany({
+    where: { OR: [{ poNumbers: { hasSome: numbers } }, ...(shipmentNumbers.length ? [{ shipmentNumbers: { hasSome: shipmentNumbers } }] : [])] },
+    orderBy: { createdAt: "desc" },
+    take: 200,
+    select: { id: true, createdAt: true, senderName: true, teamName: true, to: true, cc: true, subject: true, requests: true, sent: true, poNumbers: true, shipmentNumbers: true },
+  });
   const notes = await prisma.logisticsNote.findMany({
     where: { OR: [{ poNumber: { in: numbers } }, ...(shipmentNumbers.length ? [{ shipmentNumber: { in: shipmentNumbers } }] : [])] },
     orderBy: { createdAt: "desc" },
@@ -150,6 +159,10 @@ export async function reviewLogistics(items: { key: string; poNumber: string; po
           .filter((n) => n.poNumber === p.poNumber || (n.shipmentNumber && shipments.some((s) => s.number === n.shipmentNumber)))
           .slice(0, 10)
           .map((n) => ({ body: n.body, author: n.author?.name ?? "Former user", at: n.createdAt.toISOString(), shipment: n.shipmentNumber })),
+        emails: emails
+          .filter((e) => e.poNumbers.includes(p.poNumber) || e.shipmentNumbers.some((n) => shipments.some((s) => s.number === n)))
+          .slice(0, 10)
+          .map((e) => ({ id: e.id, at: e.createdAt.toISOString(), sender: e.senderName, to: recipientsSummary(e), subject: e.subject, requests: e.requests, sent: e.sent })),
       },
     };
   }

@@ -147,7 +147,7 @@ export const HELP_TOPICS: HelpTopic[] = [
       },
       {
         terms: [
-          ["Logistics", "What the WMS and TMS show: status, ship-from, destination, when the WMS shipped it, cartons and units, the TMS ID on the cartons, PROs, every flag explained, UPS tracking, the WMS shipped lines (open the list) and the Logistics notes on the PO and its shipments. Needs Logistics access."],
+          ["Logistics", "What the WMS and TMS show: status, ship-from, destination, when the WMS shipped it, cartons and units, the TMS ID on the cartons, PROs, every flag explained, UPS tracking, the WMS shipped lines (open the list), the emails sent from Logistics about it and the Logistics notes on the PO and its shipments. Needs Logistics access."],
           ["Shipments", "The TMS shipments the PO is on: status, carrier (click the SCAC for its tracking page), pickup and delivery, route, the POs on the truck (this one in bold) and the shipment's flags."],
           ["Issues", "The Issue Log issues for this PO: status, category, severity, team, estimated maximum fine, HD Support tickets, what happened and the resolution. Needs Issue Log access."],
           ["Other violations", "The PO's violations in other months, with their offsets and decisions."],
@@ -438,6 +438,14 @@ export const HELP_TOPICS: HelpTopic[] = [
           "**Export report (PDF)** downloads a report of them: a summary table, then each one with its shipments, tracking and flags explained. **Export report (Excel)** downloads the same POs (for shipments, the POs on them) with their shipments and WMS lines.",
           "**Send Email** (needs Logistics manage) opens an email about them. Pick the **Team** to send it to (the teams an administrator has given addresses under Admin › Teams; the one you picked last is chosen for you), and add other addresses in **To** and **Cc**, or pick **No team** and type the addresses for a one-off email. Tick what needs doing (the types matching the flags on what you selected are ticked for you): correct the TMS shipment ID, send or resend the ASN, correct the ship-to address, confirm the destination in Vendor PlanEx, cancel or close the PO, check the shipment status in TMS, or other. The subject and message are drafted from your choices and list every PO; edit them as you like (**Start the message again from the issue types** redrafts them). The PDF report is attached.",
           "**Send email** sends it from the platform's mailbox to the team's addresses and any you typed (listed under the attachment), with replies going to you and a copy kept in Sent Items. A note is added to each PO or shipment saying who it was sent to.",
+        ],
+      },
+      { h: "Email log" },
+      {
+        list: [
+          "The **Emails** tab lists every email sent with **Send Email**, whoever sent it, newest first: when, from whom, to whom (the team or the addresses), the subject and requests, the POs or shipments it was about, and whether it was **Sent** or **Not sent** (an email that failed is kept, with the reason). Search by PO, shipment, subject, recipient, team or sender, and filter by status.",
+          "Open an email to read it in full: sender (replies went to them), team, To, Cc, subject, requests, the message, and the report PDF exactly as it was attached (download it). **About** links to the POs or shipments selected and the shipments or POs they're tied to.",
+          "Each PO's and shipment's page has an **Emails** card listing the emails about it (an email about a PO also shows on its shipments' pages, and the other way round), and the violation review's **Research › Logistics** lists them too.",
         ],
       },
       { h: "Notes, issues and scorecards" },

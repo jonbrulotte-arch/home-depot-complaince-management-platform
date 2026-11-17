@@ -325,3 +325,22 @@ describe("POs canceled through the Issue Log", () => {
     expect(cancellationApplies({ ...c, poCreateDate: "2026-06-01" }, "2026-06-01")).toBe(true);
   });
 });
+
+describe("Logistics email log", () => {
+  it("ties an email to the selection and what it's tied to", async () => {
+    const { emailSubjects, recipientsSummary, selectionSummary } = await import("@/lib/logistics/email-summary");
+    const { views } = await sample();
+    const po = views.pos.find((p) => p.poNumber === "1191515251")!;
+    const byPo = emailSubjects("po", [po], []);
+    expect(byPo.selected).toEqual(["1191515251"]);
+    expect(byPo.poNumbers).toEqual(["1191515251"]);
+    expect(byPo.shipmentNumbers).toEqual(po.shipments.map((s) => s.shipmentNumber));
+    const ship = views.shipments.find((s) => s.shipmentNumber === "233586508")!;
+    const byShipment = emailSubjects("shipment", [], [ship]);
+    expect(byShipment).toEqual({ selected: ["233586508"], poNumbers: ship.ourPos, shipmentNumbers: ["233586508"] });
+    expect(recipientsSummary({ teamName: "Ohio Shipping", to: ["a@x.com", "b@x.com"], cc: ["c@x.com"] })).toBe("Ohio Shipping +1");
+    expect(recipientsSummary({ teamName: null, to: ["a@x.com", "b@x.com", "d@x.com"], cc: [] })).toBe("a@x.com, b@x.com +1");
+    expect(selectionSummary({ kind: "po", selected: ["1", "2", "3", "4"] })).toBe("4 POs: 1, 2, 3…");
+    expect(selectionSummary({ kind: "shipment", selected: ["9"] })).toBe("1 shipment: 9");
+  });
+});

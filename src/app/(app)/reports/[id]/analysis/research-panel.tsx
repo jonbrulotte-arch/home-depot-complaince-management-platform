@@ -265,6 +265,28 @@ function LogisticsTab({ result }: { result: ReviewLogisticsResult | undefined })
       )}
 
       <div>
+        <p className="mb-2 text-xs font-medium uppercase tracking-wider text-gray-500">Emails sent</p>
+        {p.emails.length ? (
+          <ul className="space-y-2">
+            {p.emails.map((e) => (
+              <li key={e.id} className="flex items-start justify-between gap-2 rounded-md border border-gray-200 px-3 py-2 text-sm">
+                <span className="min-w-0">
+                  <Out href={`/logistics/email/${e.id}`}>{e.subject}</Out>
+                  <span className="block text-xs text-gray-500">
+                    {formatDateTime(e.at, tz)} · {e.sender} to {e.to}
+                    {e.requests.length ? ` · ${e.requests.join("; ")}` : ""}
+                  </span>
+                </span>
+                <Badge variant={e.sent ? "success" : "destructive"}>{e.sent ? "Sent" : "Not sent"}</Badge>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="text-sm text-gray-500">No emails sent from Logistics about this PO or its shipments.</p>
+        )}
+      </div>
+
+      <div>
         <p className="mb-2 text-xs font-medium uppercase tracking-wider text-gray-500">Logistics notes</p>
         {p.notes.length ? (
           <ul className="space-y-2">

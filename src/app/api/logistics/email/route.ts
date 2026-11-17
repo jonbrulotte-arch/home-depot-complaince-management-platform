@@ -11,6 +11,7 @@ import { EDI_ISSUE_TYPES, MAX_SELECTION, textToHtml } from "@/lib/logistics/edi"
 import { mergeAddresses, parseAddresses } from "@/lib/email-address";
 import { logisticsReportFileName, logisticsReportPdf } from "@/lib/logistics/report-pdf";
 import { getTimeZone } from "@/lib/time-zone-server";
+import { emailSubjects } from "@/lib/logistics/email-summary";
 
 const schema = z.object({
   kind: z.enum(["po", "shipment"]),
@@ -51,6 +52,30 @@ export async function POST(req: Request) {
   const { siteName } = await getBranding();
   const pdf = await logisticsReportPdf({ kind, pos, shipments, by: guard.user.name, timeZone: await getTimeZone(), siteName });
 
+  // Every attempt goes in the email log, sent or not, with what was attached
+  const log = (sent: boolean, error: string | null) =>
+    prisma.logisticsEmail.create({
+      data: {
+        senderId: guard.user.id,
+        senderName: guard.user.name,
+        senderEmail: guard.user.email,
+        kind,
+        ...emailSubjects(kind, pos, shipments),
+        teamKey: team?.key ?? null,
+        teamName: team?.name ?? null,
+        to,
+        cc,
+        subject,
+        body,
+        requests: typeLabels,
+        fileName,
+        attachment: new Uint8Array(pdf),
+        sent,
+        error,
+      },
+      select: { id: true },
+    });
+
   try {
     await sendMail({
       to,
@@ -62,15 +87,17 @@ export async function POST(req: Request) {
       saveToSentItems: true,
     });
   } catch (e) {
-    await audit(guard.user.id, "logistics.email", "Logistics", null, { kind, count, team: team?.name ?? null, to, cc, sent: false, error: e instanceof Error ? e.message : String(e) });
+    const failed = await log(false, e instanceof Error ? e.message : String(e));
+    await audit(guard.user.id, "logistics.email", "LogisticsEmail", failed.id, { kind, count, team: team?.name ?? null, to, cc, sent: false, error: e instanceof Error ? e.message : String(e) });
     return NextResponse.json({ error: e instanceof MailError ? e.message : "The email couldn't be sent" }, { status: 502 });
   }
 
+  const email = await log(true, null);
   // A note on each PO or shipment, so the request shows where people look
   const note = `Emailed ${team ? `${team.name} (${to.join(", ")})` : to.join(", ")}${typeLabels.length ? `: ${typeLabels.join("; ")}` : ""}. Subject: ${subject}`;
   await prisma.logisticsNote.createMany({
     data: kind === "po" ? pos.map((p) => ({ poNumber: p.poNumber, body: note, authorId: guard.user.id })) : shipments.map((s) => ({ shipmentNumber: s.shipmentNumber, body: note, authorId: guard.user.id })),
   });
-  await audit(guard.user.id, "logistics.email", "Logistics", null, { kind, count, team: team?.name ?? null, ids: (kind === "po" ? pos.map((p) => p.poNumber) : shipments.map((s) => s.shipmentNumber)).slice(0, 50), to, cc, types: typeLabels, subject, sent: true });
-  return NextResponse.json({ sent: count, to });
+  await audit(guard.user.id, "logistics.email", "LogisticsEmail", email.id, { kind, count, team: team?.name ?? null, ids: (kind === "po" ? pos.map((p) => p.poNumber) : shipments.map((s) => s.shipmentNumber)).slice(0, 50), to, cc, types: typeLabels, subject, sent: true });
+  return NextResponse.json({ sent: count, to, id: email.id });
 }

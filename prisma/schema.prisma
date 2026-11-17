@@ -58,6 +58,7 @@ model User {
   sopDocuments        SopDocument[]
   logisticsImports    LogisticsImport[]
   logisticsNotes      LogisticsNote[]
+  logisticsEmails     LogisticsEmail[]
 }
 
 model AuditLog {
@@ -1037,4 +1038,41 @@ model CarrierLink {
   notes       String?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+}
+
+/// Every Logistics › Send Email, sent or failed: who sent it, to whom, what about, and the PDF attached.
+/// Visible to everyone with logistics.view, whoever sent it.
+model LogisticsEmail {
+  id              String   @id @default(cuid())
+  createdAt       DateTime @default(now())
+  senderId        String?
+  sender          User?    @relation(fields: [senderId], references: [id], onDelete: SetNull)
+  /// The sender as they were when it was sent (replies went to this address)
+  senderName      String
+  senderEmail     String
+  /// What was selected: "po" or "shipment", and their numbers
+  kind            String
+  selected        String[]
+  /// Every PO and shipment the email concerns (the selection and what it is tied to), for lookups
+  poNumbers       String[]
+  shipmentNumbers String[]
+  teamKey         String?
+  /// The team's name when it was sent
+  teamName        String?
+  to              String[]
+  cc              String[]
+  subject         String
+  /// The message as written (plain text; sent as HTML)
+  body            String
+  /// The requests ticked (labels)
+  requests        String[]
+  fileName        String
+  attachment      Bytes
+  sent            Boolean
+  /// Why it wasn't sent
+  error           String?
+
+  @@index([createdAt])
+  @@index([poNumbers], type: Gin)
+  @@index([shipmentNumbers], type: Gin)
 }

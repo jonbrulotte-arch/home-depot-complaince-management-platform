@@ -92,6 +92,7 @@ export const ACTION_LABELS: Record<string, string> = {
   "logistics.export": "Exported logistics to Excel",
   "logistics.report": "Exported a Logistics report of selected POs or shipments",
   "logistics.email": "Emailed a team about POs or shipments",
+  "logistics.emailAttachment": "Downloaded the report attached to a Logistics email",
   "logistics.ediEmail": "Emailed the EDI team about POs or shipments",
   "backup.create": "Took a backup",
   "backup.download": "Downloaded a backup",

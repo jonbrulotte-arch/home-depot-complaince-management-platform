@@ -21,6 +21,10 @@ import {
   type LogisticsTab,
 } from "@/components/logistics/parts";
 import { CarrierEditor } from "./carrier-editor";
+import { EmailFilters } from "./email-filters";
+import { Section } from "@/app/(app)/insights/ui";
+import { EmailTable } from "@/components/logistics/emails";
+import { emailLog } from "@/lib/logistics/emails";
 import { ImportPanel } from "./import-panel";
 import { WmsSyncButton } from "./wms-sync-button";
 import {
@@ -110,7 +114,9 @@ export default async function LogisticsPage({
       </div>
       <LogisticsTabs tab={tab} />
 
-      {l.empty && tab !== "imports" && tab !== "carriers" ? (
+      {tab === "emails" ? (
+        <EmailsTab q={sp.q} status={sp.status} tz={tz} />
+      ) : l.empty && tab !== "imports" && tab !== "carriers" ? (
         <Card>
           <CardContent className="py-10 text-center text-sm text-gray-500">
             No logistics data yet.{" "}
@@ -148,6 +154,21 @@ export default async function LogisticsPage({
       ) : (
         <CarriersTab l={l} canManage={canManage} add={sp.add?.toUpperCase()} />
       )}
+    </div>
+  );
+}
+
+async function EmailsTab({ q, status, tz }: { q?: string; status?: string; tz: string }) {
+  const { emails, total } = await emailLog({ q, status });
+  return (
+    <div className="space-y-4">
+      <EmailFilters q={q} status={status} />
+      <Section
+        title="Email log"
+        description={`Every email sent with Send Email on the POs and Shipments tabs, whoever sent it, newest first${total > emails.length ? ` (the latest ${emails.length} of ${total})` : ""}. Open one to read it in full and download the report that was attached. Emails that couldn't be sent are listed too.`}
+      >
+        <EmailTable emails={emails} tz={tz} empty={q || status ? "No emails match." : "No emails sent from Logistics yet."} />
+      </Section>
     </div>
   );
 }

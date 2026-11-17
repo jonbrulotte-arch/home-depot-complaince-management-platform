@@ -15,6 +15,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { FlagList, PoStatusBadge, ScacLink, ShipmentLink, TmsStatusBadge, UpsLink } from "@/components/logistics/parts";
 import { LogisticsNotes } from "@/components/logistics/notes";
 import { ComplianceCard, IssuesCard } from "@/components/logistics/related";
+import { EmailsCard } from "@/components/logistics/emails";
 import { Section, Table, n } from "@/app/(app)/insights/ui";
 import { UpsRefreshButton } from "../../ups-refresh-button";
 import { Dates, Route } from "../../sections";
@@ -124,6 +125,7 @@ export default async function LogisticsPoPage({ params }: { params: Promise<{ po
         </div>
         <div className="space-y-6">
           {canIssues && <IssuesCard issues={issues.get(po) ?? []} newIssuePo={po} canManage={user.permissions.has("issues.manage")} />}
+          <EmailsCard po={po} tz={tz} />
           <ComplianceCard rows={compliance.get(po) ?? []} canOpen={user.permissions.has("view.polookup")} />
           <Card>
             <CardHeader className="pb-3">

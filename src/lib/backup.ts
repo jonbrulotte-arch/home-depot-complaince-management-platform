@@ -57,6 +57,7 @@ export const TABLE_ORDER = [
   "TmsPurchaseOrder",
   "ParcelTracking",
   "LogisticsNote",
+  "LogisticsEmail",
   "CarrierLink",
   "SiteSettings",
 ] as const;

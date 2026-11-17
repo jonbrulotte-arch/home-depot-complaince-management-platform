@@ -16,6 +16,8 @@ import { FlagBadges, FlagList, PoLink, PoStatusBadge, TmsStatusBadge } from "@/c
 import { LogisticsNotes } from "@/components/logistics/notes";
 import { ComplianceCard, IssuesCard } from "@/components/logistics/related";
 import { Section, Table, n } from "@/app/(app)/insights/ui";
+import { EmailsCard } from "@/components/logistics/emails";
+import { getTimeZone } from "@/lib/time-zone-server";
 
 export default async function LogisticsShipmentPage({ params }: { params: Promise<{ number: string }> }) {
   const user = await requirePagePermission("logistics.view");
@@ -139,6 +141,7 @@ export default async function LogisticsShipmentPage({ params }: { params: Promis
           </Section>
         </div>
         <div className="space-y-6">
+          <EmailsCard shipment={number} tz={await getTimeZone()} />
           {canIssues && (
             <IssuesCard
               issues={[
