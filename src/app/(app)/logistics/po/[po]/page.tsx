@@ -8,11 +8,11 @@ import { loadLogistics, scacLink } from "@/lib/logistics/data";
 import { complianceForPos } from "@/lib/logistics/links";
 import { upsConfigured } from "@/lib/logistics/ups";
 import { cartonRefs } from "@/lib/logistics/refs";
-import { formatDateTime, formatUtcDate, formatUtcDateTime } from "@/lib/utils";
+import { formatDate, formatDateTime, formatUtcDate, formatUtcDateTime } from "@/lib/utils";
 import { getTimeZone } from "@/lib/time-zone-server";
 import { StatTiles } from "@/components/analytics/stat-tiles";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { FlagList, PoStatusBadge, ScacLink, ShipmentLink, TmsStatusBadge, UpsLink } from "@/components/logistics/parts";
+import { AsnBadge, FlagList, PoStatusBadge, ScacLink, ShipmentLink, TmsStatusBadge, UpsLink } from "@/components/logistics/parts";
 import { LogisticsNotes } from "@/components/logistics/notes";
 import { ComplianceCard, IssuesCard } from "@/components/logistics/related";
 import { EmailsCard } from "@/components/logistics/emails";
@@ -46,6 +46,7 @@ export default async function LogisticsPoPage({ params }: { params: Promise<{ po
       <div className="flex flex-wrap items-center gap-3">
         <h1 className="text-2xl font-bold text-gray-900">PO {p.poNumber}</h1>
         <PoStatusBadge status={p.status} />
+        {p.asn?.status === "SHIPPED" && <AsnBadge inline date={p.asn.confirmedAt ? formatDate(p.asn.confirmedAt, tz) : null} />}
         {p.tms && <span className="text-sm text-gray-500">TMS: {p.tms.status}</span>}
         {p.warehouses.length > 0 && <span className="text-sm text-gray-500">Shipped from {warehouseNames(p.warehouses)}</span>}
         {user.permissions.has("packingslips.use") && (

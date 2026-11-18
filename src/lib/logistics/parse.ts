@@ -2,13 +2,27 @@
 // links answer with one) and the header detection that tells the three sources apart. Pure and
 // unit-tested; xlsx files are read with ExcelJS in import.ts and come here as string rows.
 
-export type LogisticsKind = "WMS" | "TMS_SHIPMENTS" | "TMS_POS";
+export type LogisticsKind = "WMS" | "TMS_SHIPMENTS" | "TMS_POS" | "ASN";
 
 export const LOGISTICS_KIND_LABELS: Record<LogisticsKind, string> = {
   WMS: "WMS shipped lines",
   TMS_SHIPMENTS: "TMS shipments",
   TMS_POS: "TMS purchase orders",
+  ASN: "ASN/Shipped confirmations",
 };
+
+/** The ASN/Shipped Confirmation file's two columns, as the export writes them */
+export const ASN_HEADERS = { po: "PO Number", status: "ASN/Ship Status" } as const;
+export const ASN_STATUS_LABELS = { UNSHIPPED: "Unshipped", SHIPPED: "Shipped" } as const;
+export type AsnStatusValue = keyof typeof ASN_STATUS_LABELS;
+
+/** "Shipped" → SHIPPED; "Unshipped" or blank → UNSHIPPED (the default); anything else → null */
+export function parseAsnStatus(v: string): AsnStatusValue | null {
+  const k = v.trim().toLowerCase().replace(/[^a-z]/g, "");
+  if (!k || k === "unshipped" || k === "notshipped") return "UNSHIPPED";
+  if (k === "shipped" || k === "asnreceived") return "SHIPPED";
+  return null;
+}
 
 export const MAX_LOGISTICS_ROWS = 200_000;
 
@@ -79,10 +93,11 @@ const SIGNATURES: [LogisticsKind, string[]][] = [
   ["TMS_POS", ["purchaseorder", "destinationfacility"]],
 ];
 
-/** Which file this is, from its header row (the first row with at least three filled cells). */
+/** Which file this is, from its header row (the first row with at least three filled cells, or the ASN file's two). */
 export function detectKind(rows: string[][]): { kind: LogisticsKind; headerIndex: number } | null {
   for (let i = 0; i < Math.min(rows.length, 10); i++) {
     const keys = rows[i].map(headerKey);
+    if (keys.includes("ponumber") && keys.some((k) => k === "asnshipstatus" || k === "asnstatus")) return { kind: "ASN", headerIndex: i };
     if (keys.filter(Boolean).length < 3) continue;
     const hit = SIGNATURES.find(([, need]) => need.every((k) => keys.includes(k)));
     return hit ? { kind: hit[0], headerIndex: i } : null;
@@ -294,6 +309,23 @@ export function shipmentRows(rows: string[][], headerIndex: number): Parsed<Ship
       tmsFlags: tmsFlags(r),
       raw: r,
     };
+  });
+}
+
+export interface AsnRow {
+  poNumber: string;
+  status: AsnStatusValue;
+}
+
+/** The ASN/Shipped Confirmation file: a status per PO (blank = Unshipped) */
+export function asnRows(rows: string[][], headerIndex: number): Parsed<AsnRow> {
+  return collect(rowsAsRecords(rows, headerIndex), headerIndex, (r) => {
+    const poNumber = pick(r, "ponumber").replace(/\s+/g, "");
+    if (!poNumber) return "No PO number";
+    const raw = r.asnshipstatus ?? r.asnstatus ?? "";
+    const status = parseAsnStatus(raw);
+    if (!status) return `ASN/Ship Status "${raw}" isn't Unshipped or Shipped`;
+    return { poNumber, status };
   });
 }
 

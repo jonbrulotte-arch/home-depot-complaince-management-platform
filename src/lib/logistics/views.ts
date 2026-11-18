@@ -103,6 +103,7 @@ export const FLAGS = {
   NOT_IN_TMS: { severity: "info", label: "PO not in TMS file" },
   CHECK_PLANEX: { severity: "high", label: "Check destination in PlanEx" },
   CROSSDOCK: { severity: "info", label: "Crossdock (IFC)" },
+  ASN_RECEIVED: { severity: "info", label: "ASN received (POM)" },
   DATES_REVERSED: { severity: "info", label: "Delivery before pickup" },
   TMS_FLAGGED: { severity: "info", label: "TMS errors or alerts" },
 } as const satisfies Record<string, { severity: Severity; label: string }>;
@@ -209,8 +210,24 @@ export interface PoView {
   dest: Destination;
   /** Where the WMS shipped it: Store/DC number, name and full address; null before it ships */
   shipTo: ShipTo | null;
+  /** Its ASN/ship status as confirmed in POM (the ASN/Shipped Confirmation import); null when never imported */
+  asn: AsnInfo | null;
   flags: Flag[];
 }
+
+export interface AsnInfo {
+  status: "SHIPPED" | "UNSHIPPED";
+  /** When an import marked it Shipped */
+  confirmedAt: Date | null;
+}
+
+/** A PO confirmed in POM, from the ASN/Shipped Confirmation import */
+export interface AsnConfirmationInfo extends AsnInfo {
+  poNumber: string;
+}
+
+/** Whether a PO's ASN is confirmed received */
+export const asnReceived = (a: AsnInfo | null | undefined) => a?.status === "SHIPPED";
 
 export interface Destination {
   facility: string | null;
@@ -237,6 +254,8 @@ export interface ShipmentView extends Shipment {
   warehouses: WarehouseInfo[];
   /** Its channels: its cartons', else its POs' */
   channels: ChannelInfo[];
+  /** Our POs on it confirmed ASN received in POM, of all our POs on it */
+  asn: { received: number; total: number };
 }
 
 /** A PO on a resolved Issue Log issue in the "Order cancellation" category */
@@ -277,6 +296,8 @@ export interface LogisticsData {
   warehouses?: WarehouseInfo[];
   /** Channels by CUST_NUM, in the admins' order */
   channels?: ChannelInfo[];
+  /** POs' ASN/ship status confirmed in POM (the ASN/Shipped Confirmation import) */
+  asn?: AsnConfirmationInfo[];
   parcels: Parcel[];
 }
 
@@ -311,6 +332,7 @@ export function buildLogistics(input: LogisticsData, today: string) {
   // orders, the WMS, THD's compliance data or the Issue Log): THD books shipments that pick up from
   // several suppliers, so the others' POs ride along
   const known = new Set((data.knownPos ?? []).map(bareNumber));
+  const asnBy = new Map((data.asn ?? []).map((a) => [bareNumber(a.poNumber), { status: a.status, confirmedAt: a.confirmedAt }]));
   const isOurs = (po: string) => tmsByPo.has(po) || cartonsByPo.has(po) || known.has(bareNumber(po));
   const poNumbers = new Set([...tmsByPo.keys(), ...cartonsByPo.keys(), ...[...shipmentsByPo.keys()].filter(isOurs)]);
   const pos: PoView[] = [...poNumbers].map((poNumber) => {
@@ -366,6 +388,8 @@ export function buildLogistics(input: LogisticsData, today: string) {
       );
     if (wrong) flags.push(flag("WRONG_DESTINATION", `The WMS shipped to ${wrong.shipCity}, ${wrong.shipState ?? ""}; TMS has the PO going to ${tms?.destCity ?? live[0]?.destCity}, ${tms?.destState ?? live[0]?.destState ?? ""} (DC ${dc}).`));
     else if (typo) flags.push(flag("CITY_SPELLING", `The WMS ship-to city is "${typo.shipCity}", TMS has "${tms?.destCity ?? live[0]?.destCity}" for DC ${dc}: likely a typo in the WMS ship-to address.`));
+    const asn = asnBy.get(bareNumber(poNumber));
+    if (asn?.status === "SHIPPED") flags.push(flag("ASN_RECEIVED", `Confirmed shipped in POM (Supplier Hub)${asn.confirmedAt ? ` on ${isoDate(asn.confirmedAt)}` : ""}: THD has the ASN.`));
     if (tms?.originFacility) {
       const other = live.find((s) => s.originFacility && norm(s.originFacility) !== norm(tms.originFacility) && norm(s.originFacility).slice(0, 6) === norm(tms.originFacility).slice(0, 6));
       if (other) flags.push(flag("ORIGIN_MISMATCH", `The PO ships from ${place(tms.originFacility, tms.originCity, tms.originState)} in TMS, but shipment ${other.shipmentNumber} left ${place(other.originFacility, other.originCity, other.originState)}.`));
@@ -428,6 +452,7 @@ export function buildLogistics(input: LogisticsData, today: string) {
           ? { facility: live[0].destFacility, city: live[0].destCity, state: live[0].destState }
           : { facility: shipTo?.facility ?? null, city: shipTo?.city ?? null, state: shipTo?.state ?? null },
       shipTo,
+      asn: asnBy.get(bareNumber(poNumber)) ?? null,
       flags: flags.sort(bySeverity),
     };
   });
@@ -460,6 +485,8 @@ export function buildLogistics(input: LogisticsData, today: string) {
       // whatever TMS still says, and its lateness flags no longer apply
       const ours = s.poNumbers.filter(isOurs);
       const canceledByIssue = !isCanceled(s.status) && ours.length > 0 && ours.every((po) => poByNumber.get(po)?.flags.some((f) => f.code === "CANCELED_BY_ISSUE"));
+      const asnCount = ours.filter((po) => asnReceived(poByNumber.get(po)?.asn)).length;
+      if (ours.length && asnCount === ours.length) flags.push(flag("ASN_RECEIVED", ours.length === 1 ? `PO ${ours[0]} is confirmed shipped in POM: THD has the ASN.` : `All ${ours.length} of our POs on it are confirmed shipped in POM: THD has the ASNs.`));
       return {
         ...s,
         status: canceledByIssue ? "Canceled" : s.status,
@@ -468,6 +495,7 @@ export function buildLogistics(input: LogisticsData, today: string) {
         channels: cartons.length ? channelsOf(cartons, data.channels ?? []) : (data.channels ?? []).filter((c) => ours.some((po) => poByNumber.get(po)?.channels.some((x) => x.code === c.code))),
         pos: s.poNumbers.map((po) => ({ poNumber: po, tms: tmsByPo.get(po) ?? null })),
         ourPos: ours,
+        asn: { received: asnCount, total: ours.length },
         otherPos: s.poNumbers.filter((po) => !isOurs(po)),
         cartons,
         cartonCount: new Set(cartons.map((c) => c.label)).size,
@@ -559,6 +587,8 @@ export interface PoFilters {
   wh?: string;
   /** A channel's CUST_NUM, or "none" for unknown */
   ch?: string;
+  /** "received" (confirmed in POM) or "pending" (not confirmed) */
+  asn?: string;
   /** "warehouse" or "shipped"; newest PO first otherwise */
   sort?: string;
   /** A date range (PO_RANGES key); "custom" uses from and to (YYYY-MM-DD) */
@@ -635,6 +665,8 @@ export function filterPos(pos: PoView[], f: PoFilters, today?: string): PoView[]
     if (f.scac && !p.shipments.some((s) => s.scac === f.scac)) return false;
     if (!matchesWarehouse(p.warehouses, f.wh)) return false;
     if (!matchesChannel(p.channels, f.ch)) return false;
+    if (f.asn === "received" && !asnReceived(p.asn)) return false;
+    if (f.asn === "pending" && asnReceived(p.asn)) return false;
     if (!q) return true;
     const hay = [p.poNumber, p.destination, p.origin, p.shipTo?.facility ?? "", p.shipTo?.name ?? "", ...(p.shipTo?.street ?? []), ...p.wmsTms, ...p.ups, ...p.pros, ...p.shipments.map((s) => s.shipmentNumber), ...p.cartons.map((c) => c.orderNum), ...p.cartons.map((c) => c.label)].join(" ").toUpperCase();
     return hay.includes(q);
@@ -677,7 +709,30 @@ export function sortPos(pos: PoView[], sort: string | undefined, warehouses: War
   return out;
 }
 
+/** ASN filter choices, on the POs and Shipments tabs */
+export const ASN_FILTERS = [
+  { key: "received", label: "ASN received (POM)" },
+  { key: "pending", label: "ASN not confirmed" },
+] as const;
+
+/** A shipment's date for the date range: its pickup, else its delivery (local dates as TMS writes them) */
+export function shipmentDate(s: Pick<Shipment, "pickupLocal" | "pickupAt" | "deliveryLocal" | "deliveryAt">): string | null {
+  return localDateOf(s.pickupLocal) ?? (s.pickupAt ? isoDate(s.pickupAt) : null) ?? localDateOf(s.deliveryLocal) ?? (s.deliveryAt ? isoDate(s.deliveryAt) : null);
+}
+
 export interface ShipmentFilters {
+  /** Shipment, PO, SCAC, PRO, UPS, Store/DC, city or state */
+  q?: string;
+  status?: string;
+  flag?: string;
+  /** "any" (high or medium), "high", "medium" or "info" */
+  severity?: string;
+  /** "received" (all our POs confirmed in POM) or "pending" */
+  asn?: string;
+  /** A date range (PO_RANGES key) by pickup date; "custom" uses from and to */
+  range?: string;
+  from?: string;
+  to?: string;
   scac?: string;
   /** A channel's CUST_NUM, or "none" */
   ch?: string;
@@ -689,14 +744,30 @@ export interface ShipmentFilters {
 }
 
 /** Shipments matching the Shipments tab's filters, in the order asked */
-export function filterShipments(shipments: ShipmentView[], f: ShipmentFilters, warehouses: WarehouseInfo[]): ShipmentView[] {
-  const rows = shipments.filter(
-    (s) =>
-      (!f.scac || s.scac === f.scac) &&
-      (!f.late || s.flags.some((x) => x.code === "DELIVERY_OVERDUE" || x.code === "PICKUP_PASSED")) &&
-      matchesWarehouse(s.warehouses, f.wh) &&
-      matchesChannel(s.channels, f.ch),
-  );
+export function filterShipments(shipments: ShipmentView[], f: ShipmentFilters, warehouses: WarehouseInfo[], today?: string): ShipmentView[] {
+  const q = f.q?.trim().toUpperCase();
+  const bounds = today ? rangeBounds(f, today) : null;
+  const rows = shipments.filter((s) => {
+    if (f.scac && s.scac !== f.scac) return false;
+    if (f.late && !s.flags.some((x) => x.code === "DELIVERY_OVERDUE" || x.code === "PICKUP_PASSED")) return false;
+    if (!matchesWarehouse(s.warehouses, f.wh) || !matchesChannel(s.channels, f.ch)) return false;
+    if (f.status && s.status !== f.status) return false;
+    // With a flag, the priority applies to that flag; on its own, to any flag
+    const pool = f.flag ? s.flags.filter((x) => x.code === f.flag) : s.flags;
+    if (f.flag && !pool.length) return false;
+    if (f.severity === "any" && !pool.some((x) => x.severity !== "info")) return false;
+    if (f.severity && f.severity !== "any" && !pool.some((x) => x.severity === f.severity)) return false;
+    const allAsn = s.asn.total > 0 && s.asn.received === s.asn.total;
+    if (f.asn === "received" && !allAsn) return false;
+    if (f.asn === "pending" && (allAsn || !s.asn.total)) return false;
+    if (bounds) {
+      const d = shipmentDate(s);
+      if (!d || (bounds.from && d < bounds.from) || (bounds.to && d > bounds.to)) return false;
+    }
+    if (!q) return true;
+    const hay = [s.shipmentNumber, s.scac ?? "", s.tmsScac ?? "", s.status, ...s.poNumbers, ...s.pros, ...s.ups, s.originFacility ?? "", s.originCity ?? "", s.destFacility ?? "", s.destCity ?? "", s.destState ?? "", ...s.cartons.map((c) => c.label)].join(" ").toUpperCase();
+    return hay.includes(q);
+  });
   const dest = f.sort ? destCompare(f.sort) : null;
   if (dest) return [...rows].sort((a, b) => dest(shipmentDest(a), shipmentDest(b)));
   // Array sort is stable: within a warehouse, the latest pickup stays first

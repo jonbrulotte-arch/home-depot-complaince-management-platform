@@ -72,6 +72,22 @@ export async function importLogisticsFile(bytes: Uint8Array, fileName: string, u
     await inChunks(rows.filter((r) => existing.has(r.shipmentNumber)), (c) => prisma.$transaction(c.map((r) => prisma.tmsShipment.update({ where: { shipmentNumber: r.shipmentNumber }, data: data(r) }))));
     created = rows.filter((r) => !existing.has(r.shipmentNumber)).length;
     updated = rows.length - created;
+  } else if (file.kind === "ASN") {
+    // Shipped marks the PO ASN received (once: the first confirmation's date is kept); Unshipped clears
+    // a PO marked before and adds nothing for one never marked. Unchanged rows count as neither.
+    const rows = [...new Map(file.parsed.rows.map((r) => [r.poNumber, r])).values()];
+    const existing = new Map((await prisma.asnConfirmation.findMany({ where: { poNumber: { in: rows.map((r) => r.poNumber) } }, select: { poNumber: true, status: true } })).map((r) => [r.poNumber, r.status]));
+    const now = new Date();
+    const toCreate = rows.filter((r) => r.status === "SHIPPED" && !existing.has(r.poNumber));
+    const toUpdate = rows.filter((r) => existing.has(r.poNumber) && existing.get(r.poNumber) !== r.status);
+    await inChunks(toCreate, (c) => prisma.asnConfirmation.createMany({ data: c.map((r) => ({ poNumber: r.poNumber, status: r.status, confirmedAt: now, importId: log.id, updatedById: userId })), skipDuplicates: true }));
+    await inChunks(toUpdate, (c) =>
+      prisma.$transaction(
+        c.map((r) => prisma.asnConfirmation.update({ where: { poNumber: r.poNumber }, data: { status: r.status, confirmedAt: r.status === "SHIPPED" ? now : null, importId: log.id, updatedById: userId } })),
+      ),
+    );
+    created = toCreate.length;
+    updated = toUpdate.length;
   } else {
     const rows = [...new Map(file.parsed.rows.map((r) => [r.poNumber, r])).values()];
     const existing = new Set((await prisma.tmsPurchaseOrder.findMany({ where: { poNumber: { in: rows.map((r) => r.poNumber) } }, select: { poNumber: true } })).map((r) => r.poNumber));

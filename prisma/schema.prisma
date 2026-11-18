@@ -901,6 +901,27 @@ enum LogisticsSource {
   WMS
   TMS_SHIPMENTS
   TMS_POS
+  /// The ASN/Shipped Confirmation file (PO Number, ASN/Ship Status), checked in POM
+  ASN
+}
+
+enum AsnStatus {
+  UNSHIPPED
+  SHIPPED
+}
+
+/// A PO's ASN/ship status as confirmed in POM (Supplier Hub) and imported from the ASN/Shipped Confirmation file
+model AsnConfirmation {
+  id          String    @id @default(cuid())
+  poNumber    String    @unique
+  status      AsnStatus
+  /// When an import first marked it Shipped; null while Unshipped
+  confirmedAt DateTime?
+  /// The import that last changed it
+  importId    String?
+  updatedById String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
 }
 
 /// One imported or fetched logistics file

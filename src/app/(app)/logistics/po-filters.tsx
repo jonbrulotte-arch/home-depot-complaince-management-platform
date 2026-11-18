@@ -2,11 +2,11 @@
 
 import { useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
-import { Download, Search } from "lucide-react";
+import { ClipboardCheck, Download, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { DEST_SORTS, type PoFilters } from "@/lib/logistics/views";
+import { ASN_FILTERS, DEST_SORTS, type PoFilters } from "@/lib/logistics/views";
 import { PoRangePicker } from "./range-picker";
 import { UNKNOWN_WAREHOUSE, type WarehouseInfo } from "@/lib/logistics/warehouses";
 import { UNKNOWN_CHANNEL, type ChannelInfo } from "@/lib/logistics/channels";
@@ -24,10 +24,10 @@ export function PoFiltersBar({ filters, statuses, flags, scacs, warehouses, chan
     return params;
   };
   const apply = (next: Partial<PoFilters> = {}) => router.push(`${pathname}?${query(next)}`);
-  const exportHref = () => {
+  const exportHref = (path = "/api/logistics/export") => {
     const p = query({});
     p.delete("tab");
-    return `/api/logistics/export?${p}`;
+    return `${path}?${p}`;
   };
   const pick = (id: string, label: string, value: string | undefined, options: [string, string][], key: keyof PoFilters, width = "w-44") => (
     <div className={width}>
@@ -69,6 +69,7 @@ export function PoFiltersBar({ filters, statuses, flags, scacs, warehouses, chan
       {pick("log-scac", "Carrier", filters.scac, [[ALL, "Any carrier"], ...scacs.map((s): [string, string] => [s, s])], "scac", "w-36")}
       {pick("log-wh", "Warehouse", filters.wh, [[ALL, "Any warehouse"], ...warehouses.map((w): [string, string] => [w.prefix, w.name]), [UNKNOWN_WAREHOUSE, "No WMS cartons yet"]], "wh", "w-56")}
       {pick("log-ch", "Channel", filters.ch, [[ALL, "Any channel"], ...channels.map((c): [string, string] => [c.code, c.name]), [UNKNOWN_CHANNEL, "No WMS cartons yet"]], "ch", "w-64")}
+      {pick("log-asn", "ASN", filters.asn, [[ALL, "Any"], ...ASN_FILTERS.map((a): [string, string] => [a.key, a.label])], "asn", "w-48")}
       {pick("log-sort", "Sort", filters.sort, [[ALL, "Newest PO first"], ["warehouse", "Warehouse"], ["shipped", "Latest shipped (WMS)"], ...DEST_SORTS.map((d): [string, string] => [d.key, d.label])], "sort", "w-52")}
       <div>
         <label htmlFor="log-range" className="mb-1 block text-xs font-medium text-gray-500">
@@ -80,12 +81,18 @@ export function PoFiltersBar({ filters, statuses, flags, scacs, warehouses, chan
         <Search className="h-4 w-4 mr-1.5" />
         Search
       </Button>
-      {Boolean(filters.q || filters.status || filters.flag || filters.severity || filters.scac || filters.range || filters.wh || filters.ch || filters.sort) && (
+      {Boolean(filters.q || filters.status || filters.flag || filters.severity || filters.scac || filters.range || filters.wh || filters.ch || filters.asn || filters.sort) && (
         <Button type="button" variant="ghost" onClick={() => router.push(`${pathname}?tab=pos`)}>
           Clear
         </Button>
       )}
-      <Button asChild variant="outline" className="ml-auto">
+      <Button asChild variant="outline" className="ml-auto" title="The POs shown, with an ASN/Ship Status column to fill in after checking each PO in POM, then import back under Imports">
+        <a href={exportHref("/api/logistics/asn-export")}>
+          <ClipboardCheck className="h-4 w-4 mr-1.5" />
+          ASN confirmation export
+        </a>
+      </Button>
+      <Button asChild variant="outline">
         <a href={exportHref()}>
           <Download className="h-4 w-4 mr-1.5" />
           Export to Excel

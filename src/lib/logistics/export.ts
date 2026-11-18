@@ -3,6 +3,7 @@ import { FLAGS } from "@/lib/logistics/views";
 import type { LoadedLogistics } from "@/lib/logistics/data";
 import type { PoView } from "@/lib/logistics/views";
 import { addressLines } from "@/lib/logistics/ship-to";
+import { ASN_STATUS_LABELS } from "@/lib/logistics/parse";
 import { formatUtcDateTime } from "@/lib/utils";
 
 // Logistics as a workbook for analysis: POs (with their flags), shipments and WMS cartons.
@@ -26,12 +27,13 @@ export async function logisticsWorkbook(l: LoadedLogistics, pos: PoView[], siteN
   sheet(
     wb,
     "POs",
-    [["PO #", 13], ["Created", 12], ["Status", 11], ["TMS PO status", 12], ["Warehouse", 24], ["Channel", 28], ["Ship-from", 30], ["Destination", 30], ["WMS ship-to", 44], ["First shipped (WMS)", 18], ["Cartons", 9], ["Units", 9], ["TMS shipments", 24], ["Carriers", 12], ["UPS", 22], ["PRO", 16], ["Flags", 30], ["Flag details", 70], ["Notes", 7]],
+    [["PO #", 13], ["Created", 12], ["Status", 11], ["TMS PO status", 12], ["ASN/Ship Status (POM)", 14], ["Warehouse", 24], ["Channel", 28], ["Ship-from", 30], ["Destination", 30], ["WMS ship-to", 44], ["First shipped (WMS)", 18], ["Cartons", 9], ["Units", 9], ["TMS shipments", 24], ["Carriers", 12], ["UPS", 22], ["PRO", 16], ["Flags", 30], ["Flag details", 70], ["Notes", 7]],
     pos.map((p) => [
       p.poNumber,
       p.createdAt ? p.createdAt.toISOString().slice(0, 10) : null,
       p.status,
       p.tms?.status ?? null,
+      p.asn ? ASN_STATUS_LABELS[p.asn.status] : null,
       p.warehouses.map((w) => w.name).join(", ") || null,
       p.channels.map((c) => c.name).join(", ") || null,
       p.origin,

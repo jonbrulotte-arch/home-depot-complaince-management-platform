@@ -14,7 +14,7 @@ export async function todayFor(): Promise<string> {
 }
 
 export const loadLogistics = cache(async () => {
-  const [cartons, shipments, pos, parcels, carriers, today, imports, noteCounts, warehouses, channels] = await Promise.all([
+  const [cartons, shipments, pos, parcels, carriers, today, imports, noteCounts, warehouses, channels, asn] = await Promise.all([
     prisma.wmsCarton.findMany({
       orderBy: { lineKey: "asc" },
       select: { lineKey: true, label: true, poNumber: true, orderNum: true, orderNumber: true, customer: true, trackingNumber: true, secondTrack: true, product: true, quantity: true, shippedAt: true, shipTo: true, shipName: true, shipAddress1: true, shipAddress2: true, shipAddress3: true, shipCity: true, shipState: true, shipZip: true },
@@ -49,7 +49,7 @@ export const loadLogistics = cache(async () => {
     todayFor(),
     // The latest import of each source, to show how fresh the data is
     Promise.all(
-      (["WMS", "TMS_SHIPMENTS", "TMS_POS"] as const).map((source) =>
+      (["WMS", "TMS_SHIPMENTS", "TMS_POS", "ASN"] as const).map((source) =>
         prisma.logisticsImport.findFirst({ where: { source }, orderBy: { importedAt: "desc" }, select: { source: true, importedAt: true, fileName: true, rows: true, fetched: true } }),
       ),
     ),
@@ -58,6 +58,8 @@ export const loadLogistics = cache(async () => {
     prisma.warehouse.findMany({ orderBy: [{ sortOrder: "asc" }, { prefix: "asc" }], select: { prefix: true, name: true } }),
     // Admin › Settings › Channels: which channel, from the WMS CUST_NUM
     prisma.channel.findMany({ orderBy: [{ sortOrder: "asc" }, { code: "asc" }], select: { code: true, name: true } }),
+    // POs confirmed in POM (the ASN/Shipped Confirmation import)
+    prisma.asnConfirmation.findMany({ select: { poNumber: true, status: true, confirmedAt: true } }),
   ]);
   // Shipment POs not in the WMS or TMS PO data: ours only if THD's compliance data or the Issue Log has them
   const seen = new Set([...pos.map((p) => p.poNumber), ...cartons.map((c) => c.poNumber)]);
@@ -86,7 +88,7 @@ export const loadLogistics = cache(async () => {
     issueDate: c.issue.issueDate.toISOString().slice(0, 10),
     poCreateDate: c.poCreateDate ? c.poCreateDate.toISOString().slice(0, 10) : null,
   }));
-  const views = buildLogistics({ cartons, shipments, pos, parcels, knownPos, poCreated, canceledByIssue, warehouses, channels }, today);
+  const views = buildLogistics({ cartons, shipments, pos, parcels, knownPos, poCreated, canceledByIssue, warehouses, channels, asn }, today);
   const carrierBy = new Map<string, CarrierLinkInfo>(carriers.map((c) => [c.scac, c]));
   const notes = {
     po: new Map(noteCounts.filter((n) => n.poNumber).map((n) => [n.poNumber!, n._count._all])),

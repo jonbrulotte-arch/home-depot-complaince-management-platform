@@ -12,7 +12,7 @@ import { StatTiles } from "@/components/analytics/stat-tiles";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { FlagBadges, FlagList, PoLink, PoStatusBadge, TmsStatusBadge } from "@/components/logistics/parts";
+import { AsnBadge, FlagBadges, FlagList, PoLink, PoStatusBadge, TmsStatusBadge } from "@/components/logistics/parts";
 import { LogisticsNotes } from "@/components/logistics/notes";
 import { ComplianceCard, IssuesCard } from "@/components/logistics/related";
 import { Section, Table, n } from "@/app/(app)/insights/ui";
@@ -52,6 +52,7 @@ export default async function LogisticsShipmentPage({ params }: { params: Promis
       <div className="flex flex-wrap items-center gap-3">
         <h1 className="text-2xl font-bold text-gray-900">TMS shipment {s.shipmentNumber}</h1>
         <TmsStatusBadge status={s.status} />
+        {s.asn.total > 0 && s.asn.received === s.asn.total ? <AsnBadge inline /> : s.asn.received > 0 && <span className="text-sm text-gray-500">ASN received for {s.asn.received} of {s.asn.total} POs</span>}
         {s.tmsStatus && <span className="text-sm text-gray-500">TMS: {s.tmsStatus} (POs canceled in the Issue Log)</span>}
         {s.warehouses.length > 0 && <span className="text-sm text-gray-500">Shipped from {warehouseNames(s.warehouses)}</span>}
         {link?.url ? (

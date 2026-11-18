@@ -14,10 +14,15 @@ import {
   rangeBounds,
   rangeLabel,
   type PoFilters,
+  type ShipmentFilters,
+  type FlagCode,
+  FLAGS,
+  asnReceived,
   PO_STATUSES,
 } from "@/lib/logistics/views";
 import { StatTiles } from "@/components/analytics/stat-tiles";
 import {
+  AsnBadge,
   FlagBadges,
   PoLink,
   PoStatusBadge,
@@ -361,7 +366,12 @@ export function PosTab({
               },
               {
                 header: "Status",
-                cell: (p) => <PoStatusBadge status={p.status} />,
+                cell: (p) => (
+                  <>
+                    <PoStatusBadge status={p.status} />
+                    {asnReceived(p.asn) && <AsnBadge />}
+                  </>
+                ),
               },
               {
                 header: "Destination",
@@ -452,27 +462,21 @@ export function PosTab({
   );
 }
 
-export function ShipmentsTab({
-  l,
-  scac,
-  late,
-  wh,
-  ch,
-  sort,
-  sel,
-}: {
-  l: LoadedLogistics;
-  scac?: string;
-  late?: boolean;
-  wh?: string;
-  ch?: string;
-  sort?: string;
-  sel: SelectionSettings;
-}) {
-  const rows = filterShipments(l.shipments, { scac, late, wh, ch, sort }, l.warehouses);
+export function ShipmentsTab({ l, filters, sel }: { l: LoadedLogistics; filters: ShipmentFilters; sel: SelectionSettings }) {
+  const { scac, late } = filters;
+  const rows = filterShipments(l.shipments, filters, l.warehouses, l.today);
+  const flagCounts = new Map<string, number>();
+  for (const s of l.shipments) for (const code of new Set(s.flags.map((f) => f.code))) flagCounts.set(code, (flagCounts.get(code) ?? 0) + 1);
   return (
     <div className="space-y-4">
-      <ShipmentFiltersBar filters={{ scac, late: late ? "1" : undefined, wh, ch, sort }} warehouses={l.warehouses} channels={l.channels} />
+      <ShipmentFiltersBar
+        filters={{ ...filters, late: late ? "1" : undefined }}
+        statuses={[...new Set(l.shipments.map((s) => s.status))].sort()}
+        flags={[...flagCounts].map(([code, count]) => ({ code, label: FLAGS[code as FlagCode].label, count })).sort((a, b) => a.label.localeCompare(b.label))}
+        scacs={[...new Set(l.shipments.map((s) => s.scac).filter((x): x is string => Boolean(x)))].sort()}
+        warehouses={l.warehouses}
+        channels={l.channels}
+      />
       <SelectionProvider
         kind="shipment"
         items={rows
@@ -526,6 +530,7 @@ export function ShipmentsTab({
                   <>
                     <TmsStatusBadge status={s.status} />
                     {s.tmsStatus && <p className="mt-0.5 text-xs text-gray-500">TMS: {s.tmsStatus}</p>}
+                    {s.asn.total > 0 && s.asn.received === s.asn.total ? <AsnBadge /> : s.asn.received > 0 && <p className="mt-0.5 text-xs text-gray-500">ASN {s.asn.received} of {s.asn.total} POs</p>}
                   </>
                 ),
               },

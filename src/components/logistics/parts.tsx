@@ -20,6 +20,16 @@ export function PoStatusBadge({ status }: { status: PoStatus }) {
   return <Badge variant={STATUS_VARIANT[status]}>{status}</Badge>;
 }
 
+/** Confirmed shipped in POM (Supplier Hub): THD has the ASN */
+export function AsnBadge({ date, inline }: { date?: string | null; inline?: boolean }) {
+  const badge = (
+    <Badge variant="success" className="whitespace-nowrap" title="Confirmed shipped in POM (ASN/Shipped Confirmation import)">
+      ASN received{date ? ` ${date}` : ""}
+    </Badge>
+  );
+  return inline ? badge : <span className="mt-1 block">{badge}</span>;
+}
+
 /** A TMS shipment status as TMS writes it */
 export function TmsStatusBadge({ status }: { status: string }) {
   const v = /^deliver/i.test(status) ? "success" : /^cancel/i.test(status) ? "destructive" : /transit|picked/i.test(status) ? "default" : /^available/i.test(status) ? "warning" : "secondary";
