@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { poNumberVariants } from "@/lib/issues";
 import { loadLogistics } from "@/lib/logistics/data";
+import { addressLines, facilityKey, genericName, shipToOf } from "@/lib/logistics/ship-to";
 import { cityLine, destinationName, emptySlip, itemsFromCartons, type CatalogEntry, type PackingSlip, type SlipItem } from "@/lib/packing-slip";
 
 // Fills a packing slip for a PO from what the platform has: the WMS lines (products, units, cartons,
@@ -95,20 +96,45 @@ export async function lookupSlip(input: string): Promise<SlipLookup | null> {
     slip.originAddress = origin.address;
   }
 
-  // Destination: the Store/DC from TMS (else THD's DC number), its saved address, else the WMS ship-to
-  const facility = (po?.dest.facility ?? record?.dcNumber ?? "").trim().toUpperCase();
+  // Destination: the WMS ship-to of the PO's cartons (Store/DC number, name and full address); else the
+  // Store/DC from TMS (or THD's DC number) with its saved address, or the address the WMS last shipped
+  // to there for another PO, else its city
+  const shipTo = po?.shipTo ?? null;
+  const facility = (shipTo?.facility ?? po?.dest.facility ?? record?.dcNumber ?? "").trim().toUpperCase();
+  const channel = po?.channels[0]?.code ?? null;
   slip.destFacility = facility;
-  const saved = facility ? await prisma.destinationAddress.findUnique({ where: { facility } }) : null;
-  if (saved) {
+  const nameFor = (name: string | null) => (name && !genericName(name) ? name : destinationName(facility || null, channel));
+  let saved = null;
+  if (shipTo?.street.length) {
+    slip.destName = nameFor(shipTo.name);
+    slip.destAddress = addressLines(shipTo).join("\n");
+  } else if (facility && (saved = await prisma.destinationAddress.findUnique({ where: { facility } }))) {
     slip.destName = saved.name;
     slip.destAddress = saved.address;
   } else {
-    slip.destName = destinationName(facility || null, po?.channels[0]?.code ?? null);
-    const carton = po?.cartons.find((c) => c.shipCity || c.shipZip);
-    slip.destAddress = carton ? cityLine(carton.shipCity, carton.shipState, carton.shipZip) : cityLine(po?.dest.city ?? null, po?.dest.state ?? null, null);
+    const other = facility ? await lastWmsAddress(facility) : null;
+    slip.destName = nameFor(other?.name ?? null);
+    slip.destAddress = other
+      ? addressLines(other).join("\n")
+      : shipTo
+        ? addressLines(shipTo).join("\n")
+        : cityLine(po?.dest.city ?? null, po?.dest.state ?? null, null);
   }
 
   return { slip, sources: { logistics: Boolean(po), compliance: Boolean(record) || items.some((i) => i.thdSku), addressBook: Boolean(saved) }, warehouse };
+}
+
+/** The address the WMS last shipped to for a Store/DC (any PO), when its lines give one */
+async function lastWmsAddress(facility: string) {
+  const key = facilityKey(facility);
+  const rows = await prisma.wmsCarton.findMany({
+    where: { shipAddress1: { not: null }, OR: [{ shipTo: { in: [...new Set([facility, key])] } }, { shipName: { contains: key } }] },
+    orderBy: { shippedAt: "desc" },
+    take: 20,
+    select: { shipTo: true, shipName: true, shipAddress1: true, shipAddress2: true, shipAddress3: true, shipCity: true, shipState: true, shipZip: true },
+  });
+  const hit = rows.map((r) => shipToOf(r)).find((t) => t.facility && facilityKey(t.facility) === key);
+  return hit ?? null;
 }
 
 /** Remembers a destination's name and address for the next slip to that Store/DC */

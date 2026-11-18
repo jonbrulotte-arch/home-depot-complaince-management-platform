@@ -37,13 +37,22 @@ export async function importLogisticsFile(bytes: Uint8Array, fileName: string, u
     const rows = [...new Map(file.parsed.rows.map((r) => [r.lineKey, r])).values()];
     const existing = new Set((await prisma.wmsCarton.findMany({ where: { lineKey: { in: rows.map((r) => r.lineKey) } }, select: { lineKey: true } })).map((r) => r.lineKey));
     const data = (r: (typeof rows)[number]) => ({ ...r, importId: log.id });
+    // A file without the ship-to columns (older WMS reports) leaves the ship-to already stored alone
+    const hasShipTo = rows.some((r) => r.shipName || r.shipAddress1 || r.shipTo);
+    const update = (r: (typeof rows)[number]) => {
+      const d = data(r);
+      if (hasShipTo) return d;
+      const rest: Partial<typeof d> = { ...d };
+      for (const k of ["shipTo", "shipName", "shipAddress1", "shipAddress2", "shipAddress3"] as const) delete rest[k];
+      return rest;
+    };
     await inChunks(
       rows.filter((r) => !existing.has(r.lineKey)),
       (c) => prisma.wmsCarton.createMany({ data: c.map(data), skipDuplicates: true }),
     );
     await inChunks(
       rows.filter((r) => existing.has(r.lineKey)),
-      (c) => prisma.$transaction(c.map((r) => prisma.wmsCarton.update({ where: { lineKey: r.lineKey }, data: data(r) }))),
+      (c) => prisma.$transaction(c.map((r) => prisma.wmsCarton.update({ where: { lineKey: r.lineKey }, data: update(r) }))),
     );
     created = rows.filter((r) => !existing.has(r.lineKey)).length;
     updated = rows.length - created;

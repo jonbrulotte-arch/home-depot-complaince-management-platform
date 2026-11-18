@@ -20,7 +20,7 @@ export interface EdiIssueType {
 export const EDI_ISSUE_TYPES: EdiIssueType[] = [
   { key: "tms-id", label: "Correct the TMS shipment ID", request: "Correct the TMS shipment ID on the ASN and labels so it matches the shipment THD has the PO on.", flags: ["SUSPECT_TMS_ID", "TMS_ID_MISMATCH", "TMS_ID_NOT_FOUND"] },
   { key: "asn", label: "Send or resend the ASN", request: "Send (or resend) the ASN for these POs.", flags: ["NO_TMS_SHIPMENT"] },
-  { key: "ship-to", label: "Correct the ship-to address", request: "Correct the ship-to address for these POs.", flags: ["WRONG_DESTINATION", "CITY_SPELLING"] },
+  { key: "ship-to", label: "Correct the ship-to address", request: "Correct the ship-to address for these POs.", flags: ["WRONG_DESTINATION", "SHIP_TO_MISMATCH", "CITY_SPELLING"] },
   { key: "planex", label: "Confirm the destination in Vendor PlanEx", request: "These go to a THD crossdock: confirm the destination in Vendor PlanEx and that the ASN matches it.", flags: ["CHECK_PLANEX"] },
   { key: "cancel", label: "Cancel or close the PO", request: "Cancel or close these POs: THD shows them canceled.", flags: ["CANCELED_SHIPPED"] },
   { key: "status", label: "Check the shipment status in TMS", request: "Check and update the shipment status in TMS (pickup or delivery dates have passed).", flags: ["PICKUP_PASSED", "DELIVERY_OVERDUE", "NO_CARRIER"] },

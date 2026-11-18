@@ -2,6 +2,7 @@ import { localDateOf } from "@/lib/logistics/parse";
 import { matchesWarehouse, warehouseRank, warehousesOf, type WarehouseInfo } from "@/lib/logistics/warehouses";
 import { channelsOf, matchesChannel, type ChannelInfo } from "@/lib/logistics/channels";
 import { cartonRefs } from "@/lib/logistics/refs";
+import { addressLines, facilityIndex, facilityKey, poShipTo, type ShipTo } from "@/lib/logistics/ship-to";
 
 // Logistics views: every PO and TMS shipment with the WMS cartons, TMS records and UPS tracking
 // tied together, a status, and flags for what needs looking at. Pure and unit-tested; data.ts
@@ -20,6 +21,12 @@ export interface Carton {
   product: string | null;
   quantity: number | null;
   shippedAt: Date;
+  /** The WMS ship-to: Store/DC number, name and street lines (newer WMS reports) */
+  shipTo?: string | null;
+  shipName?: string | null;
+  shipAddress1?: string | null;
+  shipAddress2?: string | null;
+  shipAddress3?: string | null;
   shipCity: string | null;
   shipState: string | null;
   shipZip: string | null;
@@ -82,6 +89,7 @@ export const FLAGS = {
   SUSPECT_TMS_ID: { severity: "high", label: "Invalid TMS ID" },
   TMS_ID_MISMATCH: { severity: "high", label: "TMS ID mismatch" },
   WRONG_DESTINATION: { severity: "high", label: "Wrong destination" },
+  SHIP_TO_MISMATCH: { severity: "high", label: "Ship-to Store/DC differs" },
   DELIVERY_OVERDUE: { severity: "high", label: "Delivery overdue" },
   PICKUP_PASSED: { severity: "high", label: "Pickup date passed" },
   UPS_EXCEPTION: { severity: "high", label: "UPS exception" },
@@ -199,6 +207,8 @@ export interface PoView {
   channels: ChannelInfo[];
   /** The destination's parts, for sorting: Store/DC number, city, state */
   dest: Destination;
+  /** Where the WMS shipped it: Store/DC number, name and full address; null before it ships */
+  shipTo: ShipTo | null;
   flags: Flag[];
 }
 
@@ -283,6 +293,8 @@ export function buildLogistics(input: LogisticsData, today: string) {
   const parcelsByNumber = new Map(data.parcels.map((p) => [p.trackingNumber, p]));
   const cartonsByPo = new Map<string, Carton[]>();
   for (const c of data.cartons) cartonsByPo.set(c.poNumber, [...(cartonsByPo.get(c.poNumber) ?? []), c]);
+  // Store/DC numbers by street address, for WMS lines that don't give theirs
+  const facilities = facilityIndex(data.cartons);
   const shipmentsByPo = new Map<string, Shipment[]>();
   for (const s of data.shipments) for (const po of s.poNumbers) shipmentsByPo.set(po, [...(shipmentsByPo.get(po) ?? []), s]);
   // The TMS shipments file covers pickups from this date on; older cartons may simply predate it
@@ -342,6 +354,16 @@ export function buildLogistics(input: LogisticsData, today: string) {
     // A different state or a different city is a wrong destination; a near spelling is a typo in the WMS ship-to
     const wrong = differs.find((c) => (c.shipState && destState && norm(c.shipState) !== destState) || editDistance(norm(c.shipCity), destCity) > 2);
     const typo = differs.find((c) => c !== wrong);
+    const shipTo = poShipTo(cartons, facilities);
+    // The WMS's Store/DC against TMS's (a crossdock's TMS destination is the crossdock, not the store)
+    const tmsFacility = tms?.destFacility ?? live[0]?.destFacility ?? null;
+    if (shipTo?.facility && tmsFacility && !isCrossdock(tmsFacility) && facilityKey(shipTo.facility) !== facilityKey(tmsFacility))
+      flags.push(
+        flag(
+          "SHIP_TO_MISMATCH",
+          `The WMS shipped to Store/DC ${shipTo.facility}${shipTo.name ? ` (${shipTo.name})` : ""}, ${addressLines(shipTo).join(", ")}; TMS has the PO going to ${place(tmsFacility, tms?.destCity ?? live[0]?.destCity ?? null, tms?.destState ?? live[0]?.destState ?? null)}.`,
+        ),
+      );
     if (wrong) flags.push(flag("WRONG_DESTINATION", `The WMS shipped to ${wrong.shipCity}, ${wrong.shipState ?? ""}; TMS has the PO going to ${tms?.destCity ?? live[0]?.destCity}, ${tms?.destState ?? live[0]?.destState ?? ""} (DC ${dc}).`));
     else if (typo) flags.push(flag("CITY_SPELLING", `The WMS ship-to city is "${typo.shipCity}", TMS has "${tms?.destCity ?? live[0]?.destCity}" for DC ${dc}: likely a typo in the WMS ship-to address.`));
     if (tms?.originFacility) {
@@ -396,7 +418,7 @@ export function buildLogistics(input: LogisticsData, today: string) {
       ups,
       pros,
       parcels,
-      destination: tms ? place(tms.destFacility, tms.destCity, tms.destState) : live[0] ? place(live[0].destFacility, live[0].destCity, live[0].destState) : cartons[0] ? place(null, cartons[0].shipCity, cartons[0].shipState) : "—",
+      destination: tms ? place(tms.destFacility, tms.destCity, tms.destState) : live[0] ? place(live[0].destFacility, live[0].destCity, live[0].destState) : shipTo ? place(shipTo.facility, shipTo.city, shipTo.state) : "—",
       origin: tms ? place(tms.originFacility, tms.originCity, tms.originState) : live[0] ? place(live[0].originFacility, live[0].originCity, live[0].originState) : "—",
       warehouses: warehousesOf(cartons, data.warehouses ?? []),
       channels: channelsOf(cartons, data.channels ?? []),
@@ -404,7 +426,8 @@ export function buildLogistics(input: LogisticsData, today: string) {
         ? { facility: tms.destFacility, city: tms.destCity, state: tms.destState }
         : live[0]
           ? { facility: live[0].destFacility, city: live[0].destCity, state: live[0].destState }
-          : { facility: null, city: cartons[0]?.shipCity ?? null, state: cartons[0]?.shipState ?? null },
+          : { facility: shipTo?.facility ?? null, city: shipTo?.city ?? null, state: shipTo?.state ?? null },
+      shipTo,
       flags: flags.sort(bySeverity),
     };
   });
@@ -431,7 +454,7 @@ export function buildLogistics(input: LogisticsData, today: string) {
         if (tms && isCanceled(tms.status) && !isCanceled(s.status)) flags.push(flag("CANCELED_SHIPPED", `PO ${po} on this shipment is ${tms.status} in TMS.`));
         const byIssue = poByNumber.get(po)?.flags.find((f) => f.code === "CANCELED_BY_ISSUE");
         if (byIssue && !isCanceled(s.status)) flags.push({ ...byIssue, message: `PO ${po}: ${byIssue.message}` });
-        for (const f of poByNumber.get(po)?.flags ?? []) if (["WRONG_DESTINATION", "SUSPECT_TMS_ID", "TMS_ID_MISMATCH", "ORIGIN_MISMATCH", "SHIPPED_AFTER_PICKUP"].includes(f.code) && !flags.some((x) => x.message === f.message)) flags.push({ ...f, message: `PO ${po}: ${f.message}` });
+        for (const f of poByNumber.get(po)?.flags ?? []) if (["WRONG_DESTINATION", "SHIP_TO_MISMATCH", "SUSPECT_TMS_ID", "TMS_ID_MISMATCH", "ORIGIN_MISMATCH", "SHIPPED_AFTER_PICKUP"].includes(f.code) && !flags.some((x) => x.message === f.message)) flags.push({ ...f, message: `PO ${po}: ${f.message}` });
       }
       // Every one of our POs on it canceled through the Issue Log: the shipment is canceled too,
       // whatever TMS still says, and its lateness flags no longer apply
@@ -613,7 +636,7 @@ export function filterPos(pos: PoView[], f: PoFilters, today?: string): PoView[]
     if (!matchesWarehouse(p.warehouses, f.wh)) return false;
     if (!matchesChannel(p.channels, f.ch)) return false;
     if (!q) return true;
-    const hay = [p.poNumber, p.destination, p.origin, ...p.wmsTms, ...p.ups, ...p.pros, ...p.shipments.map((s) => s.shipmentNumber), ...p.cartons.map((c) => c.orderNum), ...p.cartons.map((c) => c.label)].join(" ").toUpperCase();
+    const hay = [p.poNumber, p.destination, p.origin, p.shipTo?.facility ?? "", p.shipTo?.name ?? "", ...(p.shipTo?.street ?? []), ...p.wmsTms, ...p.ups, ...p.pros, ...p.shipments.map((s) => s.shipmentNumber), ...p.cartons.map((c) => c.orderNum), ...p.cartons.map((c) => c.label)].join(" ").toUpperCase();
     return hay.includes(q);
   });
 }

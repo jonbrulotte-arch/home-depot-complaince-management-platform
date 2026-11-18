@@ -183,6 +183,11 @@ export interface WmsRow {
   quantity: number | null;
   poNumber: string;
   shippedAt: Date;
+  shipTo: string | null;
+  shipName: string | null;
+  shipAddress1: string | null;
+  shipAddress2: string | null;
+  shipAddress3: string | null;
   shipCity: string | null;
   shipState: string | null;
   shipZip: string | null;
@@ -256,6 +261,11 @@ export function wmsRows(rows: string[][], headerIndex: number): Parsed<WmsRow> {
       quantity: Number.isFinite(qty) && pick(r, "quantity", "qty") !== "" ? Math.round(qty) : null,
       poNumber: po,
       shippedAt,
+      shipTo: opt(pick(r, "shipto")),
+      shipName: opt(pick(r, "shipname")),
+      shipAddress1: opt(pick(r, "shipadd1", "shipaddress1")),
+      shipAddress2: opt(pick(r, "shipadd2", "shipaddress2")),
+      shipAddress3: opt(pick(r, "shipadd3", "shipaddress3")),
       shipCity: opt(pick(r, "shipcity")),
       shipState: opt(pick(r, "shipprov", "shipstate")),
       shipZip: opt(pick(r, "shipzip")),

@@ -143,7 +143,7 @@ export async function reviewLogistics(items: { key: string; poNumber: string; po
           product: c.product,
           quantity: c.quantity,
           shippedAt: c.shippedAt.toISOString(),
-          shipTo: [c.shipCity, c.shipState, c.shipZip].filter(Boolean).join(", "),
+          shipTo: [c.shipTo ? `#${c.shipTo}` : null, c.shipAddress1, c.shipCity, c.shipState, c.shipZip].filter(Boolean).join(", "),
         })),
         parcels: p.parcels.map((x) => ({
           number: x.trackingNumber,

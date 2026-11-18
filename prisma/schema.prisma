@@ -941,6 +941,12 @@ model WmsCarton {
   poNumber       String
   /// Warehouse wall-clock time, stored as UTC like other imported timestamps
   shippedAt      DateTime
+  /// The WMS ship-to: THD's Store/DC number (ship_to), name and street lines (ship_add1–3)
+  shipTo         String?
+  shipName       String?
+  shipAddress1   String?
+  shipAddress2   String?
+  shipAddress3   String?
   shipCity       String?
   shipState      String?
   shipZip        String?

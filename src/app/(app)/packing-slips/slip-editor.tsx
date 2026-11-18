@@ -201,7 +201,7 @@ export function SlipEditor({ warehouses, initialPo, initial }: { warehouses: War
         <Card>
           <CardHeader>
             <CardTitle>Ship To</CardTitle>
-            <CardDescription>The address you enter is saved for the Store/DC # when you download, and filled in on its next slip.</CardDescription>
+            <CardDescription>Filled in from the WMS ship-to (Store/DC #, name and address). An address you type is saved for the Store/DC # when you download, for slips the WMS has no address for.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <Field id="slip-facility" title="Store / DC #">

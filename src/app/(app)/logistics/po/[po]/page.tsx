@@ -17,6 +17,7 @@ import { LogisticsNotes } from "@/components/logistics/notes";
 import { ComplianceCard, IssuesCard } from "@/components/logistics/related";
 import { EmailsCard } from "@/components/logistics/emails";
 import { warehouseNames } from "@/lib/logistics/warehouses";
+import { addressLines } from "@/lib/logistics/ship-to";
 import { Section, Table, n } from "@/app/(app)/insights/ui";
 import { UpsRefreshButton } from "../../ups-refresh-button";
 import { Dates, Route } from "../../sections";
@@ -129,12 +130,26 @@ export default async function LogisticsPoPage({ params }: { params: Promise<{ po
                 { header: "Tracking", cell: (c) => { const r = cartonRefs(c.trackingNumber, c.secondTrack); return r.ups ? <UpsLink number={r.ups} /> : <span className="font-mono text-xs">{[c.trackingNumber, c.secondTrack !== c.trackingNumber ? c.secondTrack : null].filter(Boolean).join(" / ") || "—"}</span>; } },
                 { header: "Product", cell: (c) => c.product ?? "—" },
                 { header: "Qty", cell: (c) => (c.quantity === null ? "—" : n(c.quantity)), align: "right" },
-                { header: "Shipped / ship-to", cell: (c) => <span className="block text-xs"><span className="block whitespace-nowrap text-gray-900">{formatUtcDateTime(c.shippedAt)}</span><span className="text-gray-500">{[c.shipCity, c.shipState, c.shipZip].filter(Boolean).join(", ") || "—"}</span></span> },
+                { header: "Shipped / ship-to", cell: (c) => <span className="block text-xs"><span className="block whitespace-nowrap text-gray-900">{formatUtcDateTime(c.shippedAt)}</span><span className="text-gray-500">{[c.shipTo ? `#${c.shipTo}` : null, c.shipCity, c.shipState, c.shipZip].filter(Boolean).join(", ") || "—"}</span></span> },
               ]}
             />
           </Section>
         </div>
         <div className="space-y-6">
+          {p.shipTo && (
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle>Ship-to (WMS)</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-0.5 text-sm text-gray-700">
+                {p.shipTo.facility && <p className="font-medium text-gray-900">Store/DC #{p.shipTo.facility}</p>}
+                {p.shipTo.name && <p>{p.shipTo.name}</p>}
+                {addressLines(p.shipTo).map((line) => (
+                  <p key={line}>{line}</p>
+                ))}
+              </CardContent>
+            </Card>
+          )}
           {canIssues && <IssuesCard issues={issues.get(po) ?? []} newIssuePo={po} canManage={user.permissions.has("issues.manage")} />}
           <EmailsCard po={po} tz={tz} />
           <ComplianceCard rows={compliance.get(po) ?? []} canOpen={user.permissions.has("view.polookup")} />

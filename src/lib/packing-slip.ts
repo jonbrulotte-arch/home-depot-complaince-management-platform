@@ -104,9 +104,7 @@ export function destinationName(facility: string | null, channelCode: string | n
 }
 
 /** "DALLAS, TX 75241" from the WMS ship-to */
-export function cityLine(city: string | null, state: string | null, zip: string | null): string {
-  return [[city, state].filter(Boolean).join(", "), zip].filter(Boolean).join(" ");
-}
+export { cityLine } from "@/lib/logistics/ship-to";
 
 /** Whether a dispute reason code's documents include a packing slip (THD calls it a "packing list") */
 export function needsPackingSlip(...docs: (string | null | undefined)[]): boolean {

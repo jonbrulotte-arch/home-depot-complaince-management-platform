@@ -17,7 +17,7 @@ export const loadLogistics = cache(async () => {
   const [cartons, shipments, pos, parcels, carriers, today, imports, noteCounts, warehouses, channels] = await Promise.all([
     prisma.wmsCarton.findMany({
       orderBy: { lineKey: "asc" },
-      select: { lineKey: true, label: true, poNumber: true, orderNum: true, orderNumber: true, customer: true, trackingNumber: true, secondTrack: true, product: true, quantity: true, shippedAt: true, shipCity: true, shipState: true, shipZip: true },
+      select: { lineKey: true, label: true, poNumber: true, orderNum: true, orderNumber: true, customer: true, trackingNumber: true, secondTrack: true, product: true, quantity: true, shippedAt: true, shipTo: true, shipName: true, shipAddress1: true, shipAddress2: true, shipAddress3: true, shipCity: true, shipState: true, shipZip: true },
     }),
     prisma.tmsShipment.findMany({
       select: {
