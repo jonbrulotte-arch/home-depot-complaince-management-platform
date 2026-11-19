@@ -7,7 +7,7 @@ import { issuesForPoNumbers, type IssueSummary } from "@/lib/issues-data";
 import { loadLogistics, scacLink } from "@/lib/logistics/data";
 import { complianceForPos } from "@/lib/logistics/links";
 import { cartonRefs } from "@/lib/logistics/refs";
-import { formatUtcDateTime } from "@/lib/utils";
+import { formatDate, formatUtcDateTime } from "@/lib/utils";
 import { StatTiles } from "@/components/analytics/stat-tiles";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -23,7 +23,7 @@ import { getTimeZone } from "@/lib/time-zone-server";
 export default async function LogisticsShipmentPage({ params }: { params: Promise<{ number: string }> }) {
   const user = await requirePagePermission("logistics.view");
   const number = decodeURIComponent((await params).number).trim();
-  const l = await loadLogistics();
+  const [l, tz] = await Promise.all([loadLogistics(), getTimeZone()]);
   const s = l.shipments.find((x) => x.shipmentNumber === number);
   if (!s) notFound();
   const canIssues = user.permissions.has("issues.view");
@@ -102,7 +102,19 @@ export default async function LogisticsShipmentPage({ params }: { params: Promis
               empty="TMS lists no POs on this shipment."
               cols={[
                 { header: "PO #", cell: (po) => (poViews.has(po) ? <PoLink po={po} /> : <span className="text-gray-500">{po}</span>) },
-                { header: "Status", cell: (po) => (poViews.get(po) ? <PoStatusBadge status={poViews.get(po)!.status} /> : <span className="text-xs text-gray-400">Other supplier</span>) },
+                {
+                  header: "Status",
+                  cell: (po) => {
+                    const v = poViews.get(po);
+                    if (!v) return <span className="text-xs text-gray-400">Other supplier</span>;
+                    return (
+                      <>
+                        <PoStatusBadge status={v.status} />
+                        {v.asn?.status === "SHIPPED" && <AsnBadge date={v.asn.confirmedAt ? formatDate(v.asn.confirmedAt, tz) : null} />}
+                      </>
+                    );
+                  },
+                },
                 { header: "TMS PO", cell: (po) => poViews.get(po)?.tms?.status ?? "—" },
                 { header: "Cartons", cell: (po) => (poViews.get(po)?.cartonCount ? n(poViews.get(po)!.cartonCount) : "—"), align: "right" },
                 { header: "Flags", cell: (po) => (poViews.get(po) ? <FlagBadges flags={poViews.get(po)!.flags} /> : "") },
@@ -144,7 +156,7 @@ export default async function LogisticsShipmentPage({ params }: { params: Promis
           </Section>
         </div>
         <div className="space-y-6">
-          <EmailsCard shipment={number} tz={await getTimeZone()} />
+          <EmailsCard shipment={number} tz={tz} />
           {canIssues && (
             <IssuesCard
               issues={[
