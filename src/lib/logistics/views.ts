@@ -104,6 +104,7 @@ export const FLAGS = {
   CHECK_PLANEX: { severity: "high", label: "Check destination in PlanEx" },
   CROSSDOCK: { severity: "info", label: "Crossdock (IFC)" },
   ASN_RECEIVED: { severity: "info", label: "ASN received (POM)" },
+  ASN_MISSING: { severity: "medium", label: "ASN missing" },
   DATES_REVERSED: { severity: "info", label: "Delivery before pickup" },
   TMS_FLAGGED: { severity: "info", label: "TMS errors or alerts" },
 } as const satisfies Record<string, { severity: Severity; label: string }>;
@@ -390,6 +391,9 @@ export function buildLogistics(input: LogisticsData, today: string) {
     else if (typo) flags.push(flag("CITY_SPELLING", `The WMS ship-to city is "${typo.shipCity}", TMS has "${tms?.destCity ?? live[0]?.destCity}" for DC ${dc}: likely a typo in the WMS ship-to address.`));
     const asn = asnBy.get(bareNumber(poNumber));
     if (asn?.status === "SHIPPED") flags.push(flag("ASN_RECEIVED", `Confirmed shipped in POM (Supplier Hub)${asn.confirmedAt ? ` on ${isoDate(asn.confirmedAt)}` : ""}: THD has the ASN.`));
+    // Shipped in the WMS but not confirmed in POM (not for canceled POs)
+    else if (cartons.length && !canceledBy && !(tms && isCanceled(tms.status)))
+      flags.push(flag("ASN_MISSING", `The WMS shipped this PO on ${isoDate(firstShipped!)}, but it isn't marked ASN received. Check POM in Supplier Hub that THD shows it shipped, then set it to Shipped in the ASN/Shipped Confirmation file and import it.`));
     if (tms?.originFacility) {
       const other = live.find((s) => s.originFacility && norm(s.originFacility) !== norm(tms.originFacility) && norm(s.originFacility).slice(0, 6) === norm(tms.originFacility).slice(0, 6));
       if (other) flags.push(flag("ORIGIN_MISMATCH", `The PO ships from ${place(tms.originFacility, tms.originCity, tms.originState)} in TMS, but shipment ${other.shipmentNumber} left ${place(other.originFacility, other.originCity, other.originState)}.`));
@@ -486,6 +490,9 @@ export function buildLogistics(input: LogisticsData, today: string) {
       const ours = s.poNumbers.filter(isOurs);
       const canceledByIssue = !isCanceled(s.status) && ours.length > 0 && ours.every((po) => poByNumber.get(po)?.flags.some((f) => f.code === "CANCELED_BY_ISSUE"));
       const asnCount = ours.filter((po) => asnReceived(poByNumber.get(po)?.asn)).length;
+      const asnMissing = isCanceled(s.status) || canceledByIssue ? [] : ours.filter((po) => poByNumber.get(po)?.flags.some((f) => f.code === "ASN_MISSING"));
+      if (asnMissing.length)
+        flags.push(flag("ASN_MISSING", `${asnMissing.length === 1 ? `PO ${asnMissing[0]} was` : `POs ${asnMissing.join(", ")} were`} shipped in the WMS but ${asnMissing.length === 1 ? "isn't" : "aren't"} marked ASN received. Check POM in Supplier Hub, then import the ASN/Shipped Confirmation file.`));
       if (ours.length && asnCount === ours.length) flags.push(flag("ASN_RECEIVED", ours.length === 1 ? `PO ${ours[0]} is confirmed shipped in POM: THD has the ASN.` : `All ${ours.length} of our POs on it are confirmed shipped in POM: THD has the ASNs.`));
       return {
         ...s,

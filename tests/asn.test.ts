@@ -66,6 +66,23 @@ describe("ASN/Shipped Confirmation", () => {
   });
 });
 
+describe("ASN missing", () => {
+  it("flags POs shipped in the WMS without ASN received, and their shipments, until confirmed", async () => {
+    const base = await sample();
+    const shipped = base.pos.filter((p) => p.cartonCount && p.status !== "Canceled");
+    expect(shipped.length).toBeGreaterThan(0);
+    for (const p of shipped) expect(p.flags.find((f) => f.code === "ASN_MISSING")?.severity).toBe("medium");
+    // Not shipped in the WMS (or canceled): no flag
+    for (const p of base.pos.filter((x) => !x.cartonCount || x.status === "Canceled")) expect(p.flags.some((f) => f.code === "ASN_MISSING")).toBe(false);
+    const ship = base.shipments.find((s) => s.ourPos.some((po) => shipped.some((p) => p.poNumber === po)) && s.status !== "Canceled")!;
+    expect(ship.flags.some((f) => f.code === "ASN_MISSING")).toBe(true);
+
+    const confirmed = await sample(ship.ourPos.map((po) => ({ poNumber: po, status: "SHIPPED" as const, confirmedAt: null })));
+    for (const po of ship.ourPos) expect(confirmed.pos.find((p) => p.poNumber === po)!.flags.some((f) => f.code === "ASN_MISSING")).toBe(false);
+    expect(confirmed.shipments.find((s) => s.shipmentNumber === ship.shipmentNumber)!.flags.some((f) => f.code === "ASN_MISSING")).toBe(false);
+  });
+});
+
 describe("Shipments tab filters", () => {
   it("searches by shipment, PO and city, and filters by status, flag and pickup date", async () => {
     const { shipments } = await sample();
