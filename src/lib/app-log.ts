@@ -16,7 +16,7 @@ export const ACTION_LABELS: Record<string, string> = {
   "report.purge": "Purged a program's imports",
   "reports.historical": "Created historical reports",
   "import.confirm": "Imported an SPM export",
-  "line.review": "Reviewed a line",
+  "line.review": "Reviewed a line (the details list what changed: decision, team, root cause, notes)",
   "period.disputeWindow": "Changed a dispute window",
   "dispute.update": "Updated a dispute",
   "dispute.status": "Changed a dispute's status",

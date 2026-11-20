@@ -23,7 +23,7 @@ export async function PUT(req: Request, { params }: IdParams) {
   const body = await parseJson(req, reviewSchema);
   if (body.error) return body.error;
 
-  const line = await prisma.complianceLine.findUnique({ where: { id }, select: { id: true, metricId: true, review: { select: { teamInfluence: true } } } });
+  const line = await prisma.complianceLine.findUnique({ where: { id }, select: { id: true, metricId: true, poNumber: true, review: { select: { disposition: true, teamInfluence: true, rootCause: true, notes: true } } } });
   if (!line) return notFound("Line not found");
   if (body.data.teamInfluence && !(await isAssignableTeam(body.data.teamInfluence, line.review?.teamInfluence))) return badRequest("Unknown or inactive team");
   const { reasonCodeId, ...rest } = body.data;
@@ -42,6 +42,13 @@ export async function PUT(req: Request, { params }: IdParams) {
     reviewedAt: new Date(),
   };
   const review = await prisma.lineReview.upsert({ where: { lineId: id }, update: data, create: { ...data, lineId: id } });
-  await audit(guard.user.id, "line.review", "ComplianceLine", id, { disposition: review.disposition });
+  // What changed, so the App Log shows when a root cause, team or notes were set or cleared
+  const before = line.review;
+  const changed = Object.fromEntries(
+    (["disposition", "teamInfluence", "rootCause", "notes"] as const)
+      .filter((k) => (before?.[k] ?? null) !== (review[k] ?? null))
+      .map((k) => [k, { from: before?.[k] ?? null, to: review[k] ?? null }]),
+  );
+  await audit(guard.user.id, "line.review", "ComplianceLine", id, { poNumber: line.poNumber, disposition: review.disposition, changed });
   return NextResponse.json({ review });
 }

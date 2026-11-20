@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { ChevronDown, ChevronRight, Plus, X } from "lucide-react";
 import Link from "next/link";
 import type { DisputeStatus, Disposition } from "@prisma/client";
@@ -24,6 +24,14 @@ export interface TriageReview {
   notes: string | null;
   extraFields: Record<string, string>;
 }
+
+/** A review as it would be saved, for telling whether the form has unsaved changes */
+function reviewKey(r: TriageReview, extras: [string, string][]) {
+  const t = (v: string | null) => (v ?? "").trim();
+  return JSON.stringify([r.disposition, r.teamInfluence ?? "", r.reasonCodeId ?? "", t(r.rootCause), t(r.notes), extras.filter(([k]) => k.trim()).map(([k, v]) => [k.trim(), v.trim()])]);
+}
+
+const EMPTY_REVIEW: TriageReview = { disposition: "PENDING", teamInfluence: null, reasonCodeId: null, rootCause: null, notes: null, extraFields: {} };
 
 export interface TriageLine {
   id: string;
@@ -108,14 +116,23 @@ export function TriageWorkspace({
   const [researchTab, setResearchTab] = useState<ResearchTab>("logistics");
   const group = groups.find((g) => g.key === groupKey) ?? groups[0];
   const visible = (group?.ids ?? []).map((id) => byId.get(id)!).filter((l) => !onlyOpen || !isDone(l));
-  const [selectedId, setSelectedId] = useState<string | null>(visible[0]?.id ?? null);
+  const [selectedId, setSelected] = useState<string | null>(visible[0]?.id ?? null);
   const selected = selectedId ? byId.get(selectedId) ?? null : null;
+  // Whether the open line has edits not saved yet: switching lines would drop them
+  const dirty = useRef(false);
+  const leaveLine = () => !dirty.current || window.confirm(`PO ${selected?.poNumber ?? "—"} has changes that aren't saved. Discard them?`);
+  const setSelectedId = (id: string | null) => {
+    if (id === selectedId || !leaveLine()) return;
+    dirty.current = false;
+    setSelected(id);
+  };
 
   if (!lines.length) {
     return <div className="p-6 text-sm text-gray-500">No non-compliant lines for this period. Import data from the report page first.</div>;
   }
 
   function selectGroup(key: string) {
+    if (!leaveLine()) return;
     setGroupKey(key);
     const first = groups.find((g) => g.key === key)?.ids.map((id) => byId.get(id)!).find((l) => !onlyOpen || !isDone(l));
     setSelectedId(first?.id ?? null);
@@ -131,7 +148,8 @@ export function TriageWorkspace({
       const line = updated.find((l) => l.id === other)!;
       return !isDone(line);
     });
-    if (next) setSelectedId(next);
+    dirty.current = false;
+    if (next) setSelected(next);
   }
 
   const doneCount = lines.filter(isDone).length;
@@ -198,6 +216,7 @@ export function TriageWorkspace({
             reportId={reportId}
             canEdit={canEdit}
             onSaved={onSaved}
+            dirtyRef={dirty}
             teams={teams}
             research={
               <ResearchPanel
@@ -229,6 +248,7 @@ function LineDetail({
   onSaved,
   teams,
   research,
+  dirtyRef,
 }: {
   line: TriageLine;
   reasonCodes: ReasonCode[];
@@ -238,6 +258,8 @@ function LineDetail({
   canEdit: boolean;
   onSaved: (id: string, review: TriageReview, advance: boolean) => void;
   teams: TeamOption[];
+  /** Set while the form has unsaved changes, so the workspace can warn before switching lines */
+  dirtyRef: React.MutableRefObject<boolean>;
 }) {
   const [review, setReview] = useState<TriageReview>(
     line.review ?? { disposition: "PENDING", teamInfluence: null, reasonCodeId: null, rootCause: null, notes: null, extraFields: {} },
@@ -246,7 +268,18 @@ function LineDetail({
   const [showRaw, setShowRaw] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [savedAt, setSavedAt] = useState<number | null>(null);
   const reason = reasonCodes.find((r) => r.id === review.reasonCodeId);
+  const saved = line.review ?? EMPTY_REVIEW;
+  const unsaved = canEdit && reviewKey(review, extras) !== reviewKey(saved, Object.entries(saved.extraFields));
+  useEffect(() => {
+    dirtyRef.current = unsaved;
+    if (!unsaved) return;
+    // Leaving or reloading the page would drop the edits too
+    const warn = (e: BeforeUnloadEvent) => e.preventDefault();
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [unsaved, dirtyRef]);
 
   async function save(advance: boolean) {
     setSaving(true);
@@ -264,7 +297,8 @@ function LineDetail({
           extraFields,
         },
       });
-      onSaved(line.id, { ...review, extraFields }, advance);
+      setSavedAt(Date.now());
+      onSaved(line.id, { ...review, rootCause: review.rootCause?.trim() || null, notes: review.notes?.trim() || null, extraFields }, advance);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not save");
     } finally {
@@ -422,7 +456,12 @@ function LineDetail({
 
         {error && <div className="rounded-lg bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700">{error}</div>}
         {canEdit && (
-          <div className="flex justify-end gap-2">
+          <div className="flex items-center justify-end gap-2">
+            {unsaved ? (
+              <span className="mr-auto rounded-md border border-amber-200 bg-amber-50 px-2 py-1 text-xs text-amber-800">Unsaved changes: click Save before moving on, or they will be lost.</span>
+            ) : (
+              savedAt && <span className="mr-auto text-xs text-green-700">Saved. Regenerate the scorecard to show it there.</span>
+            )}
             <Button variant="outline" onClick={() => save(false)} disabled={saving}>{saving ? "Saving…" : "Save"}</Button>
             <Button onClick={() => save(true)} disabled={saving}>{saving ? "Saving…" : "Save & next"}</Button>
           </div>

@@ -162,7 +162,7 @@ export const HELP_TOPICS: HelpTopic[] = [
           "Set the **Team influence** (Warehouse Site 0 or Site 3, Customer Service, EDI, Ecomm, Carrier, THD and so on).",
           "Add the **Root cause**, **Notes** and any extra research fields.",
           "For a Disputable line, pick the **Dispute reason code**.",
-          "Click **Save & next**.",
+          "Click **Save & next** (or **Save**). Nothing is saved until you do: while a line has unsaved changes, a warning shows beside the buttons, and switching lines or leaving the page asks first. Changes to a review reach the scorecard when it is regenerated.",
         ],
       },
       {
