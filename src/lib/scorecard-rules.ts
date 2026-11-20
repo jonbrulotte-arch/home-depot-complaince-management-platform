@@ -99,6 +99,40 @@ export function feedbackText(notes: { author: string | null; body: string; creat
     .join("\n");
 }
 
-export function rootCauseAndNotes(v: { rootCause?: string | null; notes: string | null }): string {
-  return [v.rootCause?.trim() ? `Root cause: ${v.rootCause.trim()}` : null, v.notes?.trim() || null].filter(Boolean).join("\n");
+export function rootCauseAndNotes(v: { rootCause?: string | null; notes: string | null; disputeNote?: string | null }): string {
+  return [v.rootCause?.trim() ? `Root cause: ${v.rootCause.trim()}` : null, v.notes?.trim() || null, v.disputeNote?.trim() || null].filter(Boolean).join("\n");
+}
+
+/** The scorecard's pending disputes line: those awaiting our documentation and those awaiting THD */
+export function pendingDisputesText(t: { pendingDisputes: number; preparingDisputes?: number }): string {
+  const preparing = t.preparingDisputes ?? 0;
+  const submitted = t.pendingDisputes - preparing;
+  return [
+    preparing > 0 ? `${preparing} dispute(s) pending documentation from our teams (noted on each violation); regenerate the scorecard once they are submitted.` : null,
+    submitted > 0 ? `${submitted} dispute(s) await THD's decision.` : null,
+    "Post-dispute figures assume pending disputes are not approved.",
+  ]
+    .filter(Boolean)
+    .join(" ");
+}
+
+export const PENDING_DOCUMENTATION = "Dispute pending documentation from our teams to complete.";
+
+/**
+ * The scorecard's note for a dispute still being prepared (Preparing or Ready): pending documentation
+ * from our teams, what the checklist still needs, and the dispute's latest notes. Null once submitted.
+ */
+export function pendingDisputeNote(d: { status: string; checklist: unknown; notes: string[] }): string | null {
+  if (d.status !== "PREPARING" && d.status !== "READY") return null;
+  const open = Array.isArray(d.checklist)
+    ? d.checklist.filter((i): i is { label: string; done?: boolean } => Boolean(i && typeof i === "object" && "label" in i && typeof i.label === "string") && !(i as { done?: boolean }).done).map((i) => i.label.trim())
+    : [];
+  const notes = d.notes.map((n) => n.trim()).filter(Boolean);
+  return [
+    PENDING_DOCUMENTATION,
+    open.length ? `Still needed: ${open.join("; ")}.` : d.status === "READY" ? "Documents ready; to be submitted in SPM." : null,
+    notes.length ? `Dispute notes: ${notes.join(" | ")}` : null,
+  ]
+    .filter(Boolean)
+    .join("\n");
 }

@@ -1,6 +1,6 @@
 import PDFDocument from "pdfkit";
 import type { ScorecardData } from "@/lib/scorecard";
-import { feedbackText, rootCauseAndNotes, shipmentRows } from "@/lib/scorecard-rules";
+import { feedbackText, rootCauseAndNotes, shipmentRows, pendingDisputesText } from "@/lib/scorecard-rules";
 import { DISPUTE_STATUS_LABELS } from "@/lib/disputes";
 import { DEFAULT_SITE_NAME } from "@/lib/brand";
 import { formatDateRange, SHIPMENT_RANGES } from "@/lib/shipment-ranges";
@@ -119,7 +119,7 @@ export function scorecardPdf(data: ScorecardData, status: { version: number; pub
     doc.font("Helvetica").fontSize(8.5).fillColor(C.muted).text("Historical: built from the archived SPM exports. Violations were accepted as THD reported them; post-dispute amounts marked * come from THD's own summary.");
   }
   if (data.totals.pendingDisputes > 0) {
-    doc.font("Helvetica").fontSize(8.5).fillColor(C.amber).text(`${data.totals.pendingDisputes} dispute(s) await THD's decision; post-dispute figures assume they are not approved.`);
+    doc.font("Helvetica").fontSize(8.5).fillColor(C.amber).text(pendingDisputesText(data.totals));
   }
 
   // Shipments

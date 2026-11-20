@@ -80,7 +80,7 @@ export const HELP_TOPICS: HelpTopic[] = [
         steps: [
           "**Import data** (Draft): create the report, import each program's SPM exports, and enter line counts, Package IDs and shipment counts. Then **Start review**.",
           "**Review violations** (In Review): give every non-compliant line a decision. When none is left undecided, click **Ready for disputes**.",
-          "**Disputes**: a dispute is created for every line marked Disputable. Prepare and submit each in SPM. Once every dispute is submitted or withdrawn, click **Generate scorecard**.",
+          "**Disputes**: a dispute is created for every line marked Disputable. Prepare and submit each in SPM, then click **Generate scorecard**. Disputes still being prepared don't hold it back: the scorecard notes each one as **pending documentation from our teams**, with what its checklist still needs and its latest notes, and says how many are pending. Keep working them on the Disputes page, then click **Regenerate** on the scorecard (before publishing, or **Unpublish** first) to bring in the submitted disputes and decisions.",
           "**Scorecard**: check the scorecard, record THD's decisions as they arrive and **Regenerate** it, then **Publish scorecard**.",
           "**Published**: the scorecard is frozen, shared through its public link, and opens for warehouse feedback.",
         ],

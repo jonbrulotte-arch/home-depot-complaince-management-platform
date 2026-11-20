@@ -2,7 +2,7 @@ import { Fragment } from "react";
 import Link from "next/link";
 import { CheckCircle2, ExternalLink, MessageSquare, NotebookPen, Truck, XCircle } from "lucide-react";
 import type { ScorecardData, ScorecardShipments } from "@/lib/scorecard";
-import { shipmentRows } from "@/lib/scorecard-rules";
+import { shipmentRows, pendingDisputesText } from "@/lib/scorecard-rules";
 import { formatDateRange, SHIPMENT_RANGES } from "@/lib/shipment-ranges";
 import { DISPUTE_STATUS_LABELS } from "@/lib/disputes";
 import { cn, formatCurrency, formatDate, formatPct, formatUtcDate } from "@/lib/utils";
@@ -57,7 +57,7 @@ export function ScorecardView({ data, showViolations = true, tz }: { data: Score
       )}
       {data.totals.pendingDisputes > 0 && (
         <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
-          {data.totals.pendingDisputes} dispute(s) await THD&apos;s decision; post-dispute figures assume they are not approved.
+          {pendingDisputesText(data.totals)}
         </p>
       )}
 
@@ -197,6 +197,7 @@ export function ScorecardView({ data, showViolations = true, tz }: { data: Score
                           <td className={cn(td, "max-w-xs text-xs text-gray-600 whitespace-pre-wrap")}>
                             {v.rootCause && <div className="font-medium text-gray-800">{v.rootCause}</div>}
                             {v.notes}
+                            {v.disputeNote && <div className="mt-1 rounded border border-amber-200 bg-amber-50 px-2 py-1 text-amber-800">{v.disputeNote}</div>}
                           </td>
                         </tr>
                         {(v.logistics || v.issues?.length) && (

@@ -50,15 +50,8 @@ export async function PATCH(req: Request, { params }: IdParams) {
       });
       if (pending) return badRequest(`${pending} non-compliant line(s) still need a decision`);
     }
-    if (status === "SCORECARD" && report.status === "DISPUTES") {
-      const unsubmitted = await prisma.dispute.count({
-        where: {
-          status: { in: ["PREPARING", "READY"] },
-          line: { ...inPeriod, metric: { programId: { in: report.programs.map((p) => p.programId) } } },
-        },
-      });
-      if (unsubmitted) return badRequest(`${unsubmitted} dispute(s) are not submitted yet; submit or withdraw them first`);
-    }
+    // Disputes still being prepared don't hold the scorecard back: the scorecard notes them as pending
+    // documentation, and is regenerated once they are submitted or decided
   }
 
   const updated = await prisma.complianceReport.update({

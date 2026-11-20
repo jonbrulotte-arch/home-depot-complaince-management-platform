@@ -4,7 +4,7 @@ import { getPeriodField, linesInPeriod, periodOf, type PeriodField } from "@/lib
 import { fiscalLabel, shiftFiscalMonth } from "@/lib/fiscal";
 import { getMetricStats } from "@/lib/reports";
 import { getLineCounts } from "@/lib/line-counts";
-import { meetsGoal } from "@/lib/scorecard-rules";
+import { meetsGoal, pendingDisputeNote } from "@/lib/scorecard-rules";
 import { getShipmentInputs, type ShipmentInput } from "@/lib/shipments";
 import { reportShipmentRanges, SHIPMENT_RANGES, type ShipmentRanges } from "@/lib/shipment-ranges";
 import { teamNames } from "@/lib/teams";
@@ -54,6 +54,8 @@ export interface ScorecardViolation {
   /** Root cause from the violation review; absent on scorecards generated before it was included */
   rootCause?: string | null;
   notes: string | null;
+  /** A dispute still being prepared: pending documentation from our teams, what is still needed and its notes */
+  disputeNote?: string | null;
   /** Scorecard Feedback on this line, added when the scorecard is shown (`withFeedback`); never stored in the snapshot */
   feedback?: ScorecardFeedbackNote[];
   /** Logistics for the PO, added when an in-app scorecard is shown (`withPoContext`); never stored */
@@ -118,6 +120,8 @@ export interface ScorecardData {
     deniedAmount: number;
     pendingAmount: number;
     pendingDisputes: number;
+    /** Disputes still being prepared (pending documentation from our teams); absent on older scorecards */
+    preparingDisputes?: number;
   };
   /** Absent on scorecards generated before shipment counts existed */
   shipments?: ScorecardShipments;
@@ -146,7 +150,7 @@ export async function buildScorecard(reportId: string): Promise<ScorecardData> {
     getLineCounts(reportId).then((lineCounts) => getMetricStats(programIds, fiscalMonth, lineCounts)),
     prisma.complianceLine.findMany({
       where: { ...inReport, isCompliant: false },
-      include: { metric: { include: { program: true } }, review: true, dispute: { include: { reasonCode: { select: { code: true } } } } },
+      include: { metric: { include: { program: true } }, review: true, dispute: { include: { reasonCode: { select: { code: true } }, events: { where: { type: "NOTE" }, orderBy: { at: "desc" }, take: 3, select: { body: true } } } } },
       orderBy: [{ metric: { program: { sortOrder: "asc" } } }, { metric: { sortOrder: "asc" } }, { poNumber: "asc" }],
     }),
     prisma.importBatch.aggregate({ _max: { importedAt: true }, where: { lines: { some: inReport } } }),
@@ -213,6 +217,7 @@ export async function buildScorecard(reportId: string): Promise<ScorecardData> {
     recovered: l.dispute?.amountRecovered == null ? null : Number(l.dispute.amountRecovered),
     rootCause: l.review?.rootCause ?? null,
     notes: l.review?.notes ?? null,
+    disputeNote: l.dispute ? pendingDisputeNote({ status: l.dispute.status, checklist: l.dispute.checklist, notes: l.dispute.events.map((e) => e.body ?? "").reverse() }) : null,
   }));
 
   const activeDisputes = lines.flatMap((l) => (l.dispute && l.dispute.status !== "WITHDRAWN" ? [l.dispute] : []));
@@ -247,6 +252,7 @@ export async function buildScorecard(reportId: string): Promise<ScorecardData> {
       deniedAmount: sumDisputes(["DENIED"], "amountDisputed"),
       pendingAmount: sumDisputes(["PREPARING", "READY", "SUBMITTED"], "amountDisputed"),
       pendingDisputes: activeDisputes.filter((d) => ["PREPARING", "READY", "SUBMITTED"].includes(d.status)).length,
+      preparingDisputes: activeDisputes.filter((d) => ["PREPARING", "READY"].includes(d.status)).length,
     },
     shipments,
     violations,
