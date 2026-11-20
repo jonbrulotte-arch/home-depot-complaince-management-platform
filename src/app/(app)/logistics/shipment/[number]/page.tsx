@@ -1,0 +1,191 @@
+import Link from "next/link";
+import { notFound } from "next/navigation";
+import { ArrowLeft, ExternalLink } from "lucide-react";
+import { requirePagePermission } from "@/lib/auth-guard";
+import { prisma } from "@/lib/prisma";
+import { issuesForPoNumbers, type IssueSummary } from "@/lib/issues-data";
+import { loadLogistics, scacLink } from "@/lib/logistics/data";
+import { complianceForPos } from "@/lib/logistics/links";
+import { cartonRefs } from "@/lib/logistics/refs";
+import { formatDate, formatUtcDateTime } from "@/lib/utils";
+import { StatTiles } from "@/components/analytics/stat-tiles";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { AsnBadge, FlagBadges, FlagList, PoLink, PoStatusBadge, TmsStatusBadge } from "@/components/logistics/parts";
+import { LogisticsNotes } from "@/components/logistics/notes";
+import { ComplianceCard, IssuesCard } from "@/components/logistics/related";
+import { Section, Table, n } from "@/app/(app)/insights/ui";
+import { EmailsCard } from "@/components/logistics/emails";
+import { warehouseNames } from "@/lib/logistics/warehouses";
+import { getTimeZone } from "@/lib/time-zone-server";
+
+export default async function LogisticsShipmentPage({ params }: { params: Promise<{ number: string }> }) {
+  const user = await requirePagePermission("logistics.view");
+  const number = decodeURIComponent((await params).number).trim();
+  const [l, tz] = await Promise.all([loadLogistics(), getTimeZone()]);
+  const s = l.shipments.find((x) => x.shipmentNumber === number);
+  if (!s) notFound();
+  const canIssues = user.permissions.has("issues.view");
+  const poViews = new Map(l.pos.map((p) => [p.poNumber, p]));
+  const [issues, compliance, notes] = await Promise.all([
+    canIssues ? issuesForPoNumbers(s.ourPos) : new Map<string, IssueSummary[]>(),
+    complianceForPos(s.ourPos),
+    prisma.logisticsNote.findMany({ where: { shipmentNumber: number }, orderBy: { createdAt: "asc" }, include: { author: { select: { name: true } } } }),
+  ]);
+  const link = s.scac ? scacLink(l, s.scac, { shipment: s.shipmentNumber, po: s.ourPos[0], pro: s.pros[0], ups: s.ups[0] }) : null;
+  const carrier = s.scac ? l.carrierBy.get(s.scac) : undefined;
+  const ours = s.ourPos;
+  // The TMS ID the WMS has for a carton (or the malformed one it typed)
+  const wmsId = (c: { trackingNumber: string | null; secondTrack: string | null }) => {
+    const r = cartonRefs(c.trackingNumber, c.secondTrack);
+    return r.tms ?? r.suspectTms ?? null;
+  };
+  const byPo = s.cartons.filter((c) => wmsId(c) !== s.shipmentNumber).length;
+
+  return (
+    <div className="p-6 max-w-7xl mx-auto space-y-6">
+      <Link href="/logistics?tab=shipments" className="inline-flex items-center gap-1 text-sm text-gray-500 hover:text-gray-700">
+        <ArrowLeft className="h-4 w-4" />
+        Logistics
+      </Link>
+      <div className="flex flex-wrap items-center gap-3">
+        <h1 className="text-2xl font-bold text-gray-900">TMS shipment {s.shipmentNumber}</h1>
+        <TmsStatusBadge status={s.status} />
+        {s.asn.total > 0 && s.asn.received === s.asn.total ? <AsnBadge inline /> : s.asn.received > 0 && <span className="text-sm text-gray-500">ASN received for {s.asn.received} of {s.asn.total} POs</span>}
+        {s.tmsStatus && <span className="text-sm text-gray-500">TMS: {s.tmsStatus} (POs canceled in the Issue Log)</span>}
+        {s.warehouses.length > 0 && <span className="text-sm text-gray-500">Shipped from {warehouseNames(s.warehouses)}</span>}
+        {link?.url ? (
+          <Button asChild size="sm" variant="outline">
+            <a href={link.url} target="_blank" rel="noreferrer">
+              Open {carrier?.name ?? s.scac} tracking
+              <ExternalLink className="h-3.5 w-3.5 ml-1.5" />
+            </a>
+          </Button>
+        ) : s.scac && user.permissions.has("logistics.manage") ? (
+          <Button asChild size="sm" variant="ghost">
+            <Link href={`/logistics?tab=carriers&add=${encodeURIComponent(s.scac)}`}>Add a tracking page for {s.scac}</Link>
+          </Button>
+        ) : null}
+      </div>
+      <StatTiles
+        stats={[
+          { label: "Carrier", value: s.scac ?? "None", hint: [carrier ? `${carrier.name}${carrier.mode ? ` · ${carrier.mode}` : ""}${carrier.trackingUrl || s.ups.length ? "" : " · no tracking page"}` : s.scac ? "Not in the carrier list yet" : null, s.tmsScac ? `TMS has ${s.tmsScac}; shipped with UPS numbers` : null].filter(Boolean).join(" · ") || undefined },
+          { label: "Pickup", value: s.pickupLocal ?? "—" },
+          { label: "Delivery", value: s.deliveryLocal ?? "—" },
+          { label: "From", value: [s.originCity, s.originState].filter(Boolean).join(", ") || "—", hint: s.originFacility ?? undefined },
+          { label: "To", value: [s.destCity, s.destState].filter(Boolean).join(", ") || "—", hint: s.destFacility ? `DC ${s.destFacility}` : undefined },
+          { label: "Cartons (WMS)", value: n(s.cartonCount), hint: s.pros.length ? `PRO ${s.pros.join(", ")}` : `${n(s.units)} units` },
+        ]}
+      />
+      {s.appointment && <p className="text-sm text-gray-600">Stops / appointments: {s.appointment}</p>}
+      <div className="grid gap-6 lg:grid-cols-3">
+        <div className="space-y-6 lg:col-span-2">
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle>Flags</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <FlagList flags={s.flags} />
+            </CardContent>
+          </Card>
+          <Section
+            title="Purchase orders"
+            description={
+              s.otherPos.length
+                ? `${ours.length} of ${s.poNumbers.length} are ours. THD books shipments that pick up from several suppliers: POs that appear nowhere else in our data (TMS purchase orders, WMS, THD compliance data or the Issue Log) are other suppliers'.`
+                : undefined
+            }
+          >
+            <Table
+              rows={[...ours, ...s.otherPos]}
+              empty="TMS lists no POs on this shipment."
+              cols={[
+                { header: "PO #", cell: (po) => (poViews.has(po) ? <PoLink po={po} /> : <span className="text-gray-500">{po}</span>) },
+                {
+                  header: "Status",
+                  cell: (po) => {
+                    const v = poViews.get(po);
+                    if (!v) return <span className="text-xs text-gray-400">Other supplier</span>;
+                    return (
+                      <>
+                        <PoStatusBadge status={v.status} />
+                        {v.asn?.status === "SHIPPED" && <AsnBadge date={v.asn.confirmedAt ? formatDate(v.asn.confirmedAt, tz) : null} />}
+                      </>
+                    );
+                  },
+                },
+                { header: "TMS PO", cell: (po) => poViews.get(po)?.tms?.status ?? "—" },
+                { header: "Cartons", cell: (po) => (poViews.get(po)?.cartonCount ? n(poViews.get(po)!.cartonCount) : "—"), align: "right" },
+                { header: "Flags", cell: (po) => (poViews.get(po) ? <FlagBadges flags={poViews.get(po)!.flags} /> : "") },
+              ]}
+            />
+          </Section>
+          <Section
+            title="WMS cartons"
+            description={
+              byPo
+                ? `${n(byPo)} carton line(s) carry a different TMS ID in the WMS (highlighted); they're shown here because TMS has their PO on this shipment.`
+                : undefined
+            }
+          >
+            <Table
+              rows={s.cartons}
+              empty="No WMS cartons for this shipment's POs."
+              cols={[
+                { header: "Label / order", cell: (c) => <span className="block text-xs"><span className="font-mono text-gray-900">{c.label}</span><span className="block text-gray-500">{c.orderNum}</span></span> },
+                { header: "PO", cell: (c) => <PoLink po={c.poNumber} /> },
+                {
+                  header: "WMS TMS ID",
+                  cell: (c) => {
+                    const id = wmsId(c);
+                    return id === s.shipmentNumber ? (
+                      <span className="font-mono text-xs text-gray-700">{id}</span>
+                    ) : (
+                      <Badge variant="destructive" className="font-mono" title="The WMS has this carton under a different TMS ID">
+                        {id ?? "none"}
+                      </Badge>
+                    );
+                  },
+                },
+                { header: "Product", cell: (c) => c.product ?? "—" },
+                { header: "Qty", cell: (c) => (c.quantity === null ? "—" : n(c.quantity)), align: "right" },
+                { header: "Shipped", cell: (c) => formatUtcDateTime(c.shippedAt) },
+              ]}
+            />
+          </Section>
+        </div>
+        <div className="space-y-6">
+          <EmailsCard shipment={number} tz={tz} />
+          {canIssues && (
+            <IssuesCard
+              issues={[
+                // One row per issue, with the shipment's POs it lists
+                ...ours
+                  .flatMap((po) => (issues.get(po) ?? []).map((i) => ({ ...i, po })))
+                  .reduce((m, i) => m.set(i.id, { ...i, pos: [...(m.get(i.id)?.pos ?? []), i.po] }), new Map<string, IssueSummary & { pos: string[] }>())
+                  .values(),
+              ]}
+              newIssuePo={ours.length === 1 ? ours[0] : null}
+              canManage={user.permissions.has("issues.manage")}
+            />
+          )}
+          <ComplianceCard rows={ours.flatMap((po) => (compliance.get(po) ?? []).map((r) => ({ ...r, po })))} canOpen={user.permissions.has("view.polookup")} />
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle>Notes</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <LogisticsNotes
+                target={{ shipmentNumber: number }}
+                userId={user.id}
+                canManage={user.permissions.has("logistics.manage")}
+                notes={notes.map((x) => ({ id: x.id, body: x.body, author: x.author?.name ?? null, authorId: x.authorId, createdAt: x.createdAt.toISOString() }))}
+              />
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+    </div>
+  );
+}
