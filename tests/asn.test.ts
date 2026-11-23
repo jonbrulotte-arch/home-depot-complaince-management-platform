@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import { asnRows, detectKind, parseAsnStatus } from "@/lib/logistics/parse";
 import { readLogisticsFile } from "@/lib/logistics/read";
 import { asnConfirmationWorkbook } from "@/lib/logistics/asn-export";
-import { buildLogistics, filterPos, filterShipments, shipmentDate, type Shipment } from "@/lib/logistics/views";
+import { asnState, buildLogistics, filterPos, filterShipments, shipmentDate, type Shipment } from "@/lib/logistics/views";
 
 async function sample(asn: { poNumber: string; status: "SHIPPED" | "UNSHIPPED"; confirmedAt: Date | null }[] = []) {
   const [w, s, p] = await Promise.all(["WMS_Line_Data.xlsx", "Shipments.csv", "Purchase_Orders.csv"].map((n) => readLogisticsFile(new Uint8Array(readFileSync(`tests/fixtures/logistics/${n}`)))));
@@ -80,6 +80,19 @@ describe("ASN missing", () => {
     const confirmed = await sample(ship.ourPos.map((po) => ({ poNumber: po, status: "SHIPPED" as const, confirmedAt: null })));
     for (const po of ship.ourPos) expect(confirmed.pos.find((p) => p.poNumber === po)!.flags.some((f) => f.code === "ASN_MISSING")).toBe(false);
     expect(confirmed.shipments.find((s) => s.shipmentNumber === ship.shipmentNumber)!.flags.some((f) => f.code === "ASN_MISSING")).toBe(false);
+  });
+});
+
+describe("ASN state for the issue and PO record logistics card", () => {
+  it("is received, missing (shipped, not confirmed) or nothing", async () => {
+    const at = new Date("2026-11-10T15:00:00Z");
+    const base = await sample();
+    const shipped = base.pos.find((p) => p.cartonCount && p.status !== "Canceled")!;
+    const unshipped = base.pos.find((p) => !p.cartonCount);
+    expect(asnState(shipped)).toEqual({ status: "missing", confirmedAt: null });
+    if (unshipped) expect(asnState(unshipped)).toBeNull();
+    const confirmed = (await sample([{ poNumber: shipped.poNumber, status: "SHIPPED", confirmedAt: at }])).pos.find((p) => p.poNumber === shipped.poNumber)!;
+    expect(asnState(confirmed)).toEqual({ status: "received", confirmedAt: at });
   });
 });
 

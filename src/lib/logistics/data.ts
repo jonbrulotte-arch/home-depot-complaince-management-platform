@@ -3,7 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { ORDER_CANCELLATION, poNumberVariants } from "@/lib/issues";
 import { getTimeZone } from "@/lib/time-zone-server";
 import { carrierUrl, upsTrackingUrl, type CarrierLinkInfo } from "@/lib/logistics/refs";
-import { FLAGS, UPS_SCAC, buildLogistics, type FlagCode, type PoView } from "@/lib/logistics/views";
+import { FLAGS, UPS_SCAC, buildLogistics, type FlagCode, type PoView, asnState } from "@/lib/logistics/views";
 
 // Loads the logistics rows and builds the views (views.ts) once per request. Volumes are small
 // (a supplier's last few months of POs), so the views are built in memory.
@@ -112,6 +112,8 @@ export interface PoLogistics {
   shipped: string | null;
   shipments: { number: string; status: string; scac: string | null; url: string | null; delivery: string | null }[];
   ups: string[];
+  /** ASN/ship status from the ASN/Shipped Confirmation import: received (confirmed in POM), missing (shipped in the WMS, not confirmed) or null */
+  asn: { status: "received" | "missing"; confirmedAt: Date | null } | null;
   flags: { label: string; severity: string; message: string }[];
 }
 
@@ -148,6 +150,7 @@ export function summarize(l: Pick<LoadedLogistics, "carrierBy">, p: PoView): PoL
       delivery: s.deliveryLocal,
     })),
     ups: p.ups,
+    asn: asnState(p),
     // Info flags left out, except the one explaining a cancellation from the Issue Log
     flags: p.flags.filter((f) => f.severity !== "info" || f.code === "CANCELED_BY_ISSUE").map((f) => ({ label: flagLabel(f.code), severity: f.severity, message: f.message })),
   };

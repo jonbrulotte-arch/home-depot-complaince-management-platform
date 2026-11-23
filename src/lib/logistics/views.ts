@@ -230,6 +230,12 @@ export interface AsnConfirmationInfo extends AsnInfo {
 /** Whether a PO's ASN is confirmed received */
 export const asnReceived = (a: AsnInfo | null | undefined) => a?.status === "SHIPPED";
 
+/** A PO's ASN state for summaries: received (confirmed in POM), missing (shipped in the WMS, not confirmed), else null */
+export function asnState(p: Pick<PoView, "asn" | "flags">): { status: "received" | "missing"; confirmedAt: Date | null } | null {
+  if (asnReceived(p.asn)) return { status: "received", confirmedAt: p.asn!.confirmedAt };
+  return p.flags.some((f) => f.code === "ASN_MISSING") ? { status: "missing", confirmedAt: null } : null;
+}
+
 export interface Destination {
   facility: string | null;
   city: string | null;
