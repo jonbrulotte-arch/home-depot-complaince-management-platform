@@ -273,11 +273,19 @@ export interface PomPo {
 export const pomShipped = (p: Pick<PomPo, "status"> | null | undefined) => Boolean(p && /^shipped$/i.test(p.status.trim()));
 export const pomCanceled = (p: Pick<PomPo, "status"> | null | undefined) => Boolean(p && /^cancel/i.test(p.status.trim()));
 /**
+ * Closed in POM: THD closed the PO (received, and already cleaned up by hand). Neutral for Logistics: it
+ * doesn't mark the ASN received, raises no POM flags or ESD counts, and a Closed PO nothing else has
+ * isn't listed. Closed POs still count for cancellations, dispute evidence and the compliance fill.
+ */
+export const pomClosed = (p: Pick<PomPo, "status"> | null | undefined) => Boolean(p && /^closed/i.test(p.status.trim()));
+/** Open in POM: not shipped, cancelled or closed */
+export const pomOpen = (p: Pick<PomPo, "status"> | null | undefined) => Boolean(p && /^open/i.test(p.status.trim()));
+/**
  * A PO's place against POM's expected ship date (ESD), for POs POM has open that the WMS hasn't shipped:
  * "past" (ESD before today), "week" (ESD today through the next 6 days), else null.
  */
 export function esdState(p: Pick<PoView, "pom" | "cartonCount" | "status">, today: string): "past" | "week" | null {
-  if (!p.pom?.esd || p.cartonCount || p.status === "Canceled" || pomShipped(p.pom) || pomCanceled(p.pom)) return null;
+  if (!p.pom?.esd || p.cartonCount || p.status === "Canceled" || !pomOpen(p.pom)) return null;
   if (p.pom.esd < today) return "past";
   const weekEnd = new Date(Date.parse(`${today}T00:00:00Z`) + 6 * 86_400_000).toISOString().slice(0, 10);
   return p.pom.esd <= weekEnd ? "week" : null;
@@ -409,9 +417,10 @@ export function buildLogistics(input: LogisticsData, today: string) {
   const pomBy = new Map((data.pom ?? []).map((p) => [bareNumber(p.poNumber), p]));
   const isOurs = (po: string) => tmsByPo.has(po) || cartonsByPo.has(po) || known.has(bareNumber(po)) || pomBy.has(bareNumber(po));
   const poNumbers = new Set([...tmsByPo.keys(), ...cartonsByPo.keys(), ...[...shipmentsByPo.keys()].filter(isOurs)]);
-  // POs POM has that nothing else has yet (open POs not shipped)
+  // POs POM has that nothing else has yet: open ones (not shipped) and recently shipped ones; POM's
+  // Closed and Cancelled history (it goes back months) isn't listed on its own
   const listed = new Set([...poNumbers].map(bareNumber));
-  for (const p of data.pom ?? []) if (!listed.has(bareNumber(p.poNumber))) poNumbers.add(p.poNumber);
+  for (const p of data.pom ?? []) if (!listed.has(bareNumber(p.poNumber)) && (pomOpen(p) || pomShipped(p))) poNumbers.add(p.poNumber);
   const pos: PoView[] = [...poNumbers].map((poNumber) => {
     const tms = tmsByPo.get(poNumber) ?? null;
     const pom = pomBy.get(bareNumber(poNumber)) ?? null;
@@ -474,7 +483,7 @@ export function buildLogistics(input: LogisticsData, today: string) {
     // Shipped in the WMS but not confirmed in POM (not for canceled POs)
     else if (cartons.length && !canceledBy && !canceledInPom && !(tms && isCanceled(tms.status)))
       flags.push(flag("ASN_MISSING", `The WMS shipped this PO on ${isoDate(firstShipped!)}, but it isn't marked ASN received${pom ? ` (POM shows it ${pom.status})` : ""}. Check POM in Supplier Hub; import POM's PO search export (or the ASN/Shipped Confirmation file) once THD shows it shipped.`));
-    if (pom) {
+    if (pom && !pomClosed(pom)) {
       if (canceledInPom) {
         flags.push(flag("CANCELED_IN_POM", "POM (Supplier Hub) shows this PO Cancelled."));
         if (cartons.length && !(tms && isCanceled(tms.status))) flags.push(flag("CANCELED_SHIPPED", `POM shows this PO Cancelled, but the WMS shipped ${new Set(cartons.map((c) => c.label)).size} carton(s).`));

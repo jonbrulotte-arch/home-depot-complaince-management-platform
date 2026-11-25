@@ -68,6 +68,36 @@ describe("POM in Logistics", () => {
     expect(codes(open)).toContain("PAST_ESD");
   });
 
+  it("treats Closed POs as neutral: no ASN received, no POM flags, not listed on their own", async () => {
+    const base = await views([]);
+    const shipped = base.pos.find((p) => p.cartonCount && p.status !== "Canceled" && p.tms?.destFacility && !/^XD/i.test(p.tms.destFacility))!;
+    const v = await views([
+      pomPo({ poNumber: shipped.poNumber, status: "Closed", esd: "2026-01-01", destinationDc: "9999", lines: [{ thdSku: "1", description: null, partNumber: "NOPE", status: "Cancelled", orderQty: 5, adjOrderQty: 5, shippedQty: 0, receivedQty: null, unitCost: 1 }] }),
+      pomPo({ poNumber: "1288888888", status: "Closed", esd: "2026-02-01" }),
+      pomPo({ poNumber: "1277777777", status: "Cancelled", esd: "2026-02-01" }),
+    ]);
+    const p = v.pos.find((x) => x.poNumber === shipped.poNumber)!;
+    expect(p.pom?.status).toBe("Closed");
+    expect(p.asn?.source).not.toBe("POM");
+    expect(codes(p).filter((c) => ["PAST_ESD", "SHIPPED_AFTER_ESD", "SKU_CANCELLED", "QTY_MISMATCH", "POM_DEST_MISMATCH", "CANCELED_IN_POM"].includes(c))).toEqual([]);
+    expect(codes(p)).toContain("ASN_MISSING");
+    expect(p.status).not.toBe("Canceled");
+    expect(v.pos.some((x) => x.poNumber === "1288888888" || x.poNumber === "1277777777")).toBe(false);
+  });
+
+  it("reads the year-to-date export: Closed, Cancelled, Shipped and Open POs", async () => {
+    const f = await fixture("POM_PO_Search_2026.xlsx");
+    expect(f.kind).toBe("POM");
+    if (f.kind !== "POM") return;
+    expect(f.parsed.rows).toHaveLength(1173);
+    expect(f.parsed.skipped).toEqual([]);
+    const pos = new Map(f.parsed.rows.map((r) => [r.poNumber, r.status]));
+    expect(pos.size).toBe(622);
+    expect([...pos.values()].filter((s) => s === "Closed").length).toBeGreaterThan(500);
+    const closed = f.parsed.rows.find((r) => r.poNumber === "1195598500" && r.partNumber === "41562")!;
+    expect(closed).toMatchObject({ status: "Closed", skuStatus: "Closed", orderQty: 144, shippedQty: 144, receivedQty: null, unitCost: 83.48 });
+  });
+
   it("checks SKU lines, ESD and destination against the WMS", async () => {
     const base = await views([]);
     const po = base.pos.find((p) => p.cartonCount && p.status !== "Canceled" && p.tms?.destFacility && !/^XD/i.test(p.tms.destFacility))!;

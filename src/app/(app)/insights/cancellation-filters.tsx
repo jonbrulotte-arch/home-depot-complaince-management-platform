@@ -10,11 +10,11 @@ import { CANCEL_SOURCE_LABELS } from "@/lib/cancellations";
 
 const ALL = "all";
 /** The tab's own filters, kept in the address beside the page's time frame and program */
-export const CANCEL_KEYS = ["source", "team", "dc", "sku", "scope", "dispute", "q"] as const;
+export const CANCEL_KEYS = ["source", "team", "dc", "sku", "scope", "dispute", "vendor", "reason", "q"] as const;
 type Key = (typeof CANCEL_KEYS)[number];
 
 /** Filters for Reports & Insights › Cancellations, and its export */
-export function CancellationFilters({ values, teams, dcs }: { values: Partial<Record<Key, string>>; teams: string[]; dcs: string[] }) {
+export function CancellationFilters({ values, teams, dcs, vendors, reasons }: { values: Partial<Record<Key, string>>; teams: string[]; dcs: string[]; vendors: string[]; reasons: string[] }) {
   const router = useRouter();
   const pathname = usePathname();
   const current = useSearchParams();
@@ -78,6 +78,8 @@ export function CancellationFilters({ values, teams, dcs }: { values: Partial<Re
       {pick("can-dispute", "Dispute", "dispute", [[ALL, "Any"], ["none", "Not disputed"], ["open", "Disputed, awaiting decision"], ["won", "Won (recovered)"], ["lost", "Denied"]], "w-56")}
       {pick("can-team", "Team responsible", "team", [[ALL, "Any team"], ...teams.map((t): [string, string] => [t, t])], "w-52")}
       {pick("can-dc", "Destination", "dc", [[ALL, "Any Store/DC"], ...dcs.map((d): [string, string] => [d, d])], "w-40")}
+      {vendors.length > 1 && pick("can-vendor", "Vendor # (POM)", "vendor", [[ALL, "Any vendor #"], ...vendors.map((v): [string, string] => [v, v])], "w-40")}
+      {reasons.length > 1 && pick("can-reason", "PO reason code (POM)", "reason", [[ALL, "Any reason code"], ...reasons.map((v): [string, string] => [v, v])], "w-48")}
       <Button type="submit" variant="outline">
         <Search className="h-4 w-4 mr-1.5" />
         Search

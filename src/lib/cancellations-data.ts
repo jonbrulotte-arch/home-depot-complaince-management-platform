@@ -18,7 +18,7 @@ export async function loadCancellations(): Promise<CancelRow[]> {
     // POM SKU lines cancelled, or on a cancelled PO
     prisma.pomPoLine.findMany({
       where: { OR: [{ status: { startsWith: "cancel", mode: "insensitive" } }, { po: { status: { startsWith: "cancel", mode: "insensitive" } } }] },
-      include: { po: { select: { status: true, poCreateDate: true, destinationDc: true, finalRecvLocation: true } } },
+      include: { po: { select: { status: true, poCreateDate: true, destinationDc: true, finalRecvLocation: true, vendorNumber: true, reasonCode: true } } },
     }),
     // THD's Fill Rate charges: the cost of what wasn't shipped (Cancelled / Resolved lines aren't violations)
     prisma.complianceLine.findMany({
@@ -59,6 +59,8 @@ export async function loadCancellations(): Promise<CancelRow[]> {
       units: Math.max(0, ordered - (l.shippedQty ?? 0)),
       unitCost: l.unitCost === null ? null : l.unitCost.toNumber(),
       wholePo,
+      vendorNumber: l.po.vendorNumber,
+      reasonCode: l.po.reasonCode,
     };
   });
   const charges: CancelChargeLine[] = chargeRows.map((c) => ({

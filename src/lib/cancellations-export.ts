@@ -58,12 +58,12 @@ export async function cancellationsWorkbook(rows: CancelRow[], context: { timeFr
     wb,
     "Cancellations",
     [
-      ["Month", 10], ["PO #", 13], ["Our SKU", 10], ["THD SKU", 13], ["Description", 34], ["Store/DC", 10], ["Program", 22], ["Sources", 26], ["Whole PO", 9], ["POM status", 11],
+      ["Month", 10], ["PO #", 13], ["Our SKU", 10], ["THD SKU", 13], ["Description", 34], ["Store/DC", 10], ["Program", 22], ["Sources", 26], ["Whole PO", 9], ["POM status", 11], ["Vendor #", 9], ["PO reason code", 10],
       ["Units", 8], ["Unit cost", 11, "money"], ["Order value", 13, "money"], ["THD offset", 13, "money"], ["Dispute", 14], ["Recovered", 13, "money"], ["Net offset", 13, "money"], ["Est. fine", 12, "money"],
       ["Team", 22], ["Root cause", 30], ["Issues", 40],
     ],
     rows.map((r) => [
-      r.month ? fiscalLabel(r.month) : null, r.poNumber, r.ourSku, r.thdSku, r.description, r.destination, r.programName, r.sources.map((s) => CANCEL_SOURCE_LABELS[s]).join(", "), r.wholePo ? "Yes" : "No", r.pomStatus,
+      r.month ? fiscalLabel(r.month) : null, r.poNumber, r.ourSku, r.thdSku, r.description, r.destination, r.programName, r.sources.map((s) => CANCEL_SOURCE_LABELS[s]).join(", "), r.wholePo ? "Yes" : "No", r.pomStatus, r.vendorNumber, r.reasonCode,
       r.units || null, r.unitCost, r.value || null, r.offsets || null, r.disputeStatus ? DISPUTE_STATUS_LABELS[r.disputeStatus] : r.offsets ? "Not disputed" : null, r.recovered || null, r.net || null, r.estimatedFine || null,
       r.team, r.rootCause, r.issues.map((i) => `ISS-${String(i.number).padStart(4, "0")} ${i.category} (${i.status}): ${i.title}`).join("\n") || null,
     ]),
@@ -72,6 +72,7 @@ export async function cancellationsWorkbook(rows: CancelRow[], context: { timeFr
   groupSheet(wb, "By team", "Team responsible", groupCancellations(rows, (r) => r.team ?? "Not assigned"));
   groupSheet(wb, "By SKU", "SKU", groupCancellations(rows, (r) => r.ourSku ?? r.thdSku));
   groupSheet(wb, "By destination", "Store/DC", groupCancellations(rows, (r) => r.destination));
+  groupSheet(wb, "By vendor and reason", "Vendor # · PO reason code", groupCancellations(rows, (r) => (r.vendorNumber || r.reasonCode ? `Vendor ${r.vendorNumber ?? "?"} · reason ${r.reasonCode ?? "?"}` : "Not in POM")));
   groupSheet(wb, "By root cause", "Root cause", groupCancellations(rows, (r) => r.rootCause ?? "Not recorded"));
   return Buffer.from(await wb.xlsx.writeBuffer());
 }

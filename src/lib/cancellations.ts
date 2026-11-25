@@ -27,6 +27,9 @@ export interface CancelPomLine {
   unitCost: number | null;
   /** The whole PO is cancelled, not just the SKU */
   wholePo: boolean;
+  /** POM's vendor number and PO reason code (THD's order type), to tell order streams apart */
+  vendorNumber?: string | null;
+  reasonCode?: string | null;
 }
 
 export interface CancelChargeLine {
@@ -73,6 +76,9 @@ export interface CancelRow {
   wholePo: boolean;
   /** POM */
   pomStatus: string | null;
+  vendorNumber: string | null;
+  /** POM's PO reason code */
+  reasonCode: string | null;
   units: number;
   unitCost: number | null;
   /** Order value cancelled: units × unit cost */
@@ -111,6 +117,8 @@ export function buildCancellations(input: { pom: CancelPomLine[]; charges: Cance
     sources: [],
     wholePo: false,
     pomStatus: null,
+    vendorNumber: null,
+    reasonCode: null,
     units: 0,
     unitCost: null,
     value: 0,
@@ -137,6 +145,8 @@ export function buildCancellations(input: { pom: CancelPomLine[]; charges: Cance
       description: p.description,
       wholePo: p.wholePo,
       pomStatus: p.poStatus,
+      vendorNumber: p.vendorNumber ?? null,
+      reasonCode: p.reasonCode ?? null,
       units: r.units + p.units,
       unitCost: p.unitCost,
       value: round(r.value + p.units * (p.unitCost ?? 0)),
@@ -211,6 +221,10 @@ export interface CancelFilters {
   scope?: string;
   /** "none" (not disputed), "open" (disputed, no decision), "won", "lost" */
   dispute?: string;
+  /** POM vendor number */
+  vendor?: string;
+  /** POM PO reason code */
+  reason?: string;
   /** PO number, SKU, description, root cause or issue title (contains) */
   q?: string;
 }
@@ -232,6 +246,8 @@ export function filterCancellations(rows: CancelRow[], f: CancelFilters): Cancel
     if (f.team && (r.team ?? "Not assigned") !== f.team) return false;
     if (f.dc && skuKey(r.destination) !== skuKey(f.dc)) return false;
     if (sku && ![r.thdSku, r.ourSku].some((s) => s?.toUpperCase().includes(sku))) return false;
+    if (f.vendor && r.vendorNumber !== f.vendor) return false;
+    if (f.reason && r.reasonCode !== f.reason) return false;
     if (f.scope === "po" && !r.wholePo) return false;
     if (f.scope === "sku" && r.wholePo) return false;
     if (f.dispute === "none" && r.disputed) return false;
@@ -294,5 +310,7 @@ export function cancelFilterOptions(rows: CancelRow[]) {
   return {
     teams: uniq(rows.map((r) => r.team ?? "Not assigned")),
     dcs: uniq(rows.map((r) => r.destination)),
+    vendors: uniq(rows.map((r) => r.vendorNumber)),
+    reasons: uniq(rows.map((r) => r.reasonCode)),
   };
 }

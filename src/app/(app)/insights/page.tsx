@@ -13,7 +13,7 @@ import { cancelFrame, filterCancellations } from "@/lib/cancellations";
 import { CancellationsTab } from "./cancellations-tab";
 import { DisputesTab, IssuesTab, LocationsTab, OverviewTab, ProgramsTab, TeamsTab, TimeTab, type Access } from "./sections";
 
-type CancelParams = { source?: string; team?: string; dc?: string; sku?: string; scope?: string; dispute?: string; q?: string };
+type CancelParams = { source?: string; team?: string; dc?: string; sku?: string; scope?: string; dispute?: string; vendor?: string; reason?: string; q?: string };
 
 export default async function InsightsPage({ searchParams }: { searchParams: Promise<Filters & CancelParams & { tab?: string }> }) {
   const user = await requirePagePermission("insights.view");
@@ -83,7 +83,7 @@ export default async function InsightsPage({ searchParams }: { searchParams: Pro
       ) : tab === "cancellations" ? (
         await (async () => {
           const all = await loadCancellations();
-          const f = { source: sp.source, team: sp.team, dc: sp.dc, sku: sp.sku, scope: sp.scope, dispute: sp.dispute, q: sp.q };
+          const f = { source: sp.source, team: sp.team, dc: sp.dc, sku: sp.sku, scope: sp.scope, dispute: sp.dispute, vendor: sp.vendor, reason: sp.reason, q: sp.q };
           const rows = filterCancellations(all, { ...f, ...cancelFrame(data.frame), program: data.programCode });
           return <CancellationsTab rows={rows} all={all} filters={f} poLookup={access.poLookup} issues={access.issues} />;
         })()

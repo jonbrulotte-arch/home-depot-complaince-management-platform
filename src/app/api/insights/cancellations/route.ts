@@ -7,7 +7,7 @@ import { loadCancellations } from "@/lib/cancellations-data";
 import { CANCEL_SOURCE_LABELS, cancelFrame, filterCancellations, type CancelSource } from "@/lib/cancellations";
 import { cancellationsWorkbook } from "@/lib/cancellations-export";
 
-const LABELS: Record<string, string> = { source: "Source", team: "Team responsible", dc: "Destination", sku: "SKU", scope: "Cancelled", dispute: "Dispute", q: "Search" };
+const LABELS: Record<string, string> = { source: "Source", team: "Team responsible", dc: "Destination", sku: "SKU", scope: "Cancelled", dispute: "Dispute", vendor: "Vendor # (POM)", reason: "PO reason code (POM)", q: "Search" };
 
 /** Reports & Insights › Cancellations as a workbook, with the page's time frame, program and the tab's filters */
 export async function GET(req: NextRequest) {
@@ -16,7 +16,7 @@ export async function GET(req: NextRequest) {
   const q = req.nextUrl.searchParams;
   const get = (k: string) => q.get(k)?.trim().slice(0, 100) || undefined;
   const data = await loadInsights({ range: get("range"), from: get("from"), to: get("to"), program: get("program") });
-  const f = { source: get("source"), team: get("team"), dc: get("dc"), sku: get("sku"), scope: get("scope"), dispute: get("dispute"), q: get("q") };
+  const f = { source: get("source"), team: get("team"), dc: get("dc"), sku: get("sku"), scope: get("scope"), dispute: get("dispute"), vendor: get("vendor"), reason: get("reason"), q: get("q") };
   const rows = filterCancellations(await loadCancellations(), { ...f, ...cancelFrame(data.frame), program: data.programCode });
   const shown = Object.entries(f)
     .filter(([, v]) => v)

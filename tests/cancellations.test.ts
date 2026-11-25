@@ -7,7 +7,7 @@ const charge = (o: Partial<CancelChargeLine>): CancelChargeLine => ({ id: "c1", 
 describe("cancellations", () => {
   it("merges POM's cancelled line, THD's Fill Rate charge and a cancellation issue on the same PO and SKU", () => {
     const rows = buildCancellations({
-      pom: [pom({}), pom({ poNumber: "1200109179", poStatus: "Cancelled", thdSku: "1002989430", partNumber: "41567", units: 12, unitCost: 140, wholePo: true, destination: "5831", month: 202610 })],
+      pom: [pom({}), pom({ poNumber: "1200109179", poStatus: "Cancelled", vendorNumber: "28773", reasonCode: "220", thdSku: "1002989430", partNumber: "41567", units: 12, unitCost: 140, wholePo: true, destination: "5831", month: 202610 })],
       charges: [charge({}), charge({ id: "c2", poNumber: "1190000001", sku: null, vendorSku: "41561", offset: 50, dispute: { status: "APPROVED", recovered: 50 }, team: null, rootCause: null })],
       issues: [{ id: "i1", number: 7, title: "Cancelled for stock", category: "Line cancellation", status: "RESOLVED", team: "Customer Service", month: 202610, estimatedFine: 300, pos: [{ poNumber: "1197910528", estimatedFine: null }] }],
     });
@@ -25,6 +25,8 @@ describe("cancellations", () => {
     expect(filterCancellations(rows, { ...cancelFrame({ key: "custom", months: [202610], to: 202610 }) }).map((r) => r.poNumber)).toEqual(["1200109179"]);
     expect(cancelFrame({ key: "all", months: [202610], to: 202610 })).toEqual({});
     expect(filterCancellations(rows, { scope: "po" })).toHaveLength(1);
+    expect(filterCancellations(rows, { vendor: "28773" }).map((r) => r.poNumber)).toEqual(["1200109179"]);
+    expect(filterCancellations(rows, { reason: "220" })).toHaveLength(1);
     expect(filterCancellations(rows, { source: "issue" })).toHaveLength(1);
     expect(filterCancellations(rows, { dispute: "won" })).toHaveLength(1);
     expect(filterCancellations(rows, { dispute: "none" })).toHaveLength(2);

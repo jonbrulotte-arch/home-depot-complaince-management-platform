@@ -32,7 +32,7 @@ export function CancellationsTab({ rows, all, filters, poLookup, issues }: { row
         per PO and SKU. <strong className="font-medium text-gray-700">Order value</strong> is the cancelled units at POM&apos;s unit cost (sales lost); <strong className="font-medium text-gray-700">net offsets</strong> are THD&apos;s
         charges less what disputes recovered. The time frame and program above apply; a row counts in the month THD charged it, else the PO&apos;s create month, else the issue&apos;s.
       </p>
-      <CancellationFilters values={filters} teams={opts.teams} dcs={opts.dcs} />
+      <CancellationFilters values={filters} teams={opts.teams} dcs={opts.dcs} vendors={opts.vendors} reasons={opts.reasons} />
       <StatTiles
         stats={[
           { label: "Cancellations", value: n(t.rows), hint: `${n(t.pos)} PO(s)` },
@@ -58,6 +58,9 @@ export function CancellationsTab({ rows, all, filters, poLookup, issues }: { row
         </Section>
         <Section title="By root cause" description="From the violation review.">
           <Table rows={top(groupCancellations(rows, (r) => r.rootCause ?? "Not recorded"))} cols={groupCols("Root cause")} />
+        </Section>
+        <Section title="By POM vendor # and PO reason code" description="THD's order streams: each vendor number and reason code (order type) apart.">
+          <Table rows={groupCancellations(rows, (r) => (r.vendorNumber || r.reasonCode ? `Vendor ${r.vendorNumber ?? "?"} · reason ${r.reasonCode ?? "?"}` : "Not in POM"))} cols={groupCols("Vendor # · reason code")} />
         </Section>
         <Section title="By source and scope">
           <Table
