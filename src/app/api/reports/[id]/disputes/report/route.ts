@@ -20,7 +20,7 @@ export async function GET(req: Request, { params }: IdParams) {
   if (!data.disputes.length) return badRequest("None of the selected disputes belongs to this report");
   const tz = await getTimeZone();
   const today = new Intl.DateTimeFormat("en-CA", { timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
-  const pdf = await disputeReportPdf({ reportTitle: data.report.title, disputes: data.disputes, teams: data.teams, by: guard.user.name, timeZone: tz, windowCloses: data.report.period.disputeClose, siteName: (await getBranding()).siteName });
+  const pdf = await disputeReportPdf({ reportTitle: data.report.title, disputes: data.disputes, teams: data.teams, by: guard.user.name, timeZone: tz, windowCloses: data.report.period.disputeClose, siteName: (await getBranding()).siteName, pom: data.pom });
   await audit(guard.user.id, "disputes.report", "ComplianceReport", id, { count: data.disputes.length });
   return new NextResponse(new Uint8Array(pdf), {
     headers: { "Content-Type": "application/pdf", "Content-Disposition": `attachment; filename="${disputeReportFileName(data.disputes.length, today)}"`, "Cache-Control": "private, no-store" },

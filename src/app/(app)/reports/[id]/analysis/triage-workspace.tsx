@@ -14,6 +14,8 @@ import { apiFetch } from "@/lib/client-api";
 import { pickerTeams, type TeamOption } from "@/lib/team-options";
 import { cn, formatCurrency, formatUtcDateTime } from "@/lib/utils";
 import type { ReviewIssue, ReviewLogisticsResult } from "@/lib/review-context";
+import type { PomEvidence } from "@/lib/pom";
+import { PomEvidenceCard } from "@/components/shared/pom-evidence";
 import { ResearchPanel, type HistoryItem, type ResearchAccess, type ResearchTab } from "./research-panel";
 
 export interface TriageReview {
@@ -50,6 +52,8 @@ export interface TriageLine {
   issues: ReviewIssue[];
   /** Key into the page's logistics research (the PO record id, else the PO number) */
   researchKey: string;
+  /** What THD's POM shows for the line's PO and SKU; null when no POM export had the PO */
+  pom: PomEvidence | null;
   poRecordId: string | null;
   /** YYYY-MM-DD */
   poCreateDate: string | null;
@@ -351,6 +355,8 @@ function LineDetail({
           </table>
         )}
       </div>
+
+      {line.pom && <PomEvidenceCard evidence={line.pom} />}
 
       {research}
 

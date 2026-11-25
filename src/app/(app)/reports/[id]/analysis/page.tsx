@@ -7,6 +7,7 @@ import { LINE_FIELD_LABELS } from "@/lib/line-fields";
 import { getPeriodField, linesInPeriod } from "@/lib/periods";
 import { reviewIssues, reviewLogistics, type ReviewIssue } from "@/lib/review-context";
 import { TriageWorkspace, type TriageLine } from "./triage-workspace";
+import { pomEvidenceFor } from "@/lib/pom-data";
 import { getTeams } from "@/lib/teams";
 
 export default async function AnalysisPage({ params }: { params: Promise<{ id: string }> }) {
@@ -35,7 +36,7 @@ export default async function AnalysisPage({ params }: { params: Promise<{ id: s
   const logisticsItems = canLogistics
     ? [...new Map(lines.filter((l) => l.poNumber).map((l) => [researchKey(l), { key: researchKey(l), poNumber: l.poNumber!, poCreateDate: l.poRecord?.poCreateDate ?? null }])).values()]
     : [];
-  const [reasonCodes, history, issues, logistics] = await Promise.all([
+  const [reasonCodes, history, issues, logistics, pom] = await Promise.all([
     prisma.disputeReasonCode.findMany({ where: { metricId: { in: metricIds }, active: true }, orderBy: { code: "asc" } }),
     poNumbers.length
       ? prisma.complianceLine.findMany({
@@ -46,6 +47,8 @@ export default async function AnalysisPage({ params }: { params: Promise<{ id: s
       : Promise.resolve([]),
     canIssues ? reviewIssues(recordIds) : Promise.resolve(new Map<string, ReviewIssue[]>()),
     canLogistics ? reviewLogistics(logisticsItems) : Promise.resolve({}),
+    // THD's POM: the PO's SKU line, to tell a supplier cancellation from THD's before disputing
+    pomEvidenceFor(lines.map((l) => ({ key: l.id, poNumber: l.poNumber, sku: l.sku, vendorSku: l.vendorSku }))),
   ]);
 
   const toTriage = (l: (typeof lines)[number]): TriageLine => {
@@ -68,6 +71,7 @@ export default async function AnalysisPage({ params }: { params: Promise<{ id: s
       dispute: l.dispute,
       issues: l.poRecordId ? (issues.get(l.poRecordId) ?? []) : [],
       researchKey: researchKey(l),
+      pom: pom[l.id] ?? null,
       poRecordId: l.poRecordId,
       poCreateDate: l.poRecord?.poCreateDate ? l.poRecord.poCreateDate.toISOString().slice(0, 10) : null,
       review: l.review

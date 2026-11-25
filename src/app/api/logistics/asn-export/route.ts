@@ -14,7 +14,7 @@ export async function GET(req: NextRequest) {
   const get = (k: string) => sp.get(k) ?? undefined;
   const l = await loadLogistics();
   const pos = sortPos(
-    filterPos(l.pos, { q: get("q"), status: get("status"), flag: get("flag"), severity: get("severity"), scac: get("scac"), wh: get("wh"), ch: get("ch"), asn: get("asn"), range: get("range"), from: get("from"), to: get("to") }, l.today),
+    filterPos(l.pos, { q: get("q"), status: get("status"), flag: get("flag"), severity: get("severity"), scac: get("scac"), wh: get("wh"), ch: get("ch"), asn: get("asn"), esd: get("esd"), range: get("range"), from: get("from"), to: get("to") }, l.today),
     get("sort"),
     l.warehouses,
   );

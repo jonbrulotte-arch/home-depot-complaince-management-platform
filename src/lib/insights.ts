@@ -11,7 +11,7 @@ import { fiscalLabel, shiftFiscalMonth } from "@/lib/fiscal";
 // - recovered is what approved or partly approved disputes won back;
 // - net is offsets minus recovered (what the chargebacks cost after disputes).
 
-export type InsightTab = "overview" | "programs" | "time" | "teams" | "issues" | "disputes" | "locations";
+export type InsightTab = "overview" | "programs" | "time" | "teams" | "issues" | "disputes" | "cancellations" | "locations";
 
 export const INSIGHT_TABS: { key: InsightTab; label: string }[] = [
   { key: "overview", label: "Overview" },
@@ -20,6 +20,7 @@ export const INSIGHT_TABS: { key: InsightTab; label: string }[] = [
   { key: "teams", label: "Teams" },
   { key: "issues", label: "Issues" },
   { key: "disputes", label: "Disputes" },
+  { key: "cancellations", label: "Cancellations" },
   { key: "locations", label: "Locations & carriers" },
 ];
 

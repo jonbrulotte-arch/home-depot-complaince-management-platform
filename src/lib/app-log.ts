@@ -88,6 +88,7 @@ export const ACTION_LABELS: Record<string, string> = {
   "team.delete": "Deleted a team",
   "team.reorder": "Reordered the teams",
   "insights.export": "Exported Reports & Insights",
+  "insights.cancellationsExport": "Exported the Cancellations analysis (Reports & Insights)",
   "settings.wmsReport": "Changed the WMS report link",
   "settings.ups": "Changed the UPS tracking settings",
   "settings.ediTeam": "Changed the EDI team email address",

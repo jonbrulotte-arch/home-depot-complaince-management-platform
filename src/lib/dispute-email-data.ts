@@ -3,6 +3,7 @@ import { getPeriodField, linesInPeriod } from "@/lib/periods";
 import { lineItem } from "@/lib/issues";
 import { DISPUTE_STATUS_LABELS, type ChecklistItem } from "@/lib/disputes";
 import { teamNames } from "@/lib/teams";
+import { pomEvidenceFor } from "@/lib/pom-data";
 import type { DisputeEmailItem } from "@/lib/dispute-email";
 
 // Loads a report's selected disputes for the dispute report PDF and Send Email.
@@ -20,7 +21,9 @@ export async function loadDisputesForEmail(reportId: string, ids: string[]) {
   });
   const byId = new Map(found.map((d) => [d.id, d]));
   const disputes = ids.map((id) => byId.get(id)).filter((d): d is (typeof found)[number] => Boolean(d));
-  return { report, disputes, teams: await teamNames() };
+  // THD's POM for each dispute's PO and SKU: shipped quantities and cancellations, for the report
+  const pom = await pomEvidenceFor(disputes.map((d) => ({ key: d.id, poNumber: d.line.poNumber, sku: d.line.sku, vendorSku: d.line.vendorSku })));
+  return { report, disputes, teams: await teamNames(), pom };
 }
 
 export type LoadedDisputes = NonNullable<Awaited<ReturnType<typeof loadDisputesForEmail>>>;

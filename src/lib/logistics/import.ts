@@ -2,6 +2,7 @@ import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { audit } from "@/lib/audit";
 import { LOGISTICS_KIND_LABELS, type LogisticsKind } from "@/lib/logistics/parse";
+import { fillComplianceFromPom } from "@/lib/pom-data";
 import { readLogisticsFile } from "@/lib/logistics/read";
 
 // Saves logistics files: each source is upserted by its key (carton label, shipment number, PO
@@ -31,6 +32,7 @@ export async function importLogisticsFile(bytes: Uint8Array, fileName: string, u
   });
   let created = 0;
   let updated = 0;
+  let pomFilled = 0;
 
   if (file.kind === "WMS") {
     // The last row for a carton line wins when a file repeats one
@@ -132,6 +134,8 @@ export async function importLogisticsFile(bytes: Uint8Array, fileName: string, u
     );
     created = [...byPo.keys()].filter((po) => !existing.has(po)).length;
     updated = byPo.size - created;
+    // Compliance lines on these POs missing THD's SKU, our SKU or a description get POM's
+    pomFilled = await fillComplianceFromPom([...byPo.keys()]);
   } else if (file.kind === "ASN") {
     // Shipped marks the PO ASN received (once: the first confirmation's date is kept); Unshipped clears
     // a PO marked before and adds nothing for one never marked. Unchanged rows count as neither.
@@ -160,7 +164,7 @@ export async function importLogisticsFile(bytes: Uint8Array, fileName: string, u
 
   const skipped = file.parsed.skipped;
   await prisma.logisticsImport.update({ where: { id: log.id }, data: { created, updated, warnings: skipped.length ? (skipped.slice(0, 200) as unknown as Prisma.InputJsonArray) : undefined } });
-  await audit(userId, "logistics.import", "LogisticsImport", log.id, { file: fileName, source: file.kind, rows: file.parsed.rows.length, created, updated, skipped: skipped.length, fetched: Boolean(opts.fetched) });
+  await audit(userId, "logistics.import", "LogisticsImport", log.id, { file: fileName, source: file.kind, rows: file.parsed.rows.length, created, updated, skipped: skipped.length, fetched: Boolean(opts.fetched), ...(pomFilled ? { complianceLinesFilled: pomFilled } : {}) });
   return { importId: log.id, kind: file.kind, label: LOGISTICS_KIND_LABELS[file.kind], fileName, rows: file.parsed.rows.length, created, updated, skipped };
 }
 

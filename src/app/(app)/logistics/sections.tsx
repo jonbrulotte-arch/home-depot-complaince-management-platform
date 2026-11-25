@@ -18,6 +18,7 @@ import {
   type FlagCode,
   FLAGS,
   asnReceived,
+  esdState,
   PO_STATUSES,
 } from "@/lib/logistics/views";
 import { StatTiles } from "@/components/analytics/stat-tiles";
@@ -126,6 +127,23 @@ export function OverviewTab({ l, range }: { l: LoadedLogistics; range: Pick<PoFi
             value: n(o.openShipments),
             hint: `of ${n(o.shipments)} shipments`,
           },
+          ...(l.pos.some((p) => p.pom)
+            ? [
+                {
+                  label: "Due to ship this week",
+                  value: n(l.pos.filter((p) => esdState(p, l.today) === "week").length),
+                  hint: "By POM's ESD, not shipped yet",
+                  href: "/logistics?tab=pos&esd=week",
+                },
+                {
+                  label: "Past ESD",
+                  value: n(l.pos.filter((p) => esdState(p, l.today) === "past").length),
+                  tone: l.pos.some((p) => esdState(p, l.today) === "past") ? "text-red-700" : undefined,
+                  hint: "Open in POM, not shipped",
+                  href: "/logistics?tab=pos&esd=past",
+                },
+              ]
+            : []),
         ]}
       />
       <Section

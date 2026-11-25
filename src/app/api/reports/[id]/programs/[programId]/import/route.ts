@@ -8,6 +8,7 @@ import { buildPreview, persistImport, sha256 } from "@/lib/import/persist";
 import { getPeriodBasis } from "@/lib/periods";
 import { shiftFiscalMonth } from "@/lib/fiscal";
 import { FILL_ON_TIME_LAG_MONTHS, FILL_ON_TIME_METRICS } from "@/lib/shipment-ranges";
+import { fillComplianceFromPom } from "@/lib/pom-data";
 import type { DataPeriod } from "@prisma/client";
 
 type Params = { params: Promise<{ id: string; programId: string }> };
@@ -88,7 +89,9 @@ export async function POST(req: Request, { params }: Params) {
       receivedMonth: fiscalMonth,
       period,
     });
-    await audit(guard.user.id, "import.confirm", "ImportBatch", result.batchId, { reportId: id, programId, fileName: file.name, ...result });
+    // THD's SPM exports sometimes leave the SKU or description out: fill them from POM where it has the PO
+    const pomFilled = await fillComplianceFromPom([...new Set(preview.lines.map((l) => l.fields.poNumber).filter((x): x is string => Boolean(x)))]);
+    await audit(guard.user.id, "import.confirm", "ImportBatch", result.batchId, { reportId: id, programId, fileName: file.name, ...result, pomFilled });
     return NextResponse.json({ result }, { status: 201 });
   } catch (e) {
     if (e instanceof ImportError) return badRequest(e.message);

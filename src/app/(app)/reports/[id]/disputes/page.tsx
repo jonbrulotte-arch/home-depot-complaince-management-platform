@@ -8,6 +8,7 @@ import { emailTeams, teamNames } from "@/lib/teams";
 import { lineItem } from "@/lib/issues";
 import { getPeriodField, linesInPeriod } from "@/lib/periods";
 import type { ChecklistItem } from "@/lib/disputes";
+import { pomEvidenceFor } from "@/lib/pom-data";
 import { DisputeWorkspace, type DisputeView } from "./dispute-workspace";
 
 export default async function ReportDisputesPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ d?: string }> }) {
@@ -34,7 +35,7 @@ export default async function ReportDisputesPage({ params, searchParams }: { par
   });
 
   const canEdit = user.permissions.has("disputes.manage");
-  const [teams, mailTeams, emails] = await Promise.all([
+  const [teams, mailTeams, emails, pom] = await Promise.all([
     teamNames(),
     canEdit ? emailTeams() : Promise.resolve([]),
     // The report's email log (Send Email), newest first
@@ -43,11 +44,14 @@ export default async function ReportDisputesPage({ params, searchParams }: { par
       orderBy: { createdAt: "desc" },
       select: { id: true, createdAt: true, senderName: true, teamName: true, to: true, cc: true, subject: true, requests: true, sent: true, disputeIds: true },
     }),
+    // THD's POM: the PO's SKU line, as evidence (shipped quantities, cancellations)
+    pomEvidenceFor(disputes.map((x) => ({ key: x.id, poNumber: x.line.poNumber, sku: x.line.sku, vendorSku: x.line.vendorSku }))),
   ]);
   const view: DisputeView[] = disputes.map((x) => {
     const line = x.line as unknown as Record<string, unknown>;
     return {
       id: x.id,
+      pom: pom[x.id] ?? null,
       status: x.status,
       programName: x.line.metric.program.name,
       metricId: x.line.metricId,

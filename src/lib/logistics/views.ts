@@ -272,6 +272,17 @@ export interface PomPo {
 
 export const pomShipped = (p: Pick<PomPo, "status"> | null | undefined) => Boolean(p && /^shipped$/i.test(p.status.trim()));
 export const pomCanceled = (p: Pick<PomPo, "status"> | null | undefined) => Boolean(p && /^cancel/i.test(p.status.trim()));
+/**
+ * A PO's place against POM's expected ship date (ESD), for POs POM has open that the WMS hasn't shipped:
+ * "past" (ESD before today), "week" (ESD today through the next 6 days), else null.
+ */
+export function esdState(p: Pick<PoView, "pom" | "cartonCount" | "status">, today: string): "past" | "week" | null {
+  if (!p.pom?.esd || p.cartonCount || p.status === "Canceled" || pomShipped(p.pom) || pomCanceled(p.pom)) return null;
+  if (p.pom.esd < today) return "past";
+  const weekEnd = new Date(Date.parse(`${today}T00:00:00Z`) + 6 * 86_400_000).toISOString().slice(0, 10);
+  return p.pom.esd <= weekEnd ? "week" : null;
+}
+
 /** Where POM has the PO received: the final receiving location of a crossdock PO, else the destination DC */
 export const pomDestination = (p: Pick<PomPo, "finalRecvLocation" | "destinationDc">) => p.finalRecvLocation ?? p.destinationDc;
 
@@ -702,6 +713,8 @@ export interface PoFilters {
   ch?: string;
   /** "received" (confirmed in POM) or "pending" (not confirmed) */
   asn?: string;
+  /** POM's expected ship date: "week" (due to ship within 7 days) or "past" (past it, not shipped) */
+  esd?: string;
   /** "warehouse" or "shipped"; newest PO first otherwise */
   sort?: string;
   /** A date range (PO_RANGES key); "custom" uses from and to (YYYY-MM-DD) */
@@ -780,6 +793,7 @@ export function filterPos(pos: PoView[], f: PoFilters, today?: string): PoView[]
     if (!matchesChannel(p.channels, f.ch)) return false;
     if (f.asn === "received" && !asnReceived(p.asn)) return false;
     if (f.asn === "pending" && asnReceived(p.asn)) return false;
+    if ((f.esd === "week" || f.esd === "past") && (!today || esdState(p, today) !== f.esd)) return false;
     if (!q) return true;
     const hay = [p.poNumber, p.destination, p.origin, p.shipTo?.facility ?? "", p.shipTo?.name ?? "", ...(p.shipTo?.street ?? []), ...p.wmsTms, ...p.ups, ...p.pros, ...p.shipments.map((s) => s.shipmentNumber), ...p.cartons.map((c) => c.orderNum), ...p.cartons.map((c) => c.label)].join(" ").toUpperCase();
     return hay.includes(q);

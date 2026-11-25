@@ -20,6 +20,8 @@ import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { EmailComposer, type EmailTeam } from "@/components/email/email-composer";
 import { LinkResourceButton, ResourceLinkItem, removeResourceLink, type ResourceLinkView } from "@/components/shared/resource-links";
 import { needsPackingSlip, packingSlipHref } from "@/lib/packing-slip";
+import { isShippedCompleteCode, pomCommentText, type PomEvidence } from "@/lib/pom";
+import { PomEvidenceCard } from "@/components/shared/pom-evidence";
 import { DISPUTE_REQUESTS, MAX_DISPUTE_SELECTION, disputeDraft, disputeReportFileName, suggestedDisputeRequests, type DisputeEmailItem } from "@/lib/dispute-email";
 
 export interface DisputeView {
@@ -51,6 +53,8 @@ export interface DisputeView {
   attachments: { id: string; fileName: string; size: number; uploadedAt: string; uploadedBy: string | null }[];
   /** Links to documents kept elsewhere (OneDrive…) */
   links: ResourceLinkView[];
+  /** What THD's POM shows for the line's PO and SKU; null when no POM export had the PO */
+  pom: PomEvidence | null;
 }
 
 /** An email from the report's Send Email log */
@@ -597,9 +601,31 @@ function DisputeDetail({ dispute, reasonCodes, canEdit, canPackingSlip, emails, 
           )}
         </div>
 
+        {dispute.pom && (
+          <PomEvidenceCard evidence={dispute.pom}>
+            {prepEditable && pomCommentText(dispute.pom) && !comment.includes(pomCommentText(dispute.pom)!) && (
+              <Button size="sm" variant="outline" className="mt-2" onClick={() => setComment([comment.trim(), pomCommentText(dispute.pom!)].filter(Boolean).join(" "))}>
+                Add POM quantities to the supplier comment
+              </Button>
+            )}
+          </PomEvidenceCard>
+        )}
+
         <div>
           <p className="text-sm font-medium text-gray-700 mb-1.5">Checklist</p>
           <ul className="space-y-1.5">
+            {isShippedCompleteCode(reason?.code) && (
+              <li className="flex items-center gap-2 text-sm" title="From THD's POM (Purchase Order Management) export, not stored on the checklist">
+                {dispute.pom?.shippedComplete ? <Check className="h-4 w-4 text-green-600" /> : <X className="h-4 w-4 text-amber-600" />}
+                <span className={dispute.pom?.shippedComplete ? "text-gray-700" : "text-amber-800"}>
+                  {!dispute.pom
+                    ? "POM evidence: no POM export has this PO yet (import POM's PO search under Logistics › Imports)"
+                    : dispute.pom.shippedComplete
+                      ? `POM evidence: shipped complete (${dispute.pom.line?.shippedQty} of ${dispute.pom.line?.adjOrderQty ?? dispute.pom.line?.orderQty} units)`
+                      : `POM evidence: not shipped complete (${dispute.pom.summary})`}
+                </span>
+              </li>
+            )}
             {items.map((item, i) => (
               <li key={i} className="flex items-center gap-2 text-sm">
                 <input

@@ -4,13 +4,14 @@ import { lineItem } from "@/lib/issues";
 import { C, MARGIN, createPdf, money } from "@/lib/summary-pdf-layout";
 import { DISPUTE_STATUS_LABELS } from "@/lib/disputes";
 import { checklistOf, type LoadedDispute } from "@/lib/dispute-email-data";
+import type { PomEvidence } from "@/lib/pom";
 import { formatDateTime, formatUtcDate, formatUtcDateTime } from "@/lib/utils";
 
 // The dispute report for selected disputes, as a landscape Letter PDF: a summary table, then each
 // dispute with what THD charged, the reason code and its documents, the checklist and the review.
 // The same report is attached to the Disputes page's Send Email.
 
-export function disputeReportPdf(input: { reportTitle: string; disputes: LoadedDispute[]; teams: Record<string, string>; by: string; timeZone: string; windowCloses: Date | null; siteName?: string }): Promise<Buffer> {
+export function disputeReportPdf(input: { reportTitle: string; disputes: LoadedDispute[]; teams: Record<string, string>; by: string; timeZone: string; windowCloses: Date | null; siteName?: string; pom?: Record<string, PomEvidence> }): Promise<Buffer> {
   const { disputes } = input;
   const siteName = input.siteName ?? DEFAULT_SITE_NAME;
   const title = `Disputes: ${disputes.length} ${disputes.length === 1 ? "PO" : "POs"}`;
@@ -97,6 +98,9 @@ export function disputeReportPdf(input: { reportTitle: string; disputes: LoadedD
     const list = checklistOf(d);
     if (list.length) line("Checklist", list.map((c) => `[${c.done ? "x" : " "}] ${c.label}`).join("   "));
     line("Due", d.dueDate ? formatUtcDate(d.dueDate) : null);
+    // THD's own POM numbers for the PO and SKU (shipped quantities, cancellations)
+    const pom = input.pom?.[d.id];
+    if (pom) line("POM (Supplier Hub)", `${pom.summary}${pom.hint ? ` ${pom.hint}` : ""}`);
     // Linked resources (OneDrive…): the report goes to internal teams, who can open them
     if (d.links.length) line("Linked documents", d.links.map((k) => `${k.label} (${k.url})`).join("   "));
     line("Comment for SPM", d.supplierComment);

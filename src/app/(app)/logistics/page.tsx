@@ -38,6 +38,7 @@ import {
 
 type Search = {
   add?: string;
+  esd?: string;
   asn?: string;
   ch?: string;
   state?: string;
@@ -150,6 +151,7 @@ export default async function LogisticsPage({
             wh: sp.wh,
             ch: sp.ch,
             asn: sp.asn,
+            esd: sp.esd,
             sort: sp.sort,
             range: sp.range,
             from: sp.from,

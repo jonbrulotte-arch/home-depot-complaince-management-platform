@@ -51,7 +51,7 @@ export async function POST(req: Request, { params }: IdParams) {
   const tz = await getTimeZone();
   const today = new Intl.DateTimeFormat("en-CA", { timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
   const fileName = disputeReportFileName(disputes.length, today);
-  const pdf = await disputeReportPdf({ reportTitle: data.report.title, disputes, teams: data.teams, by: guard.user.name, timeZone: tz, windowCloses: data.report.period.disputeClose, siteName: (await getBranding()).siteName });
+  const pdf = await disputeReportPdf({ reportTitle: data.report.title, disputes, teams: data.teams, by: guard.user.name, timeZone: tz, windowCloses: data.report.period.disputeClose, siteName: (await getBranding()).siteName, pom: data.pom });
 
   // Every attempt goes in the report's email log, sent or not, with what was attached
   const log = (sent: boolean, error: string | null) =>
