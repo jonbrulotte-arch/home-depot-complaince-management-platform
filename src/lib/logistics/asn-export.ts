@@ -21,6 +21,8 @@ export async function asnConfirmationWorkbook(pos: PoView[], siteName: string): 
     { header: "Ship-to", key: "shipTo", width: 44 },
     { header: "Warehouse", key: "warehouse", width: 24 },
     { header: "Logistics status", key: "logistics", width: 14 },
+    { header: "POM status", key: "pom", width: 12 },
+    { header: "ESD (POM)", key: "esd", width: 12 },
   ];
   for (const p of pos)
     ws.addRow({
@@ -32,6 +34,8 @@ export async function asnConfirmationWorkbook(pos: PoView[], siteName: string): 
       shipTo: p.shipTo ? [p.shipTo.facility ? `#${p.shipTo.facility}` : null, ...addressLines(p.shipTo)].filter(Boolean).join(", ") : p.destination,
       warehouse: p.warehouses.map((w) => w.name).join(", "),
       logistics: p.status,
+      pom: p.pom?.status ?? "",
+      esd: p.pom?.esd ?? "",
     });
   const header = ws.getRow(1);
   header.font = { bold: true };
@@ -51,7 +55,7 @@ export async function asnConfirmationWorkbook(pos: PoView[], siteName: string): 
       error: `Choose ${ASN_STATUS_LABELS.UNSHIPPED} or ${ASN_STATUS_LABELS.SHIPPED}`,
     };
   }
-  ws.autoFilter = { from: { row: 1, column: 1 }, to: { row: 1, column: 8 } };
+  ws.autoFilter = { from: { row: 1, column: 1 }, to: { row: 1, column: 10 } };
   return Buffer.from(await wb.xlsx.writeBuffer());
 }
 

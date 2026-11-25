@@ -64,6 +64,8 @@ export const TABLE_ORDER = [
   "Channel",
   "DestinationAddress",
   "AsnConfirmation",
+  "PomPurchaseOrder",
+  "PomPoLine",
   "CarrierLink",
   "SiteSettings",
 ] as const;

@@ -2,13 +2,14 @@
 // links answer with one) and the header detection that tells the three sources apart. Pure and
 // unit-tested; xlsx files are read with ExcelJS in import.ts and come here as string rows.
 
-export type LogisticsKind = "WMS" | "TMS_SHIPMENTS" | "TMS_POS" | "ASN";
+export type LogisticsKind = "WMS" | "TMS_SHIPMENTS" | "TMS_POS" | "ASN" | "POM";
 
 export const LOGISTICS_KIND_LABELS: Record<LogisticsKind, string> = {
   WMS: "WMS shipped lines",
   TMS_SHIPMENTS: "TMS shipments",
   TMS_POS: "TMS purchase orders",
   ASN: "ASN/Shipped confirmations",
+  POM: "POM purchase orders (Supplier Hub)",
 };
 
 /** The ASN/Shipped Confirmation file's two columns, as the export writes them */
@@ -88,6 +89,8 @@ export function parseHtmlTable(html: string): string[][] {
 export const headerKey = (h: string) => h.toLowerCase().replace(/[^a-z0-9]/g, "");
 
 const SIGNATURES: [LogisticsKind, string[]][] = [
+  // THD's POM (Purchase Order Management) PO search export: a row per PO and SKU
+  ["POM", ["purchaseorder", "postatus", "skuorderqty"]],
   ["WMS", ["customerponumber", "trackingnumber"]],
   ["TMS_SHIPMENTS", ["shipment", "assignedcarrier", "purchaseorders"]],
   ["TMS_POS", ["purchaseorder", "destinationfacility"]],
@@ -307,6 +310,108 @@ export function shipmentRows(rows: string[][], headerIndex: number): Parsed<Ship
       poNumbers: splitPos(pick(r, "purchaseorders")),
       appointment: opt(pick(r, "appointmenttime")),
       tmsFlags: tmsFlags(r),
+      raw: r,
+    };
+  });
+}
+
+/** "11/24/2026", "2026-11-24" or "2026-11-24 00:00:00" (an Excel date) → "2026-11-24" */
+export function pomDate(v: string): string | null {
+  const s = v.trim();
+  let m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (m) return `${m[3]}-${m[1].padStart(2, "0")}-${m[2].padStart(2, "0")}`;
+  m = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  return m ? `${m[1]}-${m[2]}-${m[3]}` : null;
+}
+
+/** "$1134.72", "1,134.72" → 1134.72; blank → null */
+export function pomNumber(v: string): number | null {
+  const s = v.replace(/[$,\s]/g, "");
+  if (!s) return null;
+  const n = Number(s);
+  return Number.isFinite(n) ? n : null;
+}
+
+/** One row of THD's POM PO search export: the PO's header (repeated on each row) and one SKU line */
+export interface PomRow {
+  poNumber: string;
+  dept: string | null;
+  poCreateDate: string | null;
+  poType: string | null;
+  status: string;
+  buyer: string | null;
+  reasonCode: string | null;
+  soq: string | null;
+  vendorNumber: string | null;
+  totalQty: number | null;
+  totalCost: number | null;
+  /** Expected ship date */
+  esd: string | null;
+  dcDueDate: string | null;
+  factory: string | null;
+  containerType: string | null;
+  portOfLading: string | null;
+  destinationDc: string | null;
+  /** "RDC", "IFC" or blank */
+  crossDock: string | null;
+  finalRecvLocation: string | null;
+  transferPo: string | null;
+  mode: string | null;
+  lingerDate: string | null;
+  thdSku: string | null;
+  description: string | null;
+  /** Our SKU (the WMS product) */
+  partNumber: string | null;
+  skuStatus: string | null;
+  orderQty: number | null;
+  adjOrderQty: number | null;
+  shippedQty: number | null;
+  receivedQty: number | null;
+  unitCost: number | null;
+  raw: Record<string, string>;
+}
+
+/** THD's POM PO search export (Supplier Hub › Purchase Order Management), as-is */
+export function pomRows(rows: string[][], headerIndex: number): Parsed<PomRow> {
+  return collect(rowsAsRecords(rows, headerIndex), headerIndex, (r) => {
+    const poNumber = pick(r, "purchaseorder").replace(/\s+/g, "");
+    if (!poNumber) return "No PurchaseOrder #";
+    const int = (k: string) => {
+      const n = pomNumber(pick(r, k));
+      return n === null ? null : Math.round(n);
+    };
+    return {
+      poNumber,
+      dept: opt(pick(r, "dept")),
+      poCreateDate: pomDate(pick(r, "pocreatedate")),
+      poType: opt(pick(r, "potype")),
+      status: pick(r, "postatus") || "Unknown",
+      buyer: opt(pick(r, "buyer")),
+      reasonCode: opt(pick(r, "reasoncode")),
+      soq: opt(pick(r, "soq")),
+      vendorNumber: opt(pick(r, "vendor")),
+      totalQty: int("totalpoqty"),
+      totalCost: pomNumber(pick(r, "totalpocost")),
+      esd: pomDate(pick(r, "esd")),
+      dcDueDate: pomDate(pick(r, "dcduedate")),
+      factory: opt(pick(r, "factory")),
+      containerType: opt(pick(r, "containertype")),
+      portOfLading: opt(pick(r, "portoflading")),
+      destinationDc: opt(pick(r, "destinationdc")),
+      crossDock: opt(pick(r, "crossdock")),
+      finalRecvLocation: opt(pick(r, "finalrecvlocation")),
+      transferPo: opt(pick(r, "transferpo")),
+      mode: opt(pick(r, "mode")),
+      lingerDate: pomDate(pick(r, "lingerdate")),
+      thdSku: opt(pick(r, "sku")),
+      description: opt(pick(r, "skudescription")),
+      partNumber: opt(pick(r, "skupart")),
+      skuStatus: opt(pick(r, "skustatus")),
+      orderQty: int("skuorderqty"),
+      adjOrderQty: int("skuadjorderqty"),
+      shippedQty: int("skushippedqty"),
+      receivedQty: int("skureceivedqty"),
+      unitCost: pomNumber(pick(r, "skuunitcostamount")),
       raw: r,
     };
   });

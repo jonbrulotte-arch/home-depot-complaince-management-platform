@@ -65,7 +65,7 @@ export function ImportPanel({ wmsLink }: { wmsLink: boolean }) {
       >
         <Upload className="mx-auto h-6 w-6 text-gray-400" />
         <p className="mt-2 text-sm text-gray-700">
-          Drop the <strong>WMS shipped-lines report</strong> (xlsx), the TMS <strong>Shipments</strong> export and the TMS <strong>Purchase Orders</strong> export or the <strong>ASN/Shipped Confirmation</strong> file (from the POs tab) here, or
+          Drop the <strong>WMS shipped-lines report</strong> (xlsx), the TMS <strong>Shipments</strong> export and the TMS <strong>Purchase Orders</strong> export, POM&apos;s <strong>PO search</strong> export (Supplier Hub) or the <strong>ASN/Shipped Confirmation</strong> file (from the POs tab) here, or
         </p>
         <div className="mt-3 flex flex-wrap justify-center gap-2">
           <Button onClick={() => input.current?.click()} disabled={Boolean(busy)}>

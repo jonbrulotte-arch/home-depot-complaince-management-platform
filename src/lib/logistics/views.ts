@@ -104,6 +104,13 @@ export const FLAGS = {
   CHECK_PLANEX: { severity: "high", label: "Check destination in PlanEx" },
   CROSSDOCK: { severity: "info", label: "Crossdock (IFC)" },
   ASN_RECEIVED: { severity: "info", label: "ASN received (POM)" },
+  CANCELED_IN_POM: { severity: "info", label: "Canceled (POM)" },
+  PAST_ESD: { severity: "high", label: "Past ESD, not shipped" },
+  SHIPPED_AFTER_ESD: { severity: "medium", label: "Shipped after ESD" },
+  SKU_CANCELLED: { severity: "medium", label: "SKU cancelled (POM)" },
+  CANCELED_SKU_SHIPPED: { severity: "high", label: "Cancelled SKU shipped" },
+  QTY_MISMATCH: { severity: "medium", label: "Quantity differs from POM" },
+  POM_DEST_MISMATCH: { severity: "high", label: "Destination differs from POM" },
   ASN_MISSING: { severity: "medium", label: "ASN missing" },
   DATES_REVERSED: { severity: "info", label: "Delivery before pickup" },
   TMS_FLAGGED: { severity: "info", label: "TMS errors or alerts" },
@@ -211,8 +218,10 @@ export interface PoView {
   dest: Destination;
   /** Where the WMS shipped it: Store/DC number, name and full address; null before it ships */
   shipTo: ShipTo | null;
-  /** Its ASN/ship status as confirmed in POM (the ASN/Shipped Confirmation import); null when never imported */
+  /** Its ASN/ship status as confirmed in POM (the POM export or the ASN/Shipped Confirmation import); null when neither has it */
   asn: AsnInfo | null;
+  /** The PO as THD's POM shows it (status, ESD, destination, SKU lines); null when no POM export had it */
+  pom: PomPo | null;
   flags: Flag[];
 }
 
@@ -220,7 +229,51 @@ export interface AsnInfo {
   status: "SHIPPED" | "UNSHIPPED";
   /** When an import marked it Shipped */
   confirmedAt: Date | null;
+  /** Where it came from: POM's PO search export (status Shipped), else the ASN/Shipped Confirmation file */
+  source?: "POM" | "FILE";
 }
+
+/** A SKU line of a POM PO */
+export interface PomLine {
+  thdSku: string | null;
+  description: string | null;
+  /** Our SKU (the WMS product) */
+  partNumber: string | null;
+  status: string | null;
+  orderQty: number | null;
+  adjOrderQty: number | null;
+  shippedQty: number | null;
+  receivedQty: number | null;
+  unitCost: number | null;
+}
+
+/** A PO as THD's POM (Purchase Order Management) shows it, from its PO search export */
+export interface PomPo {
+  poNumber: string;
+  /** Open, Shipped (THD has the ASN) or Cancelled */
+  status: string;
+  /** YYYY-MM-DD */
+  poCreateDate: string | null;
+  /** Expected ship date, YYYY-MM-DD */
+  esd: string | null;
+  dcDueDate: string | null;
+  destinationDc: string | null;
+  /** RDC or IFC when the PO goes through a crossdock */
+  crossDock: string | null;
+  finalRecvLocation: string | null;
+  buyer: string | null;
+  reasonCode: string | null;
+  totalQty: number | null;
+  totalCost: number | null;
+  /** When the POM export last updated it */
+  updatedAt: Date;
+  lines: PomLine[];
+}
+
+export const pomShipped = (p: Pick<PomPo, "status"> | null | undefined) => Boolean(p && /^shipped$/i.test(p.status.trim()));
+export const pomCanceled = (p: Pick<PomPo, "status"> | null | undefined) => Boolean(p && /^cancel/i.test(p.status.trim()));
+/** Where POM has the PO received: the final receiving location of a crossdock PO, else the destination DC */
+export const pomDestination = (p: Pick<PomPo, "finalRecvLocation" | "destinationDc">) => p.finalRecvLocation ?? p.destinationDc;
 
 /** A PO confirmed in POM, from the ASN/Shipped Confirmation import */
 export interface AsnConfirmationInfo extends AsnInfo {
@@ -305,6 +358,8 @@ export interface LogisticsData {
   channels?: ChannelInfo[];
   /** POs' ASN/ship status confirmed in POM (the ASN/Shipped Confirmation import) */
   asn?: AsnConfirmationInfo[];
+  /** POs from THD's POM PO search export */
+  pom?: PomPo[];
   parcels: Parcel[];
 }
 
@@ -340,11 +395,17 @@ export function buildLogistics(input: LogisticsData, today: string) {
   // several suppliers, so the others' POs ride along
   const known = new Set((data.knownPos ?? []).map(bareNumber));
   const asnBy = new Map((data.asn ?? []).map((a) => [bareNumber(a.poNumber), { status: a.status, confirmedAt: a.confirmedAt }]));
-  const isOurs = (po: string) => tmsByPo.has(po) || cartonsByPo.has(po) || known.has(bareNumber(po));
+  const pomBy = new Map((data.pom ?? []).map((p) => [bareNumber(p.poNumber), p]));
+  const isOurs = (po: string) => tmsByPo.has(po) || cartonsByPo.has(po) || known.has(bareNumber(po)) || pomBy.has(bareNumber(po));
   const poNumbers = new Set([...tmsByPo.keys(), ...cartonsByPo.keys(), ...[...shipmentsByPo.keys()].filter(isOurs)]);
+  // POs POM has that nothing else has yet (open POs not shipped)
+  const listed = new Set([...poNumbers].map(bareNumber));
+  for (const p of data.pom ?? []) if (!listed.has(bareNumber(p.poNumber))) poNumbers.add(p.poNumber);
   const pos: PoView[] = [...poNumbers].map((poNumber) => {
     const tms = tmsByPo.get(poNumber) ?? null;
-    const created = data.poCreated?.[bareNumber(poNumber)] ?? null;
+    const pom = pomBy.get(bareNumber(poNumber)) ?? null;
+    const canceledInPom = pomCanceled(pom);
+    const created = data.poCreated?.[bareNumber(poNumber)] ?? pom?.poCreateDate ?? null;
     const canceledBy = (data.canceledByIssue ?? []).filter((c) => bareNumber(c.poNumber) === bareNumber(poNumber) && cancellationApplies(c, created)).sort((a, b) => a.issueNumber - b.issueNumber)[0];
     const cartons = (cartonsByPo.get(poNumber) ?? []).sort((a, b) => a.shippedAt.getTime() - b.shippedAt.getTime());
     const shipments = (shipmentsByPo.get(poNumber) ?? []).slice().sort((a, b) => (a.pickupAt?.getTime() ?? 0) - (b.pickupAt?.getTime() ?? 0));
@@ -395,11 +456,49 @@ export function buildLogistics(input: LogisticsData, today: string) {
       );
     if (wrong) flags.push(flag("WRONG_DESTINATION", `The WMS shipped to ${wrong.shipCity}, ${wrong.shipState ?? ""}; TMS has the PO going to ${tms?.destCity ?? live[0]?.destCity}, ${tms?.destState ?? live[0]?.destState ?? ""} (DC ${dc}).`));
     else if (typo) flags.push(flag("CITY_SPELLING", `The WMS ship-to city is "${typo.shipCity}", TMS has "${tms?.destCity ?? live[0]?.destCity}" for DC ${dc}: likely a typo in the WMS ship-to address.`));
-    const asn = asnBy.get(bareNumber(poNumber));
-    if (asn?.status === "SHIPPED") flags.push(flag("ASN_RECEIVED", `Confirmed shipped in POM (Supplier Hub)${asn.confirmedAt ? ` on ${isoDate(asn.confirmedAt)}` : ""}: THD has the ASN.`));
+    // POM's own Shipped status means THD has the ASN; else the ASN/Shipped Confirmation file
+    const asn: AsnInfo | null = pomShipped(pom) ? { status: "SHIPPED", confirmedAt: pom!.updatedAt, source: "POM" } : asnBy.has(bareNumber(poNumber)) ? { ...asnBy.get(bareNumber(poNumber))!, source: "FILE" } : null;
+    if (asn?.status === "SHIPPED")
+      flags.push(flag("ASN_RECEIVED", asn.source === "POM" ? "POM (Supplier Hub) shows this PO Shipped: THD has the ASN." : `Confirmed shipped in POM (Supplier Hub)${asn.confirmedAt ? ` on ${isoDate(asn.confirmedAt)}` : ""}: THD has the ASN.`));
     // Shipped in the WMS but not confirmed in POM (not for canceled POs)
-    else if (cartons.length && !canceledBy && !(tms && isCanceled(tms.status)))
-      flags.push(flag("ASN_MISSING", `The WMS shipped this PO on ${isoDate(firstShipped!)}, but it isn't marked ASN received. Check POM in Supplier Hub that THD shows it shipped, then set it to Shipped in the ASN/Shipped Confirmation file and import it.`));
+    else if (cartons.length && !canceledBy && !canceledInPom && !(tms && isCanceled(tms.status)))
+      flags.push(flag("ASN_MISSING", `The WMS shipped this PO on ${isoDate(firstShipped!)}, but it isn't marked ASN received${pom ? ` (POM shows it ${pom.status})` : ""}. Check POM in Supplier Hub; import POM's PO search export (or the ASN/Shipped Confirmation file) once THD shows it shipped.`));
+    if (pom) {
+      if (canceledInPom) {
+        flags.push(flag("CANCELED_IN_POM", "POM (Supplier Hub) shows this PO Cancelled."));
+        if (cartons.length && !(tms && isCanceled(tms.status))) flags.push(flag("CANCELED_SHIPPED", `POM shows this PO Cancelled, but the WMS shipped ${new Set(cartons.map((c) => c.label)).size} carton(s).`));
+      }
+      if (!canceledInPom && !cartons.length && !pomShipped(pom) && pom.esd && pom.esd < today)
+        flags.push(flag("PAST_ESD", `POM's expected ship date (ESD) was ${pom.esd}${pom.dcDueDate ? ` (DC due ${pom.dcDueDate})` : ""}, and the WMS hasn't shipped it.`));
+      if (firstShipped && pom.esd && isoDate(firstShipped) > pom.esd)
+        flags.push(flag("SHIPPED_AFTER_ESD", `The WMS shipped it on ${isoDate(firstShipped)}, ${days(pom.esd, isoDate(firstShipped))} day(s) after POM's expected ship date (${pom.esd}): an On Time risk.`));
+      // SKU lines against what the WMS shipped, by our SKU (POM's SKU Part #, the WMS product)
+      const units = new Map<string, number>();
+      for (const c of cartons) if (c.product) units.set(c.product.trim(), (units.get(c.product.trim()) ?? 0) + (c.quantity ?? 0));
+      const skuText = (l: PomLine) => `SKU ${l.thdSku ?? "?"}${l.partNumber ? ` (our ${l.partNumber}${l.description ? `, ${l.description}` : ""})` : ""}`;
+      for (const l of pom.lines) {
+        const part = l.partNumber?.trim();
+        const shipped = part ? (units.get(part) ?? 0) : 0;
+        const ordered = l.adjOrderQty ?? l.orderQty;
+        if (l.status && /^cancel/i.test(l.status)) {
+          if (shipped > 0) flags.push(flag("CANCELED_SKU_SHIPPED", `POM shows ${skuText(l)} Cancelled, but the WMS shipped ${shipped} unit(s) of it.`));
+          else if (!canceledInPom) flags.push(flag("SKU_CANCELLED", `POM shows ${skuText(l)} Cancelled${ordered ? ` (${ordered} unit(s))` : ""}. Cancelled units count against Fill Rate unless THD cancelled them.`));
+          continue;
+        }
+        if (!cartons.length || !part) continue;
+        if (l.status && /^shipped$/i.test(l.status) && l.shippedQty !== null && shipped !== l.shippedQty)
+          flags.push(flag("QTY_MISMATCH", `The WMS shipped ${shipped} unit(s) of ${skuText(l)}; POM shows ${l.shippedQty} shipped.`));
+        else if (ordered !== null && shipped > ordered) flags.push(flag("QTY_MISMATCH", `The WMS shipped ${shipped} unit(s) of ${skuText(l)}, more than the ${ordered} ordered in POM.`));
+      }
+      const onPo = new Set(pom.lines.map((l) => l.partNumber?.trim()).filter(Boolean));
+      for (const [part, n] of units) if (pom.lines.length && !onPo.has(part)) flags.push(flag("QTY_MISMATCH", `The WMS shipped ${n} unit(s) of ${part}, which isn't on the PO in POM.`));
+      // Where POM has the PO going, against the WMS ship-to and TMS
+      const pomDest = pomDestination(pom);
+      if (pomDest && shipTo?.facility && facilityKey(shipTo.facility) !== facilityKey(pomDest))
+        flags.push(flag("POM_DEST_MISMATCH", `The WMS shipped to Store/DC ${shipTo.facility}; POM has the PO going to ${pomDest}${pom.crossDock ? ` (${pom.crossDock} crossdock via ${pom.destinationDc})` : ""}.`));
+      else if (pom.destinationDc && tmsFacility && !isCrossdock(tmsFacility) && ![pom.destinationDc, pom.finalRecvLocation].some((f) => f && facilityKey(f) === facilityKey(tmsFacility)))
+        flags.push(flag("POM_DEST_MISMATCH", `TMS has the PO going to ${tmsFacility}; POM has it going to ${pomDest}.`));
+    }
     if (tms?.originFacility) {
       const other = live.find((s) => s.originFacility && norm(s.originFacility) !== norm(tms.originFacility) && norm(s.originFacility).slice(0, 6) === norm(tms.originFacility).slice(0, 6));
       if (other) flags.push(flag("ORIGIN_MISMATCH", `The PO ships from ${place(tms.originFacility, tms.originCity, tms.originState)} in TMS, but shipment ${other.shipmentNumber} left ${place(other.originFacility, other.originCity, other.originState)}.`));
@@ -431,10 +530,10 @@ export function buildLogistics(input: LogisticsData, today: string) {
     if (tms?.tmsFlags.length) flags.push(flag("TMS_FLAGGED", `TMS marks this PO: ${tms.tmsFlags.join(", ")}.`));
 
     let status: PoStatus = "Open";
-    if ((tms && isCanceled(tms.status)) || canceledBy) status = "Canceled";
+    if ((tms && isCanceled(tms.status)) || canceledBy || canceledInPom) status = "Canceled";
     else if ((live.length && live.every((s) => isDelivered(s.status))) || (ups.length && parcels.length === ups.length && parcels.every((p) => p.delivered) && !live.length)) status = "Delivered";
     else if (live.some((s) => isMoving(s.status) || isDelivered(s.status)) || parcels.some((p) => !p.delivered && p.statusType && p.statusType !== "M")) status = "In transit";
-    else if (cartons.length) status = "Shipped";
+    else if (cartons.length || pomShipped(pom)) status = "Shipped";
     else if (live.length) status = "Scheduled";
 
     return {
@@ -462,7 +561,8 @@ export function buildLogistics(input: LogisticsData, today: string) {
           ? { facility: live[0].destFacility, city: live[0].destCity, state: live[0].destState }
           : { facility: shipTo?.facility ?? null, city: shipTo?.city ?? null, state: shipTo?.state ?? null },
       shipTo,
-      asn: asnBy.get(bareNumber(poNumber)) ?? null,
+      asn,
+      pom,
       flags: flags.sort(bySeverity),
     };
   });
@@ -489,7 +589,7 @@ export function buildLogistics(input: LogisticsData, today: string) {
         if (tms && isCanceled(tms.status) && !isCanceled(s.status)) flags.push(flag("CANCELED_SHIPPED", `PO ${po} on this shipment is ${tms.status} in TMS.`));
         const byIssue = poByNumber.get(po)?.flags.find((f) => f.code === "CANCELED_BY_ISSUE");
         if (byIssue && !isCanceled(s.status)) flags.push({ ...byIssue, message: `PO ${po}: ${byIssue.message}` });
-        for (const f of poByNumber.get(po)?.flags ?? []) if (["WRONG_DESTINATION", "SHIP_TO_MISMATCH", "SUSPECT_TMS_ID", "TMS_ID_MISMATCH", "ORIGIN_MISMATCH", "SHIPPED_AFTER_PICKUP"].includes(f.code) && !flags.some((x) => x.message === f.message)) flags.push({ ...f, message: `PO ${po}: ${f.message}` });
+        for (const f of poByNumber.get(po)?.flags ?? []) if (["WRONG_DESTINATION", "SHIP_TO_MISMATCH", "POM_DEST_MISMATCH", "CANCELED_SKU_SHIPPED", "SUSPECT_TMS_ID", "TMS_ID_MISMATCH", "ORIGIN_MISMATCH", "SHIPPED_AFTER_PICKUP"].includes(f.code) && !flags.some((x) => x.message === f.message)) flags.push({ ...f, message: `PO ${po}: ${f.message}` });
       }
       // Every one of our POs on it canceled through the Issue Log: the shipment is canceled too,
       // whatever TMS still says, and its lateness flags no longer apply

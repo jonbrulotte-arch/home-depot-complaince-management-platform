@@ -37,7 +37,7 @@ async function thdCatalog(vendorSkus: string[]): Promise<Map<string, CatalogEntr
 export interface SlipLookup {
   slip: PackingSlip;
   /** Where the details came from, for the page to say */
-  sources: { logistics: boolean; compliance: boolean; addressBook: boolean };
+  sources: { logistics: boolean; compliance: boolean; pom: boolean; addressBook: boolean };
   /** The ship-from warehouse picked, by prefix */
   warehouse: string | null;
 }
@@ -75,10 +75,17 @@ export async function lookupSlip(input: string): Promise<SlipLookup | null> {
     const carrier = scac ? l.carrierBy.get(scac)?.name : null;
     slip.carrier = scac ? (carrier && carrier.toUpperCase() !== scac ? `${carrier} (${scac})` : scac) : "";
     slip.cartons = po.cartonCount ? String(po.cartonCount) : "";
-    items = itemsFromCartons(po.cartons, await thdCatalog([...new Set(po.cartons.map((c) => c.product).filter((p): p is string => Boolean(p)))]));
+    // THD's SKU and description: the PO's own POM lines first, else THD's compliance data
+    const catalog = await thdCatalog([...new Set(po.cartons.map((c) => c.product).filter((p): p is string => Boolean(p)))]);
+    for (const l of po.pom?.lines ?? []) if (l.partNumber && l.thdSku) catalog.set(l.partNumber.trim(), { thdSku: l.thdSku, description: l.description });
+    items = itemsFromCartons(po.cartons, catalog);
     warehouse = po.warehouses[0]?.prefix ?? null;
   }
-  // No WMS lines yet: THD's own lines for the PO (ordered quantities)
+  // No WMS lines yet: POM's SKU lines that aren't cancelled (ordered quantities), else THD's compliance lines
+  if (!items.length && po?.pom?.lines.length)
+    items = po.pom.lines
+      .filter((l) => !/^cancel/i.test(l.status ?? ""))
+      .map((l) => ({ thdSku: l.thdSku ?? "", vendorSku: l.partNumber ?? "", description: l.description ?? "", units: l.adjOrderQty ?? l.orderQty ?? 0 }));
   if (!items.length && record) {
     const byKey = new Map<string, SlipItem>();
     for (const ln of record.lines) {
@@ -100,7 +107,7 @@ export async function lookupSlip(input: string): Promise<SlipLookup | null> {
   // Store/DC from TMS (or THD's DC number) with its saved address, or the address the WMS last shipped
   // to there for another PO, else its city
   const shipTo = po?.shipTo ?? null;
-  const facility = (shipTo?.facility ?? po?.dest.facility ?? record?.dcNumber ?? "").trim().toUpperCase();
+  const facility = (shipTo?.facility ?? (po?.pom ? (po.pom.finalRecvLocation ?? po.pom.destinationDc) : null) ?? po?.dest.facility ?? record?.dcNumber ?? "").trim().toUpperCase();
   const channel = po?.channels[0]?.code ?? null;
   slip.destFacility = facility;
   const nameFor = (name: string | null) => (name && !genericName(name) ? name : destinationName(facility || null, channel));
@@ -121,7 +128,7 @@ export async function lookupSlip(input: string): Promise<SlipLookup | null> {
         : cityLine(po?.dest.city ?? null, po?.dest.state ?? null, null);
   }
 
-  return { slip, sources: { logistics: Boolean(po), compliance: Boolean(record) || items.some((i) => i.thdSku), addressBook: Boolean(saved) }, warehouse };
+  return { slip, sources: { logistics: Boolean(po), compliance: Boolean(record) || items.some((i) => i.thdSku), pom: Boolean(po?.pom), addressBook: Boolean(saved) }, warehouse };
 }
 
 /** The address the WMS last shipped to for a Store/DC (any PO), when its lines give one */

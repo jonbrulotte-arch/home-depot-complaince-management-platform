@@ -903,6 +903,68 @@ enum LogisticsSource {
   TMS_POS
   /// The ASN/Shipped Confirmation file (PO Number, ASN/Ship Status), checked in POM
   ASN
+  /// THD's POM (Purchase Order Management) PO search export
+  POM
+}
+
+/// A PO as THD's POM (Supplier Hub › Purchase Order Management) shows it, from its PO search export.
+/// Status "Shipped" means THD has the ASN.
+model PomPurchaseOrder {
+  id                String      @id @default(cuid())
+  poNumber          String      @unique
+  dept              String?
+  poCreateDate      DateTime?   @db.Date
+  poType            String?
+  /// Open, Shipped (ASN received) or Cancelled
+  status            String
+  buyer             String?
+  reasonCode        String?
+  soq               String?
+  vendorNumber      String?
+  totalQty          Int?
+  totalCost         Decimal?    @db.Decimal(14, 2)
+  /// Expected ship date
+  esd               DateTime?   @db.Date
+  dcDueDate         DateTime?   @db.Date
+  factory           String?
+  containerType     String?
+  portOfLading      String?
+  destinationDc     String?
+  /// RDC or IFC when the PO goes through a crossdock
+  crossDock         String?
+  finalRecvLocation String?
+  transferPo        String?
+  mode              String?
+  lingerDate        DateTime?   @db.Date
+  /// Every column of the PO's first row, as exported
+  raw               Json
+  importId          String?
+  createdAt         DateTime    @default(now())
+  updatedAt         DateTime    @updatedAt
+  lines             PomPoLine[]
+}
+
+/// A SKU line of a POM PO
+model PomPoLine {
+  id          String           @id @default(cuid())
+  poNumber    String
+  po          PomPurchaseOrder @relation(fields: [poNumber], references: [poNumber], onDelete: Cascade)
+  /// THD's SKU (Home Depot SKU #)
+  thdSku      String?
+  description String?
+  /// Our SKU (the WMS product)
+  partNumber  String?
+  /// Open, Shipped or Cancelled
+  status      String?
+  orderQty    Int?
+  adjOrderQty Int?
+  shippedQty  Int?
+  receivedQty Int?
+  unitCost    Decimal?         @db.Decimal(14, 4)
+  raw         Json
+
+  @@index([poNumber])
+  @@index([partNumber])
 }
 
 enum AsnStatus {

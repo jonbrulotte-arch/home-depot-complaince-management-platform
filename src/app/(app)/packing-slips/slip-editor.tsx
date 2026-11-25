@@ -132,6 +132,7 @@ export function SlipEditor({ warehouses, initialPo, initial }: { warehouses: War
                 Filled from
                 {sources.logistics && <Badge variant="secondary">Logistics</Badge>}
                 {sources.compliance && <Badge variant="secondary">THD compliance data</Badge>}
+                {sources.pom && <Badge variant="secondary">POM</Badge>}
                 {sources.addressBook && <Badge variant="secondary">Saved address</Badge>}
               </div>
             )}

@@ -3,7 +3,8 @@ import { prisma } from "@/lib/prisma";
 import { ORDER_CANCELLATION, poNumberVariants } from "@/lib/issues";
 import { getTimeZone } from "@/lib/time-zone-server";
 import { carrierUrl, upsTrackingUrl, type CarrierLinkInfo } from "@/lib/logistics/refs";
-import { FLAGS, UPS_SCAC, buildLogistics, type FlagCode, type PoView, asnState } from "@/lib/logistics/views";
+import type { Prisma } from "@prisma/client";
+import { FLAGS, UPS_SCAC, buildLogistics, type FlagCode, type PomPo, type PoView, asnState } from "@/lib/logistics/views";
 
 // Loads the logistics rows and builds the views (views.ts) once per request. Volumes are small
 // (a supplier's last few months of POs), so the views are built in memory.
@@ -14,7 +15,7 @@ export async function todayFor(): Promise<string> {
 }
 
 export const loadLogistics = cache(async () => {
-  const [cartons, shipments, pos, parcels, carriers, today, imports, noteCounts, warehouses, channels, asn] = await Promise.all([
+  const [cartons, shipments, pos, parcels, carriers, today, imports, noteCounts, warehouses, channels, asn, pomRows] = await Promise.all([
     prisma.wmsCarton.findMany({
       orderBy: { lineKey: "asc" },
       select: { lineKey: true, label: true, poNumber: true, orderNum: true, orderNumber: true, customer: true, trackingNumber: true, secondTrack: true, product: true, quantity: true, shippedAt: true, shipTo: true, shipName: true, shipAddress1: true, shipAddress2: true, shipAddress3: true, shipCity: true, shipState: true, shipZip: true },
@@ -49,7 +50,7 @@ export const loadLogistics = cache(async () => {
     todayFor(),
     // The latest import of each source, to show how fresh the data is
     Promise.all(
-      (["WMS", "TMS_SHIPMENTS", "TMS_POS", "ASN"] as const).map((source) =>
+      (["WMS", "TMS_SHIPMENTS", "TMS_POS", "POM", "ASN"] as const).map((source) =>
         prisma.logisticsImport.findFirst({ where: { source }, orderBy: { importedAt: "desc" }, select: { source: true, importedAt: true, fileName: true, rows: true, fetched: true } }),
       ),
     ),
@@ -60,6 +61,8 @@ export const loadLogistics = cache(async () => {
     prisma.channel.findMany({ orderBy: [{ sortOrder: "asc" }, { code: "asc" }], select: { code: true, name: true } }),
     // POs confirmed in POM (the ASN/Shipped Confirmation import)
     prisma.asnConfirmation.findMany({ select: { poNumber: true, status: true, confirmedAt: true } }),
+    // THD's POM PO search export: PO status (Shipped = ASN received), ESD, destination and SKU lines
+    prisma.pomPurchaseOrder.findMany({ include: { lines: true } }),
   ]);
   // Shipment POs not in the WMS or TMS PO data: ours only if THD's compliance data or the Issue Log has them
   const seen = new Set([...pos.map((p) => p.poNumber), ...cartons.map((c) => c.poNumber)]);
@@ -88,7 +91,7 @@ export const loadLogistics = cache(async () => {
     issueDate: c.issue.issueDate.toISOString().slice(0, 10),
     poCreateDate: c.poCreateDate ? c.poCreateDate.toISOString().slice(0, 10) : null,
   }));
-  const views = buildLogistics({ cartons, shipments, pos, parcels, knownPos, poCreated, canceledByIssue, warehouses, channels, asn }, today);
+  const views = buildLogistics({ cartons, shipments, pos, parcels, knownPos, poCreated, canceledByIssue, warehouses, channels, asn, pom: pomRows.map(toPomPo) }, today);
   const carrierBy = new Map<string, CarrierLinkInfo>(carriers.map((c) => [c.scac, c]));
   const notes = {
     po: new Map(noteCounts.filter((n) => n.poNumber).map((n) => [n.poNumber!, n._count._all])),
@@ -96,6 +99,39 @@ export const loadLogistics = cache(async () => {
   };
   return { ...views, today, warehouses, channels, carriers, carrierBy, latestImports: imports.filter((i) => i !== null), notes, empty: !cartons.length && !shipments.length && !pos.length };
 });
+
+const ymd = (d: Date | null) => (d ? d.toISOString().slice(0, 10) : null);
+const num = (d: { toNumber(): number } | null) => (d === null ? null : d.toNumber());
+
+/** A stored POM PO for the views */
+export function toPomPo(p: Prisma.PomPurchaseOrderGetPayload<{ include: { lines: true } }>): PomPo {
+  return {
+    poNumber: p.poNumber,
+    status: p.status,
+    poCreateDate: ymd(p.poCreateDate),
+    esd: ymd(p.esd),
+    dcDueDate: ymd(p.dcDueDate),
+    destinationDc: p.destinationDc,
+    crossDock: p.crossDock,
+    finalRecvLocation: p.finalRecvLocation,
+    buyer: p.buyer,
+    reasonCode: p.reasonCode,
+    totalQty: p.totalQty,
+    totalCost: num(p.totalCost),
+    updatedAt: p.updatedAt,
+    lines: p.lines.map((l) => ({
+      thdSku: l.thdSku,
+      description: l.description,
+      partNumber: l.partNumber,
+      status: l.status,
+      orderQty: l.orderQty,
+      adjOrderQty: l.adjOrderQty,
+      shippedQty: l.shippedQty,
+      receivedQty: l.receivedQty,
+      unitCost: num(l.unitCost),
+    })),
+  };
+}
 
 export type LoadedLogistics = Awaited<ReturnType<typeof loadLogistics>>;
 

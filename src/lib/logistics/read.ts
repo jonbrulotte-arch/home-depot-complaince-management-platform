@@ -1,6 +1,6 @@
 import ExcelJS from "exceljs";
 import { MAX_FILE_BYTES } from "@/lib/import/parse";
-import { MAX_LOGISTICS_ROWS, asnRows, detectKind, parseCsv, parseHtmlTable, poRows, shipmentRows, wmsRows, type AsnRow, type LogisticsKind, type Parsed, type PoRow, type ShipmentRow, type WmsRow } from "@/lib/logistics/parse";
+import { MAX_LOGISTICS_ROWS, asnRows, detectKind, parseCsv, parseHtmlTable, poRows, pomRows, shipmentRows, wmsRows, type AsnRow, type PomRow, type LogisticsKind, type Parsed, type PoRow, type ShipmentRow, type WmsRow } from "@/lib/logistics/parse";
 
 // A logistics file (xlsx, CSV or an HTML table) to typed rows of the source it turns out to be.
 // No database; import.ts saves the rows.
@@ -9,7 +9,8 @@ export type ReadFile =
   | { kind: "WMS"; parsed: Parsed<WmsRow> }
   | { kind: "TMS_SHIPMENTS"; parsed: Parsed<ShipmentRow> }
   | { kind: "TMS_POS"; parsed: Parsed<PoRow> }
-  | { kind: "ASN"; parsed: Parsed<AsnRow> };
+  | { kind: "ASN"; parsed: Parsed<AsnRow> }
+  | { kind: "POM"; parsed: Parsed<PomRow> };
 
 const pad = (n: number) => String(n).padStart(2, "0");
 
@@ -56,10 +57,11 @@ export async function readLogisticsFile(bytes: Uint8Array): Promise<ReadFile> {
   const rows = await fileRows(bytes);
   const found = detectKind(rows);
   if (!found)
-    throw new Error("Not a WMS shipped-lines report, TMS shipments export, TMS purchase orders export or ASN/Shipped Confirmation file (the column headers weren't recognised)");
+    throw new Error("Not a WMS shipped-lines report, TMS shipments export, TMS purchase orders export, POM purchase order search export or ASN/Shipped Confirmation file (the column headers weren't recognised)");
   const kind: LogisticsKind = found.kind;
   if (kind === "WMS") return { kind, parsed: wmsRows(rows, found.headerIndex) };
   if (kind === "TMS_SHIPMENTS") return { kind, parsed: shipmentRows(rows, found.headerIndex) };
   if (kind === "ASN") return { kind, parsed: asnRows(rows, found.headerIndex) };
+  if (kind === "POM") return { kind, parsed: pomRows(rows, found.headerIndex) };
   return { kind, parsed: poRows(rows, found.headerIndex) };
 }

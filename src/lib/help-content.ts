@@ -475,6 +475,9 @@ export const HELP_TOPICS: HelpTopic[] = [
       {
         p: "The **Shipments** tab searches by shipment, PO, PRO or UPS number, SCAC, Store/DC or city, and filters by status, flagged (high, medium or info), flag, ASN, carrier, late or not picked up, warehouse, channel and pickup date (the same ranges as the POs tab).",
       },
+      {
+        p: "**POM purchase orders.** Export the PO search from **POM** (Purchase Order Management) in Home Depot's Supplier Hub and drop the file, as-is, on **Imports**. Each PO in the file replaces what was stored for it. POM's **Shipped** status means THD has the ASN, so those POs are marked **ASN received** without the ASN/Shipped Confirmation file; **Cancelled** POs show as Canceled; POs POM has that nothing else has yet (open, not shipped) appear on the POs tab. The PO page gets a **POM (Supplier Hub)** section (status, create date, ESD, DC due date, destination and crossdock, buyer, and each SKU line with THD's SKU, our SKU, status, ordered, shipped and received quantities and unit cost, beside what the WMS shipped), the Excel exports get POM status and ESD columns, and packing slips take THD's SKUs and descriptions from it (and, before the WMS ships, its open SKU lines). New flags compare POM with the rest of the data: **Past ESD, not shipped** (high), **Shipped after ESD** (medium, an On Time risk), **SKU cancelled (POM)** (medium, a Fill Rate risk), **Cancelled SKU shipped** (high), **Quantity differs from POM** (medium: shipped quantities that don't match, more than ordered, or a product not on the PO) and **Destination differs from POM** (high: the WMS ship-to or TMS destination isn't POM's destination or final receiving location).",
+      },
     ],
   },
   {

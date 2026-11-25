@@ -18,6 +18,7 @@ import { ComplianceCard, IssuesCard } from "@/components/logistics/related";
 import { EmailsCard } from "@/components/logistics/emails";
 import { warehouseNames } from "@/lib/logistics/warehouses";
 import { addressLines } from "@/lib/logistics/ship-to";
+import { pomDestination, type PomPo } from "@/lib/logistics/views";
 import { Section, Table, n } from "@/app/(app)/insights/ui";
 import { UpsRefreshButton } from "../../ups-refresh-button";
 import { Dates, Route } from "../../sections";
@@ -79,6 +80,7 @@ export default async function LogisticsPoPage({ params }: { params: Promise<{ po
               <FlagList flags={p.flags} />
             </CardContent>
           </Card>
+          {p.pom && <PomSection pom={p.pom} wmsUnits={unitsByProduct(p.cartons)} />}
           <Section title="TMS shipments" description="Click the SCAC to open the carrier's tracking page.">
             <Table
               rows={p.shipments}
@@ -170,5 +172,55 @@ export default async function LogisticsPoPage({ params }: { params: Promise<{ po
         </div>
       </div>
     </div>
+  );
+}
+
+function unitsByProduct(cartons: { product: string | null; quantity: number | null }[]) {
+  const m = new Map<string, number>();
+  for (const c of cartons) if (c.product) m.set(c.product.trim(), (m.get(c.product.trim()) ?? 0) + (c.quantity ?? 0));
+  return m;
+}
+
+const money = (v: number | null, digits = 2) => (v === null ? "—" : v.toLocaleString("en-US", { style: "currency", currency: "USD", minimumFractionDigits: digits, maximumFractionDigits: digits }));
+
+/** The PO as THD's POM (Supplier Hub) shows it: status, dates, destination and its SKU lines against the WMS */
+function PomSection({ pom, wmsUnits }: { pom: PomPo; wmsUnits: Map<string, number> }) {
+  const dest = pomDestination(pom);
+  return (
+    <Section
+      title="POM (Supplier Hub)"
+      description={
+        <>
+          <span className="font-medium text-gray-700">{pom.status}</span>
+          {pom.status.toLowerCase() === "shipped" && " (THD has the ASN)"} · Created {pom.poCreateDate ?? "—"} · ESD {pom.esd ?? "—"} · DC due {pom.dcDueDate ?? "—"} · Destination {dest ?? "—"}
+          {pom.crossDock ? ` (${pom.crossDock} crossdock via ${pom.destinationDc ?? "—"})` : ""}
+          {pom.buyer ? ` · Buyer ${pom.buyer}` : ""} · {n(pom.totalQty ?? 0)} units, {money(pom.totalCost)}
+        </>
+      }
+    >
+      <Table
+        rows={pom.lines}
+        empty="POM listed no SKU lines."
+        cols={[
+          { header: "Home Depot SKU", cell: (l) => <span className="font-mono text-xs">{l.thdSku ?? "—"}</span> },
+          { header: "Our SKU", cell: (l) => <span className="font-mono text-xs">{l.partNumber ?? "—"}</span> },
+          { header: "Description", cell: (l) => <span className="text-xs">{l.description ?? "—"}</span> },
+          { header: "Status", cell: (l) => <span className={/^cancel/i.test(l.status ?? "") ? "text-xs font-medium text-red-700" : "text-xs"}>{l.status ?? "—"}</span> },
+          { header: "Ordered", cell: (l) => (l.adjOrderQty ?? l.orderQty) ?? "—", align: "right" },
+          { header: "Shipped (POM)", cell: (l) => l.shippedQty ?? "—", align: "right" },
+          {
+            header: "Shipped (WMS)",
+            cell: (l) => {
+              const u = l.partNumber ? wmsUnits.get(l.partNumber.trim()) : undefined;
+              const off = u !== undefined && l.shippedQty !== null && /^shipped$/i.test(l.status ?? "") && u !== l.shippedQty;
+              return <span className={off ? "font-medium text-amber-700" : undefined}>{u ?? "—"}</span>;
+            },
+            align: "right",
+          },
+          { header: "Received", cell: (l) => l.receivedQty ?? "—", align: "right" },
+          { header: "Unit cost", cell: (l) => money(l.unitCost), align: "right" },
+        ]}
+      />
+    </Section>
   );
 }

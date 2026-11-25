@@ -72,6 +72,66 @@ export async function importLogisticsFile(bytes: Uint8Array, fileName: string, u
     await inChunks(rows.filter((r) => existing.has(r.shipmentNumber)), (c) => prisma.$transaction(c.map((r) => prisma.tmsShipment.update({ where: { shipmentNumber: r.shipmentNumber }, data: data(r) }))));
     created = rows.filter((r) => !existing.has(r.shipmentNumber)).length;
     updated = rows.length - created;
+  } else if (file.kind === "POM") {
+    // A row per PO and SKU: each PO in the file replaces what was stored for it (its header and all its
+    // SKU lines), so a later export always wins
+    const byPo = new Map<string, typeof file.parsed.rows>();
+    for (const r of file.parsed.rows) byPo.set(r.poNumber, [...(byPo.get(r.poNumber) ?? []), r]);
+    const existing = new Set((await prisma.pomPurchaseOrder.findMany({ where: { poNumber: { in: [...byPo.keys()] } }, select: { poNumber: true } })).map((r) => r.poNumber));
+    const day = (d: string | null) => (d ? new Date(`${d}T00:00:00Z`) : null);
+    await inChunks([...byPo.entries()], (chunk) =>
+      prisma.$transaction(
+        chunk.flatMap(([poNumber, lines]) => {
+          const h = lines[0];
+          const header = {
+            dept: h.dept,
+            poCreateDate: day(h.poCreateDate),
+            poType: h.poType,
+            status: h.status,
+            buyer: h.buyer,
+            reasonCode: h.reasonCode,
+            soq: h.soq,
+            vendorNumber: h.vendorNumber,
+            totalQty: h.totalQty,
+            totalCost: h.totalCost,
+            esd: day(h.esd),
+            dcDueDate: day(h.dcDueDate),
+            factory: h.factory,
+            containerType: h.containerType,
+            portOfLading: h.portOfLading,
+            destinationDc: h.destinationDc,
+            crossDock: h.crossDock,
+            finalRecvLocation: h.finalRecvLocation,
+            transferPo: h.transferPo,
+            mode: h.mode,
+            lingerDate: day(h.lingerDate),
+            raw: h.raw as Prisma.InputJsonObject,
+            importId: log.id,
+          };
+          return [
+            prisma.pomPurchaseOrder.upsert({ where: { poNumber }, create: { poNumber, ...header }, update: header }),
+            prisma.pomPoLine.deleteMany({ where: { poNumber } }),
+            prisma.pomPoLine.createMany({
+              data: lines.map((l) => ({
+                poNumber,
+                thdSku: l.thdSku,
+                description: l.description,
+                partNumber: l.partNumber,
+                status: l.skuStatus,
+                orderQty: l.orderQty,
+                adjOrderQty: l.adjOrderQty,
+                shippedQty: l.shippedQty,
+                receivedQty: l.receivedQty,
+                unitCost: l.unitCost,
+                raw: l.raw as Prisma.InputJsonObject,
+              })),
+            }),
+          ];
+        }),
+      ),
+    );
+    created = [...byPo.keys()].filter((po) => !existing.has(po)).length;
+    updated = byPo.size - created;
   } else if (file.kind === "ASN") {
     // Shipped marks the PO ASN received (once: the first confirmation's date is kept); Unshipped clears
     // a PO marked before and adds nothing for one never marked. Unchanged rows count as neither.
