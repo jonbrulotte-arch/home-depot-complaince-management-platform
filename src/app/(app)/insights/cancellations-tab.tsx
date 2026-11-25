@@ -21,8 +21,11 @@ const groupCols = (first: string): Col<CancelGroup>[] => [
 ];
 
 /** Reports & Insights › Cancellations: the financial impact of cancelled orders */
-export function CancellationsTab({ rows, all, filters, poLookup, issues }: { rows: CancelRow[]; all: CancelRow[]; filters: Record<string, string | undefined>; poLookup: boolean; issues: boolean }) {
+export function CancellationsTab({ rows, all, filters, poLookup, issues, showAllHref }: { rows: CancelRow[]; all: CancelRow[]; filters: Record<string, string | undefined>; poLookup: boolean; issues: boolean; /** The tab with no filters and all time */ showAllHref: string }) {
   const t = cancelTotals(rows);
+  // Everything recorded, so a time frame or filter never quietly understates the impact
+  const everything = cancelTotals(all);
+  const hidden = { rows: everything.rows - t.rows, units: everything.units - t.units, value: Math.round((everything.value - t.value) * 100) / 100, offsets: Math.round((everything.offsets - t.offsets) * 100) / 100 };
   const opts = cancelFilterOptions(all);
   const top = (gs: CancelGroup[], k = 12) => gs.slice(0, k);
   return (
@@ -33,6 +36,17 @@ export function CancellationsTab({ rows, all, filters, poLookup, issues }: { row
         charges less what disputes recovered. The time frame and program above apply; a row counts in the PO&apos;s create month (POM), else the month THD charged it, else the issue&apos;s.
       </p>
       <CancellationFilters values={filters} teams={opts.teams} dcs={opts.dcs} vendors={opts.vendors} reasons={opts.reasons} />
+      {hidden.rows > 0 && (
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+          <span>
+            The time frame and filters hide <strong>{n(hidden.rows)}</strong> of {n(everything.rows)} cancellations: <strong>{money(hidden.value)}</strong> of {money(everything.value)} order value ({n(hidden.units)} units)
+            {hidden.offsets > 0 ? ` and ${money(hidden.offsets)} of THD offsets` : ""}.
+          </span>
+          <Link href={showAllHref} className="font-medium text-blue-700 hover:underline">
+            Show all cancellations
+          </Link>
+        </div>
+      )}
       <StatTiles
         stats={[
           { label: "Cancellations", value: n(t.rows), hint: `${n(t.pos)} PO(s)` },

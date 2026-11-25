@@ -17,12 +17,13 @@ export async function GET(req: NextRequest) {
   const get = (k: string) => q.get(k)?.trim().slice(0, 100) || undefined;
   const data = await loadInsights({ range: get("range"), from: get("from"), to: get("to"), program: get("program") });
   const f = { source: get("source"), team: get("team"), dc: get("dc"), sku: get("sku"), scope: get("scope"), dispute: get("dispute"), vendor: get("vendor"), reason: get("reason"), q: get("q") };
-  const rows = filterCancellations(await loadCancellations(), { ...f, ...cancelFrame(data.frame), program: data.programCode });
+  const all = await loadCancellations();
+  const rows = filterCancellations(all, { ...f, ...cancelFrame(data.frame), program: data.programCode });
   const shown = Object.entries(f)
     .filter(([, v]) => v)
     .map(([k, v]): [string, string] => [LABELS[k], k === "source" ? (CANCEL_SOURCE_LABELS[v as CancelSource] ?? v!) : v!]);
   const programName = data.programs.find((p) => p.code === data.programCode)?.name ?? null;
-  const buffer = await cancellationsWorkbook(rows, { timeFrame: data.frame.label, program: programName, filters: shown }, (await getBranding()).siteName);
+  const buffer = await cancellationsWorkbook(rows, { timeFrame: data.frame.label, program: programName, filters: shown, all }, (await getBranding()).siteName);
   await audit(guard.user.id, "insights.cancellationsExport", "Insights", null, { timeFrame: data.frame.label, program: data.programCode ?? "all", rows: rows.length, ...Object.fromEntries(shown) });
   const name = `Cancellations_${data.frame.label.replace(/[^A-Za-z0-9]+/g, "_").replace(/^_|_$/g, "")}${data.programCode ? `_${data.programCode}` : ""}.xlsx`;
   return new NextResponse(new Uint8Array(buffer), {

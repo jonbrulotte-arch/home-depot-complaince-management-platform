@@ -85,7 +85,7 @@ export default async function InsightsPage({ searchParams }: { searchParams: Pro
           const all = await loadCancellations();
           const f = { source: sp.source, team: sp.team, dc: sp.dc, sku: sp.sku, scope: sp.scope, dispute: sp.dispute, vendor: sp.vendor, reason: sp.reason, q: sp.q };
           const rows = filterCancellations(all, { ...f, ...cancelFrame(data.frame), program: data.programCode });
-          return <CancellationsTab rows={rows} all={all} filters={f} poLookup={access.poLookup} issues={access.issues} />;
+          return <CancellationsTab rows={rows} all={all} filters={f} poLookup={access.poLookup} issues={access.issues} showAllHref="/insights?tab=cancellations&range=all" />;
         })()
       ) : (
         <LocationsTab data={data} access={access} />

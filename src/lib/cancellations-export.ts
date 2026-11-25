@@ -28,7 +28,7 @@ const groupSheet = (wb: ExcelJS.Workbook, name: string, first: string, groups: C
     groups.map((g) => [g.label, g.rows, g.pos, g.units, g.value, g.offsets, g.recovered, g.net, g.estimatedFines, g.disputed]),
   );
 
-export async function cancellationsWorkbook(rows: CancelRow[], context: { timeFrame: string; program: string | null; filters: [string, string][] }, siteName: string): Promise<Buffer> {
+export async function cancellationsWorkbook(rows: CancelRow[], context: { timeFrame: string; program: string | null; filters: [string, string][]; /** Every cancellation recorded, whatever the filters */ all?: CancelRow[] }, siteName: string): Promise<Buffer> {
   const wb = new ExcelJS.Workbook();
   wb.creator = siteName;
   const t = cancelTotals(rows);
@@ -52,6 +52,22 @@ export async function cancellationsWorkbook(rows: CancelRow[], context: { timeFr
       ["Estimated fines (Issue Log)", t.estimatedFines],
       ["Charged by THD", t.charged],
       ["Disputed", t.disputed],
+      ...(context.all && context.all.length !== rows.length
+        ? (() => {
+            const a = cancelTotals(context.all);
+            return [
+              ["", ""],
+              ["All cancellations recorded (no time frame or filters)", ""],
+              ["Cancellations (PO and SKU)", a.rows],
+              ["Units cancelled (POM)", a.units],
+              ["Order value cancelled", a.value],
+              ["THD offsets", a.offsets],
+              ["Recovered", a.recovered],
+              ["Net offsets", a.net],
+              ["Estimated fines", a.estimatedFines],
+            ] as (string | number)[][];
+          })()
+        : []),
     ],
   );
   sheet(
