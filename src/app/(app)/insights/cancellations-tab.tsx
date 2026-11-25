@@ -5,6 +5,7 @@ import { DISPUTE_STATUS_LABELS } from "@/lib/disputes";
 import { StatTiles } from "@/components/analytics/stat-tiles";
 import { Section, Table, money, n, type Col } from "./ui";
 import { CancellationFilters } from "./cancellation-filters";
+import { MonthColumns } from "./cancellation-charts";
 
 const PAGE = 250;
 
@@ -21,7 +22,7 @@ const groupCols = (first: string): Col<CancelGroup>[] => [
 ];
 
 /** Reports & Insights › Cancellations: the financial impact of cancelled orders */
-export function CancellationsTab({ rows, all, filters, poLookup, issues, showAllHref }: { rows: CancelRow[]; all: CancelRow[]; filters: Record<string, string | undefined>; poLookup: boolean; issues: boolean; /** The tab with no filters and all time */ showAllHref: string }) {
+export function CancellationsTab({ rows, all, filters, poLookup, logistics, issues, showAllHref }: { rows: CancelRow[]; all: CancelRow[]; filters: Record<string, string | undefined>; poLookup: boolean; /** logistics.view: PO numbers open the Logistics PO record */ logistics: boolean; issues: boolean; /** The tab with no filters and all time */ showAllHref: string }) {
   const t = cancelTotals(rows);
   // Everything recorded, so a time frame or filter never quietly understates the impact
   const everything = cancelTotals(all);
@@ -57,6 +58,15 @@ export function CancellationsTab({ rows, all, filters, poLookup, issues, showAll
           { label: "Estimated fines", value: money(t.estimatedFines), hint: "Issue Log" },
         ]}
       />
+      {(() => {
+        const months = groupCancellations(rows, (r) => (r.month ? String(r.month) : null), (k) => fiscalLabel(Number(k)), "key").filter((g) => g.key !== "—");
+        return (
+          <div className="grid gap-4 lg:grid-cols-2">
+            <MonthColumns title="Order value cancelled by month" data={months.map((g) => ({ label: g.label, value: g.value }))} />
+            <MonthColumns title="THD offsets by month" data={months.map((g) => ({ label: g.label, value: g.offsets }))} />
+          </div>
+        );
+      })()}
       <div className="grid gap-6">
         <Section title="By month">
           <Table rows={groupCancellations(rows, (r) => (r.month ? String(r.month) : null), (k) => (k === "—" ? "No date" : fiscalLabel(Number(k))), "key").reverse()} cols={groupCols("Month")} />
@@ -92,8 +102,8 @@ export function CancellationsTab({ rows, all, filters, poLookup, issues, showAll
             {
               header: "PO",
               cell: (r) =>
-                poLookup ? (
-                  <Link href={`/po-lookup?q=${encodeURIComponent(r.poNumber)}`} className="text-blue-600 hover:underline">
+                logistics || poLookup ? (
+                  <Link href={logistics ? `/logistics/po/${encodeURIComponent(r.poNumber)}` : `/po-lookup?q=${encodeURIComponent(r.poNumber)}`} className="text-blue-600 hover:underline">
                     {r.poNumber}
                   </Link>
                 ) : (

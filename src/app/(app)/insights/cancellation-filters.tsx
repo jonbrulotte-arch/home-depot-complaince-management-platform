@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { Download, Search } from "lucide-react";
+import { Download, FileText, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -28,9 +28,10 @@ export function CancellationFilters({ values, teams, dcs, vendors, reasons }: { 
     return p;
   };
   const apply = (next: Partial<Record<Key, string | undefined>> = {}) => router.push(`${pathname}?${query(next)}`);
-  const exportHref = () => {
+  const exportHref = (format?: "pdf") => {
     const p = query({});
     p.delete("tab");
+    if (format) p.set("format", format);
     return `/api/insights/cancellations?${p}`;
   };
   const pick = (id: string, label: string, key: Key, options: [string, string][], width: string) => (
@@ -89,12 +90,20 @@ export function CancellationFilters({ values, teams, dcs, vendors, reasons }: { 
           Clear
         </Button>
       )}
-      <Button asChild variant="outline" className="ml-auto">
-        <a href={exportHref()}>
-          <Download className="h-4 w-4 mr-1.5" />
-          Export cancellations
-        </a>
-      </Button>
+      <div className="ml-auto flex gap-2">
+        <Button asChild variant="outline">
+          <a href={exportHref("pdf")}>
+            <FileText className="h-4 w-4 mr-1.5" />
+            PDF report
+          </a>
+        </Button>
+        <Button asChild variant="outline">
+          <a href={exportHref()}>
+            <Download className="h-4 w-4 mr-1.5" />
+            Excel
+          </a>
+        </Button>
+      </div>
     </form>
   );
 }

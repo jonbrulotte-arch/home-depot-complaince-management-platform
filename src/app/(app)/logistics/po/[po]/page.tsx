@@ -19,6 +19,7 @@ import { EmailsCard } from "@/components/logistics/emails";
 import { warehouseNames } from "@/lib/logistics/warehouses";
 import { addressLines } from "@/lib/logistics/ship-to";
 import { pomDestination, type PomPo } from "@/lib/logistics/views";
+import { pomByPoNumbers } from "@/lib/pom-data";
 import { Section, Table, n } from "@/app/(app)/insights/ui";
 import { UpsRefreshButton } from "../../ups-refresh-button";
 import { Dates, Route } from "../../sections";
@@ -28,7 +29,12 @@ export default async function LogisticsPoPage({ params }: { params: Promise<{ po
   const po = decodeURIComponent((await params).po).trim().toUpperCase();
   const [l, tz] = await Promise.all([loadLogistics(), getTimeZone()]);
   const p = l.pos.find((x) => x.poNumber === po);
-  if (!p) notFound();
+  if (!p) {
+    // A PO only POM has (its Closed or Cancelled history isn't listed in Logistics): its POM record
+    const pom = (await pomByPoNumbers([po])).get(po.replace(/^0+(?=\d)/, ""));
+    if (!pom) notFound();
+    return <PomOnlyPo pom={pom} canIssues={user.permissions.has("issues.view")} canIssuesManage={user.permissions.has("issues.manage")} canLookup={user.permissions.has("view.polookup")} />;
+  }
   const canIssues = user.permissions.has("issues.view");
   const [issues, compliance, notes] = await Promise.all([
     canIssues ? issuesForPoNumbers([po]) : new Map<string, IssueSummary[]>(),
@@ -222,5 +228,31 @@ function PomSection({ pom, wmsUnits }: { pom: PomPo; wmsUnits: Map<string, numbe
         ]}
       />
     </Section>
+  );
+}
+
+/** A PO that only POM has: what POM shows, with its compliance data and issues */
+async function PomOnlyPo({ pom, canIssues, canIssuesManage, canLookup }: { pom: PomPo; canIssues: boolean; canIssuesManage: boolean; canLookup: boolean }) {
+  const [issues, compliance] = await Promise.all([canIssues ? issuesForPoNumbers([pom.poNumber]) : new Map<string, IssueSummary[]>(), complianceForPos([pom.poNumber])]);
+  return (
+    <div className="p-6 max-w-7xl mx-auto space-y-6">
+      <Link href="/logistics?tab=pos" className="inline-flex items-center gap-1 text-sm text-gray-500 hover:text-gray-700">
+        <ArrowLeft className="h-4 w-4" />
+        Logistics
+      </Link>
+      <div className="flex flex-wrap items-center gap-3">
+        <h1 className="text-2xl font-bold text-gray-900">PO {pom.poNumber}</h1>
+        <span className="text-sm text-gray-500">POM: {pom.status}. The WMS and TMS data imported so far don&apos;t have this PO, so Logistics shows what POM has.</span>
+      </div>
+      <div className="grid gap-6 lg:grid-cols-3">
+        <div className="space-y-6 lg:col-span-2">
+          <PomSection pom={pom} wmsUnits={new Map()} />
+        </div>
+        <div className="space-y-6">
+          {canIssues && <IssuesCard issues={issues.get(pom.poNumber) ?? []} newIssuePo={pom.poNumber} canManage={canIssuesManage} />}
+          <ComplianceCard rows={compliance.get(pom.poNumber) ?? []} canOpen={canLookup} />
+        </div>
+      </div>
+    </div>
   );
 }
