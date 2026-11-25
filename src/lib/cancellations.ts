@@ -64,7 +64,7 @@ export interface CancelIssue {
 export interface CancelRow {
   key: string;
   poNumber: string;
-  /** The month the row counts in: THD's charge's report month, else the PO's create month (POM), else the issue's */
+  /** The month the row counts in: the PO's create month (POM), else THD's charge's report month, else the issue's */
   month: number | null;
   programCode: string | null;
   programName: string | null;
@@ -162,8 +162,9 @@ export function buildCancellations(input: { pom: CancelPomLine[]; charges: Cance
     const r = rows.get(key) ?? { ...blank(po), key };
     const recovered = c.dispute && WON.includes(c.dispute.status) ? (c.dispute.recovered ?? 0) : 0;
     Object.assign(r, {
-      // THD's charge month wins: it is when the cancellation cost money
-      month: c.month,
+      // The PO's create month (POM) wins, so the tab reconciles to POM for any time frame; a charge
+      // POM doesn't have counts in its report month
+      month: r.month ?? c.month,
       programCode: c.programCode,
       programName: c.programName,
       destination: r.destination ?? c.dcNumber,

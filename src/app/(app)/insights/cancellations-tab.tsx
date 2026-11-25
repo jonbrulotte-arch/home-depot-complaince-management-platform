@@ -30,7 +30,7 @@ export function CancellationsTab({ rows, all, filters, poLookup, issues }: { row
       <p className="text-sm text-gray-500">
         Cancelled POs and SKU lines from POM (Supplier Hub), THD&apos;s Fill Rate charges for what wasn&apos;t shipped (with disputes and what was recovered) and the Issue Log&apos;s Order and Line cancellation issues, one row
         per PO and SKU. <strong className="font-medium text-gray-700">Order value</strong> is the cancelled units at POM&apos;s unit cost (sales lost); <strong className="font-medium text-gray-700">net offsets</strong> are THD&apos;s
-        charges less what disputes recovered. The time frame and program above apply; a row counts in the month THD charged it, else the PO&apos;s create month, else the issue&apos;s.
+        charges less what disputes recovered. The time frame and program above apply; a row counts in the PO&apos;s create month (POM), else the month THD charged it, else the issue&apos;s.
       </p>
       <CancellationFilters values={filters} teams={opts.teams} dcs={opts.dcs} vendors={opts.vendors} reasons={opts.reasons} />
       <StatTiles

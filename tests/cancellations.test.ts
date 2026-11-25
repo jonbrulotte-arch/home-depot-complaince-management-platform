@@ -13,16 +13,18 @@ describe("cancellations", () => {
     });
     expect(rows).toHaveLength(3);
     const merged = rows.find((r) => r.poNumber === "1197910528")!;
-    expect(merged).toMatchObject({ sources: ["pom", "compliance", "issue"], units: 144, value: 12021.12, offsets: 1202.11, net: 1202.11, month: 202611, programCode: "US_DFC", team: "Warehouse (Site 3)", estimatedFine: 300 });
+    expect(merged).toMatchObject({ sources: ["pom", "compliance", "issue"], units: 144, value: 12021.12, offsets: 1202.11, net: 1202.11, month: 202610, programCode: "US_DFC", team: "Warehouse (Site 3)", estimatedFine: 300 });
     expect(merged.issues[0].number).toBe(7);
     const won = rows.find((r) => r.poNumber === "1190000001")!;
     expect(won).toMatchObject({ recovered: 50, net: 0, disputeStatus: "APPROVED", ourSku: "41561" });
     const t = cancelTotals(rows);
     expect(t).toMatchObject({ rows: 3, pos: 3, units: 156, value: 13701.12, offsets: 1252.11, recovered: 50, net: 1202.11, estimatedFines: 300, charged: 2, disputed: 1 });
 
-    expect(filterCancellations(rows, { months: [202610] }).map((r) => r.poNumber)).toEqual(["1200109179"]);
+    // The PO's create month (POM) wins over THD's charge month
+    expect(filterCancellations(rows, { months: [202610] }).map((r) => r.poNumber).sort()).toEqual(["1197910528", "1200109179"]);
+    expect(filterCancellations(rows, { months: [202611] }).map((r) => r.poNumber)).toEqual(["1190000001"]);
     expect(filterCancellations(rows, { ...cancelFrame({ key: "3", months: [202609, 202610], to: 202610 }) }).map((r) => r.poNumber).sort()).toEqual(["1190000001", "1197910528", "1200109179"]);
-    expect(filterCancellations(rows, { ...cancelFrame({ key: "custom", months: [202610], to: 202610 }) }).map((r) => r.poNumber)).toEqual(["1200109179"]);
+    expect(filterCancellations(rows, { ...cancelFrame({ key: "custom", months: [202610], to: 202610 }) }).map((r) => r.poNumber).sort()).toEqual(["1197910528", "1200109179"]);
     expect(cancelFrame({ key: "all", months: [202610], to: 202610 })).toEqual({});
     expect(filterCancellations(rows, { scope: "po" })).toHaveLength(1);
     expect(filterCancellations(rows, { vendor: "28773" }).map((r) => r.poNumber)).toEqual(["1200109179"]);
