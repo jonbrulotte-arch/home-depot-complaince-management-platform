@@ -198,7 +198,7 @@ function PomSection({ pom, wmsUnits }: { pom: PomPo; wmsUnits: Map<string, numbe
       description={
         <>
           <span className="font-medium text-gray-700">{pom.status}</span>
-          {pom.status.toLowerCase() === "shipped" && " (THD has the ASN)"} · Created {pom.poCreateDate ?? "—"} · ESD {pom.esd ?? "—"} · DC due {pom.dcDueDate ?? "—"} · Destination {dest ?? "—"}
+          {pom.status.toLowerCase() === "shipped" && " (THD has the ASN)"} · Created {pom.poCreateDate ?? "—"} · DC due {pom.dcDueDate ?? "—"} · Destination {dest ?? "—"}
           {pom.crossDock ? ` (${pom.crossDock} crossdock via ${pom.destinationDc ?? "—"})` : ""}
           {pom.buyer ? ` · Buyer ${pom.buyer}` : ""} · {n(pom.totalQty ?? 0)} units, {money(pom.totalCost)}
         </>

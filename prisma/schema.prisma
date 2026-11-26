@@ -925,7 +925,7 @@ model PomPurchaseOrder {
   vendorNumber      String?
   totalQty          Int?
   totalCost         Decimal?    @db.Decimal(14, 2)
-  /// Expected ship date
+  /// POM's expected ship date, kept as exported but never used: it runs a day off. The ESD is TMS's pickup date (poEsd).
   esd               DateTime?   @db.Date
   dcDueDate         DateTime?   @db.Date
   factory           String?

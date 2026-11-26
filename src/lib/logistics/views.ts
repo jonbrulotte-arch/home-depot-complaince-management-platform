@@ -105,8 +105,6 @@ export const FLAGS = {
   CROSSDOCK: { severity: "info", label: "Crossdock (IFC)" },
   ASN_RECEIVED: { severity: "info", label: "ASN received (POM)" },
   CANCELED_IN_POM: { severity: "info", label: "Canceled (POM)" },
-  PAST_ESD: { severity: "high", label: "Past ESD, not shipped" },
-  SHIPPED_AFTER_ESD: { severity: "medium", label: "Shipped after ESD" },
   SKU_CANCELLED: { severity: "medium", label: "SKU cancelled (POM)" },
   CANCELED_SKU_SHIPPED: { severity: "high", label: "Cancelled SKU shipped" },
   QTY_MISMATCH: { severity: "medium", label: "Quantity differs from POM" },
@@ -254,8 +252,7 @@ export interface PomPo {
   status: string;
   /** YYYY-MM-DD */
   poCreateDate: string | null;
-  /** Expected ship date, YYYY-MM-DD */
-  esd: string | null;
+  // POM's ESD is deliberately left out: it runs a day off the real date. The ESD is TMS's pickup date (poEsd).
   dcDueDate: string | null;
   destinationDc: string | null;
   /** RDC or IFC when the PO goes through a crossdock */
@@ -281,14 +278,31 @@ export const pomClosed = (p: Pick<PomPo, "status"> | null | undefined) => Boolea
 /** Open in POM: not shipped, cancelled or closed */
 export const pomOpen = (p: Pick<PomPo, "status"> | null | undefined) => Boolean(p && /^open/i.test(p.status.trim()));
 /**
- * A PO's place against POM's expected ship date (ESD), for POs POM has open that the WMS hasn't shipped:
- * "past" (ESD before today), "week" (ESD today through the next 6 days), else null.
+ * A PO's expected ship date (ESD), YYYY-MM-DD: the earliest pickup date (local, as TMS writes it) of its
+ * TMS shipments that aren't canceled. Only TMS's date is trusted; POM's ESD runs a day off.
  */
-export function esdState(p: Pick<PoView, "pom" | "cartonCount" | "status">, today: string): "past" | "week" | null {
-  if (!p.pom?.esd || p.cartonCount || p.status === "Canceled" || !pomOpen(p.pom)) return null;
-  if (p.pom.esd < today) return "past";
+export function poEsd(p: Pick<PoView, "shipments">): string | null {
+  return (
+    p.shipments
+      .filter((s) => !isCanceled(s.status))
+      .map((s) => localDateOf(s.pickupLocal) ?? (s.pickupAt ? isoDate(s.pickupAt) : null))
+      .filter((d): d is string => Boolean(d))
+      .sort()[0] ?? null
+  );
+}
+
+/**
+ * A PO's place against its ESD (TMS pickup date, `poEsd`), for POs the WMS hasn't shipped that aren't
+ * canceled (nor shipped, cancelled or closed in POM): "past" (ESD before today), "week" (ESD today
+ * through the next 6 days), else null.
+ */
+export function esdState(p: Pick<PoView, "pom" | "cartonCount" | "status" | "shipments">, today: string): "past" | "week" | null {
+  if (p.cartonCount || p.status === "Canceled" || (p.pom && !pomOpen(p.pom))) return null;
+  const esd = poEsd(p);
+  if (!esd) return null;
+  if (esd < today) return "past";
   const weekEnd = new Date(Date.parse(`${today}T00:00:00Z`) + 6 * 86_400_000).toISOString().slice(0, 10);
-  return p.pom.esd <= weekEnd ? "week" : null;
+  return esd <= weekEnd ? "week" : null;
 }
 
 /** Where POM has the PO received: the final receiving location of a crossdock PO, else the destination DC */
@@ -488,10 +502,7 @@ export function buildLogistics(input: LogisticsData, today: string) {
         flags.push(flag("CANCELED_IN_POM", "POM (Supplier Hub) shows this PO Cancelled."));
         if (cartons.length && !(tms && isCanceled(tms.status))) flags.push(flag("CANCELED_SHIPPED", `POM shows this PO Cancelled, but the WMS shipped ${new Set(cartons.map((c) => c.label)).size} carton(s).`));
       }
-      if (!canceledInPom && !cartons.length && !pomShipped(pom) && pom.esd && pom.esd < today)
-        flags.push(flag("PAST_ESD", `POM's expected ship date (ESD) was ${pom.esd}${pom.dcDueDate ? ` (DC due ${pom.dcDueDate})` : ""}, and the WMS hasn't shipped it.`));
-      if (firstShipped && pom.esd && isoDate(firstShipped) > pom.esd)
-        flags.push(flag("SHIPPED_AFTER_ESD", `The WMS shipped it on ${isoDate(firstShipped)}, ${days(pom.esd, isoDate(firstShipped))} day(s) after POM's expected ship date (${pom.esd}): an On Time risk.`));
+      // No ESD flags from POM: its ESD runs a day off. TMS's pickup date is the ESD (PICKUP_PASSED, SHIPPED_AFTER_PICKUP).
       // SKU lines against what the WMS shipped, by our SKU (POM's SKU Part #, the WMS product)
       const units = new Map<string, number>();
       for (const c of cartons) if (c.product) units.set(c.product.trim(), (units.get(c.product.trim()) ?? 0) + (c.quantity ?? 0));

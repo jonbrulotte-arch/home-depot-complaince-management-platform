@@ -9,7 +9,6 @@ export interface PomEvidence {
   /** Open, Shipped (THD has the ASN) or Cancelled */
   poStatus: string;
   poCreateDate: string | null;
-  esd: string | null;
   /** POM's PO-level reason code */
   reasonCode: string | null;
   /** Where POM has it received: the final receiving location, else the destination DC */
@@ -66,7 +65,6 @@ export function pomEvidence(pom: PomPo, sku: { thdSku: string | null; vendorSku:
     poNumber: pom.poNumber,
     poStatus: pom.status,
     poCreateDate: pom.poCreateDate,
-    esd: pom.esd,
     reasonCode: pom.reasonCode,
     destination: pom.finalRecvLocation ?? pom.destinationDc,
     crossDock: pom.crossDock,

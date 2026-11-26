@@ -3,6 +3,7 @@ import { formatUtcDate } from "@/lib/utils";
 import { ASN_HEADERS, ASN_STATUS_LABELS } from "@/lib/logistics/parse";
 import { addressLines } from "@/lib/logistics/ship-to";
 import type { PoView } from "@/lib/logistics/views";
+import { poEsd } from "@/lib/logistics/views";
 
 // The ASN/Shipped Confirmation export: PO Number and ASN/Ship Status (Unshipped by default, or the
 // status already imported), for someone to check each PO in POM (Supplier Hub) and set Shipped, then
@@ -22,7 +23,7 @@ export async function asnConfirmationWorkbook(pos: PoView[], siteName: string): 
     { header: "Warehouse", key: "warehouse", width: 24 },
     { header: "Logistics status", key: "logistics", width: 14 },
     { header: "POM status", key: "pom", width: 12 },
-    { header: "ESD (POM)", key: "esd", width: 12 },
+    { header: "ESD (TMS pickup)", key: "esd", width: 14 },
   ];
   for (const p of pos)
     ws.addRow({
@@ -35,7 +36,7 @@ export async function asnConfirmationWorkbook(pos: PoView[], siteName: string): 
       warehouse: p.warehouses.map((w) => w.name).join(", "),
       logistics: p.status,
       pom: p.pom?.status ?? "",
-      esd: p.pom?.esd ?? "",
+      esd: poEsd(p) ?? "",
     });
   const header = ws.getRow(1);
   header.font = { bold: true };

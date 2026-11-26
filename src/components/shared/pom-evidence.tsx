@@ -17,7 +17,6 @@ export function PomEvidenceCard({ evidence, children }: { evidence: PomEvidence;
         </p>
         <p className="text-xs text-gray-500">
           PO {evidence.poNumber} · {evidence.poStatus}
-          {evidence.esd ? ` · ESD ${evidence.esd}` : ""}
           {evidence.destination ? ` · to ${evidence.destination}${evidence.crossDock ? ` (${evidence.crossDock})` : ""}` : ""}
           {evidence.reasonCode ? ` · reason code ${evidence.reasonCode}` : ""}
         </p>

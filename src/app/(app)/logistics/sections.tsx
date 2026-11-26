@@ -132,14 +132,14 @@ export function OverviewTab({ l, range }: { l: LoadedLogistics; range: Pick<PoFi
                 {
                   label: "Due to ship this week",
                   value: n(l.pos.filter((p) => esdState(p, l.today) === "week").length),
-                  hint: "By POM's ESD, not shipped yet",
+                  hint: "By the TMS pickup date (ESD), not shipped yet",
                   href: "/logistics?tab=pos&esd=week",
                 },
                 {
                   label: "Past ESD",
                   value: n(l.pos.filter((p) => esdState(p, l.today) === "past").length),
                   tone: l.pos.some((p) => esdState(p, l.today) === "past") ? "text-red-700" : undefined,
-                  hint: "Open in POM, not shipped",
+                  hint: "TMS pickup date passed, not shipped",
                   href: "/logistics?tab=pos&esd=past",
                 },
               ]

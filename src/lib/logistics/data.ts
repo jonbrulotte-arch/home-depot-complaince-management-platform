@@ -109,7 +109,6 @@ export function toPomPo(p: Prisma.PomPurchaseOrderGetPayload<{ include: { lines:
     poNumber: p.poNumber,
     status: p.status,
     poCreateDate: ymd(p.poCreateDate),
-    esd: ymd(p.esd),
     dcDueDate: ymd(p.dcDueDate),
     destinationDc: p.destinationDc,
     crossDock: p.crossDock,
