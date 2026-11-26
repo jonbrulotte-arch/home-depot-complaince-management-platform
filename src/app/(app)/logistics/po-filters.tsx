@@ -1,0 +1,104 @@
+"use client";
+
+import { useState } from "react";
+import { usePathname, useRouter } from "next/navigation";
+import { ClipboardCheck, Download, Search } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { ASN_FILTERS, DEST_SORTS, type PoFilters } from "@/lib/logistics/views";
+import { PoRangePicker } from "./range-picker";
+import { UNKNOWN_WAREHOUSE, type WarehouseInfo } from "@/lib/logistics/warehouses";
+import { UNKNOWN_CHANNEL, type ChannelInfo } from "@/lib/logistics/channels";
+
+const ALL = "all";
+
+/** Search and filters for the POs tab, kept in the address. */
+export function PoFiltersBar({ filters, statuses, flags, scacs, warehouses, channels }: { filters: PoFilters; statuses: string[]; flags: { code: string; label: string; pos: number }[]; scacs: string[]; warehouses: WarehouseInfo[]; channels: ChannelInfo[] }) {
+  const router = useRouter();
+  const pathname = usePathname();
+  const [q, setQ] = useState(filters.q ?? "");
+  const query = (next: Partial<PoFilters>) => {
+    const params = new URLSearchParams({ tab: "pos" });
+    for (const [k, v] of Object.entries({ ...filters, q, ...next })) if (v) params.set(k, v);
+    return params;
+  };
+  const apply = (next: Partial<PoFilters> = {}) => router.push(`${pathname}?${query(next)}`);
+  const exportHref = (path = "/api/logistics/export") => {
+    const p = query({});
+    p.delete("tab");
+    return `${path}?${p}`;
+  };
+  const pick = (id: string, label: string, value: string | undefined, options: [string, string][], key: keyof PoFilters, width = "w-44") => (
+    <div className={width}>
+      <span className="mb-1 block text-xs font-medium text-gray-500" id={id}>
+        {label}
+      </span>
+      <Select value={value || ALL} onValueChange={(v) => apply({ [key]: v === ALL ? undefined : v })}>
+        <SelectTrigger aria-labelledby={id}>
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          {options.map(([v, l]) => (
+            <SelectItem key={v} value={v}>
+              {l}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    </div>
+  );
+
+  return (
+    <form
+      className="flex flex-wrap items-end gap-3"
+      onSubmit={(e) => {
+        e.preventDefault();
+        apply();
+      }}
+    >
+      <div className="w-72">
+        <label htmlFor="log-q" className="mb-1 block text-xs font-medium text-gray-500">
+          Search
+        </label>
+        <Input id="log-q" value={q} onChange={(e) => setQ(e.target.value)} placeholder="PO, shipment, tracking, PRO, order, DC" />
+      </div>
+      {pick("log-status", "Status", filters.status, [[ALL, "Any status"], ...statuses.map((s): [string, string] => [s, s])], "status", "w-40")}
+      {pick("log-sev", "Needs attention", filters.severity, [[ALL, "All POs"], ["any", "Flagged (high or medium)"], ["high", "High"], ["medium", "Medium"], ["info", "Info"]], "severity", "w-52")}
+      {pick("log-flag", "Flag", filters.flag, [[ALL, "Any flag"], ...flags.map((f): [string, string] => [f.code, `${f.label} (${f.pos})`])], "flag", "w-60")}
+      {pick("log-scac", "Carrier", filters.scac, [[ALL, "Any carrier"], ...scacs.map((s): [string, string] => [s, s])], "scac", "w-36")}
+      {pick("log-wh", "Warehouse", filters.wh, [[ALL, "Any warehouse"], ...warehouses.map((w): [string, string] => [w.prefix, w.name]), [UNKNOWN_WAREHOUSE, "No WMS cartons yet"]], "wh", "w-56")}
+      {pick("log-ch", "Channel", filters.ch, [[ALL, "Any channel"], ...channels.map((c): [string, string] => [c.code, c.name]), [UNKNOWN_CHANNEL, "No WMS cartons yet"]], "ch", "w-64")}
+      {pick("log-esd", "ESD (TMS pickup)", filters.esd, [[ALL, "Any"], ["week", "Due to ship this week"], ["past", "Past ESD, not shipped"]], "esd", "w-52")}
+      {pick("log-asn", "ASN", filters.asn, [[ALL, "Any"], ...ASN_FILTERS.map((a): [string, string] => [a.key, a.label])], "asn", "w-48")}
+      {pick("log-sort", "Sort", filters.sort, [[ALL, "Newest PO first"], ["warehouse", "Warehouse"], ["shipped", "Latest shipped (WMS)"], ...DEST_SORTS.map((d): [string, string] => [d.key, d.label])], "sort", "w-52")}
+      <div>
+        <label htmlFor="log-range" className="mb-1 block text-xs font-medium text-gray-500">
+          Date
+        </label>
+        <PoRangePicker id="log-range" value={{ range: filters.range, from: filters.from, to: filters.to }} onChange={(r) => apply({ range: r.range, from: r.from, to: r.to })} />
+      </div>
+      <Button type="submit" variant="outline">
+        <Search className="h-4 w-4 mr-1.5" />
+        Search
+      </Button>
+      {Boolean(filters.q || filters.status || filters.flag || filters.severity || filters.scac || filters.range || filters.wh || filters.ch || filters.asn || filters.esd || filters.sort) && (
+        <Button type="button" variant="ghost" onClick={() => router.push(`${pathname}?tab=pos`)}>
+          Clear
+        </Button>
+      )}
+      <Button asChild variant="outline" className="ml-auto" title="The POs shown, with an ASN/Ship Status column to fill in after checking each PO in POM, then import back under Imports">
+        <a href={exportHref("/api/logistics/asn-export")}>
+          <ClipboardCheck className="h-4 w-4 mr-1.5" />
+          ASN confirmation export
+        </a>
+      </Button>
+      <Button asChild variant="outline">
+        <a href={exportHref()}>
+          <Download className="h-4 w-4 mr-1.5" />
+          Export to Excel
+        </a>
+      </Button>
+    </form>
+  );
+}

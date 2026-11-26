@@ -1,0 +1,799 @@
+import Link from "next/link";
+import { formatDateTime, formatUtcDate, formatUtcDateTime } from "@/lib/utils";
+import { LOGISTICS_KIND_LABELS } from "@/lib/logistics/parse";
+import { scacLink, type LoadedLogistics } from "@/lib/logistics/data";
+import {
+  filterPos,
+  filterShipments,
+  filterParcels,
+  parcelRows,
+  PARCEL_STATES,
+  type ParcelFilters,
+  sortPos,
+  logisticsOverview,
+  rangeBounds,
+  rangeLabel,
+  type PoFilters,
+  type ShipmentFilters,
+  type FlagCode,
+  FLAGS,
+  asnReceived,
+  esdState,
+  PO_STATUSES,
+} from "@/lib/logistics/views";
+import { StatTiles } from "@/components/analytics/stat-tiles";
+import {
+  AsnBadge,
+  FlagBadges,
+  PoLink,
+  PoStatusBadge,
+  ScacLink,
+  ShipmentLink,
+  TmsStatusBadge,
+  UpsLink,
+} from "@/components/logistics/parts";
+import { Section, Table, n } from "@/app/(app)/insights/ui";
+import { PoFiltersBar } from "./po-filters";
+import { OverviewRangePicker } from "./range-picker";
+import { ShipmentFiltersBar } from "./shipment-filters";
+import { ParcelFiltersBar } from "./parcel-filters";
+import { UNKNOWN_WAREHOUSE, warehouseNames } from "@/lib/logistics/warehouses";
+import { channelNames } from "@/lib/logistics/channels";
+import { UpsRefreshButton } from "./ups-refresh-button";
+import { SelectBox, SelectionProvider, type EmailTeam } from "./selection";
+import { poLine, shipmentLine } from "@/lib/logistics/edi";
+
+// The Logistics tabs. Each takes the loaded views (src/lib/logistics/data.ts).
+
+const PAGE = 300;
+const day = (d: Date | null) => (d ? formatUtcDate(d) : "—");
+
+/** Pickup over delivery, as TMS writes them */
+export function Dates({
+  pickup,
+  delivery,
+}: {
+  pickup: string | null;
+  delivery: string | null;
+}) {
+  return (
+    <span className="block whitespace-nowrap text-xs leading-5">
+      <span className="text-gray-500">Pickup</span>{" "}
+      <span className="text-gray-900">{pickup ?? "—"}</span>
+      <br />
+      <span className="text-gray-500">Delivery</span>{" "}
+      <span className="text-gray-900">{delivery ?? "—"}</span>
+    </span>
+  );
+}
+
+/** Origin over destination */
+export function Route({ from, to, warehouse }: { from: string; to: string; warehouse?: string }) {
+  return (
+    <span className="block min-w-36 text-xs leading-5">
+      <span className="text-gray-500">From</span>{" "}
+      <span className="text-gray-900">{from || "—"}</span>
+      {warehouse && <span className="text-gray-500"> · {warehouse}</span>}
+      <br />
+      <span className="text-gray-500">To</span>{" "}
+      <span className="text-gray-900">{to || "—"}</span>
+    </span>
+  );
+}
+
+export function OverviewTab({ l, range }: { l: LoadedLogistics; range: Pick<PoFilters, "range" | "from" | "to" | "wh"> }) {
+  const o = logisticsOverview(l, l.warehouses);
+  // What's flagged follows the date range; the tiles cover every PO
+  const inRange = rangeBounds(range, l.today) || range.wh ? logisticsOverview({ ...l, pos: filterPos(l.pos, range, l.today) }) : o;
+  const whName = range.wh ? (range.wh === UNKNOWN_WAREHOUSE ? "no WMS cartons yet" : (l.warehouses.find((w) => w.prefix === range.wh)?.name ?? range.wh)) : null;
+  const rangeQuery = Object.entries(range)
+    .filter(([, v]) => v)
+    .map(([k, v]) => `&${k}=${encodeURIComponent(v!)}`)
+    .join("");
+  const count = (s: string) =>
+    o.byStatus.find((b) => b.status === s)?.count ?? 0;
+  return (
+    <div className="space-y-6">
+      <StatTiles
+        stats={[
+          {
+            label: "POs",
+            value: n(o.pos),
+            hint: `${count("Open")} open · ${count("Canceled")} canceled`,
+          },
+          {
+            label: "Needs attention",
+            value: n(o.withHigh),
+            tone: o.withHigh ? "text-red-700" : undefined,
+            hint: "POs with a high flag",
+          },
+          {
+            label: "Worth a look",
+            value: n(o.withMedium),
+            tone: o.withMedium ? "text-amber-700" : undefined,
+            hint: "POs with a medium flag",
+          },
+          {
+            label: "Shipped, not delivered",
+            value: n(count("Shipped") + count("In transit")),
+          },
+          {
+            label: "Delivered",
+            value: n(count("Delivered")),
+            tone: "text-green-700",
+          },
+          {
+            label: "Open TMS shipments",
+            value: n(o.openShipments),
+            hint: `of ${n(o.shipments)} shipments`,
+          },
+          ...(l.pos.some((p) => p.pom)
+            ? [
+                {
+                  label: "Due to ship this week",
+                  value: n(l.pos.filter((p) => esdState(p, l.today) === "week").length),
+                  hint: "By the TMS pickup date (ESD), not shipped yet",
+                  href: "/logistics?tab=pos&esd=week",
+                },
+                {
+                  label: "Past ESD",
+                  value: n(l.pos.filter((p) => esdState(p, l.today) === "past").length),
+                  tone: l.pos.some((p) => esdState(p, l.today) === "past") ? "text-red-700" : undefined,
+                  hint: "TMS pickup date passed, not shipped",
+                  href: "/logistics?tab=pos&esd=past",
+                },
+              ]
+            : []),
+        ]}
+      />
+      <Section
+        title="What's flagged"
+        description={
+          <span title="A PO's date is when the WMS shipped it, else its TMS pickup, else its create date">
+            POs with each flag ({[whName, `${rangeLabel(range, l.today)}, by ship date`].filter(Boolean).join(" · ")}). Click a flag to list them.
+          </span>
+        }
+        action={<OverviewRangePicker value={range} warehouses={l.warehouses} />}
+      >
+        <Table
+          rows={inRange.flags}
+          empty="Nothing flagged."
+          cols={[
+            {
+              header: "Flag",
+              cell: (f) => (
+                <Link
+                  href={`/logistics?tab=pos&flag=${f.code}&severity=${f.severity}${rangeQuery}`}
+                  className="font-medium text-blue-600 hover:underline"
+                >
+                  {f.label}
+                </Link>
+              ),
+            },
+            {
+              header: "Priority",
+              cell: (f) =>
+                f.severity === "high" ? (
+                  <span className="text-red-700">High</span>
+                ) : f.severity === "medium" ? (
+                  <span className="text-amber-700">Medium</span>
+                ) : (
+                  <span className="text-gray-500">Info</span>
+                ),
+            },
+            { header: "POs", cell: (f) => n(f.pos), align: "right" },
+          ]}
+          bar={{ header: "POs", value: (f) => f.pos }}
+        />
+      </Section>
+      {o.warehouses.length > 0 && (
+        <Section title="By warehouse" description="Where POs and TMS shipments shipped from, by the WMS OrderNumber (canceled left out). Click one to list its POs.">
+          <Table
+            rows={o.warehouses}
+            cols={[
+              {
+                header: "Warehouse",
+                cell: (w) => (
+                  <Link href={`/logistics?tab=pos&wh=${encodeURIComponent(w.prefix)}`} className="font-medium text-blue-600 hover:underline">
+                    {w.name}
+                  </Link>
+                ),
+              },
+              { header: "POs", cell: (w) => n(w.pos), align: "right" },
+              { header: "High flags", cell: (w) => (w.high ? <span className="text-red-700">{n(w.high)}</span> : "—"), align: "right" },
+              { header: "Shipped, not delivered", cell: (w) => n(w.inTransit), align: "right" },
+              {
+                header: "TMS shipments",
+                cell: (w) => (
+                  <Link href={`/logistics?tab=shipments&wh=${encodeURIComponent(w.prefix)}`} className="text-blue-600 hover:underline">
+                    {n(w.shipments)}
+                  </Link>
+                ),
+                align: "right",
+              },
+              { header: "Open", cell: (w) => n(w.openShipments), align: "right" },
+            ]}
+          />
+        </Section>
+      )}
+      <div className="grid gap-6 lg:grid-cols-2">
+        <Section
+          title="By carrier"
+          description="TMS shipments by SCAC (canceled left out)."
+        >
+          <Table
+            rows={o.carriers}
+            empty="No TMS shipments imported."
+            cols={[
+              {
+                header: "SCAC",
+                cell: (c) =>
+                  c.scac === "—" ? (
+                    "None assigned"
+                  ) : (
+                    <ScacLink scac={c.scac} {...scacLink(l, c.scac, {})} />
+                  ),
+              },
+              {
+                header: "Shipments",
+                cell: (c) => n(c.shipments),
+                align: "right",
+              },
+              {
+                header: "Delivered",
+                cell: (c) => n(c.delivered),
+                align: "right",
+              },
+              { header: "Open", cell: (c) => n(c.open), align: "right" },
+              {
+                header: "Late",
+                cell: (c) =>
+                  c.overdue ? (
+                    <Link
+                      href={`/logistics?tab=shipments&scac=${c.scac}&late=1`}
+                      className="text-red-700 hover:underline"
+                    >
+                      {n(c.overdue)}
+                    </Link>
+                  ) : (
+                    "—"
+                  ),
+                align: "right",
+              },
+            ]}
+          />
+        </Section>
+        <Section
+          title="By destination"
+          description="THD DCs, the most flagged first."
+        >
+          <Table
+            rows={o.destinations}
+            empty="No POs yet."
+            cols={[
+              {
+                header: "Destination",
+                cell: (d) => <span className="text-gray-900">{d.dest}</span>,
+              },
+              { header: "POs", cell: (d) => n(d.pos), align: "right" },
+              { header: "Units", cell: (d) => n(d.units), align: "right" },
+              {
+                header: "High flags",
+                cell: (d) =>
+                  d.flagged ? (
+                    <span className="text-red-700">{n(d.flagged)}</span>
+                  ) : (
+                    "—"
+                  ),
+                align: "right",
+              },
+            ]}
+          />
+        </Section>
+      </div>
+    </div>
+  );
+}
+
+/** Who may send email, the teams with addresses and the sender's name (for the selection toolbar) */
+export interface SelectionSettings {
+  canEmail: boolean;
+  teams: EmailTeam[];
+  sender: string;
+}
+
+export function PosTab({
+  l,
+  filters,
+  notes,
+  sel,
+}: {
+  l: LoadedLogistics;
+  filters: PoFilters;
+  notes: Map<string, number>;
+  sel: SelectionSettings;
+}) {
+  const o = logisticsOverview(l);
+  const rows = sortPos(filterPos(l.pos, filters, l.today), filters.sort, l.warehouses);
+  const scacs = [
+    ...new Set(
+      l.shipments.map((s) => s.scac).filter((s): s is string => Boolean(s)),
+    ),
+  ].sort();
+  return (
+    <div className="space-y-4">
+      <PoFiltersBar
+        filters={filters}
+        statuses={PO_STATUSES}
+        flags={[
+          ...o.flags
+            .reduce(
+              (m, f) =>
+                m.set(f.code, {
+                  code: f.code,
+                  label: f.label,
+                  pos: (m.get(f.code)?.pos ?? 0) + f.pos,
+                }),
+              new Map<string, { code: string; label: string; pos: number }>(),
+            )
+            .values(),
+        ]}
+        scacs={scacs}
+        warehouses={l.warehouses}
+        channels={l.channels}
+      />
+      <SelectionProvider
+        kind="po"
+        items={rows
+          .slice(0, PAGE)
+          .map((p) => ({
+            id: p.poNumber,
+            line: poLine(p),
+            flagCodes: p.flags.map((f) => f.code),
+            poNumbers: [p.poNumber],
+          }))}
+        today={l.today}
+        {...sel}
+      >
+        <Section
+          title={`${n(rows.length)} PO(s)`}
+          description={`${filters.sort === "warehouse" ? "By warehouse, then newest PO first" : filters.sort === "shipped" ? "Latest shipped by the WMS first" : filters.sort === "dest" ? "By destination Store/DC #" : filters.sort === "city" ? "By destination city" : filters.sort === "state" ? "By destination state, then city" : "Newest PO first (THD numbers POs in the order it creates them)"}. The create date under a PO comes from THD\u2019s compliance data, when it has the PO.${rows.length > PAGE ? ` Showing the first ${PAGE}; narrow the search or export to Excel for all of them.` : ""}`}
+        >
+          <Table
+            rows={rows.slice(0, PAGE)}
+            empty="No POs match."
+            cols={[
+              {
+                header: "",
+                cell: (p) => (
+                  <SelectBox id={p.poNumber} label={`PO ${p.poNumber}`} />
+                ),
+              },
+              {
+                header: "PO # / created",
+                cell: (p) => (
+                  <span className="block">
+                    <PoLink po={p.poNumber} />
+                    {p.createdAt && (
+                      <span className="block whitespace-nowrap text-xs text-gray-500">
+                        Created {formatUtcDate(p.createdAt)}
+                      </span>
+                    )}
+                  </span>
+                ),
+              },
+              {
+                header: "Status",
+                cell: (p) => (
+                  <>
+                    <PoStatusBadge status={p.status} />
+                    {asnReceived(p.asn) && <AsnBadge />}
+                  </>
+                ),
+              },
+              {
+                header: "Destination",
+                cell: (p) => (
+                  <span className="block min-w-32">
+                    {p.destination}
+                    {p.channels.length > 0 && <span className="block text-xs text-gray-500">{channelNames(p.channels)}</span>}
+                  </span>
+                ),
+              },
+              {
+                header: "Shipped (WMS)",
+                cell: (p) => (
+                  <>
+                    <span className="whitespace-nowrap">
+                      {day(p.firstShipped)}
+                    </span>
+                    {p.warehouses.length > 0 && (
+                      <span className="block text-xs text-gray-500">
+                        {warehouseNames(p.warehouses)}
+                      </span>
+                    )}
+                  </>
+                ),
+              },
+              {
+                header: "Cartons",
+                cell: (p) =>
+                  p.cartonCount ? `${n(p.cartonCount)} · ${n(p.units)} u` : "—",
+                align: "right",
+              },
+              {
+                header: "TMS shipment",
+                cell: (p) =>
+                  p.shipments.length ? (
+                    <span className="space-y-0.5">
+                      {p.shipments.map((s) => (
+                        <span
+                          key={s.shipmentNumber}
+                          className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5"
+                        >
+                          <ShipmentLink number={s.shipmentNumber} />
+                          <ScacLink
+                            scac={s.scac}
+                            was={s.tmsScac}
+                            {...(s.scac
+                              ? scacLink(l, s.scac, {
+                                  shipment: s.shipmentNumber,
+                                  po: p.poNumber,
+                                  pro: p.pros[0],
+                                  ups: p.ups[0],
+                                })
+                              : {})}
+                          />
+                          <TmsStatusBadge status={s.status} />
+                        </span>
+                      ))}
+                    </span>
+                  ) : p.ups.length ? (
+                    <span className="space-y-0.5">
+                      {p.ups.slice(0, 2).map((u) => (
+                        <span key={u} className="block">
+                          <UpsLink number={u} />
+                        </span>
+                      ))}
+                      {p.ups.length > 2 && (
+                        <span className="text-xs text-gray-500">
+                          +{p.ups.length - 2} more
+                        </span>
+                      )}
+                    </span>
+                  ) : (
+                    "—"
+                  ),
+              },
+              { header: "Flags", cell: (p) => <FlagBadges flags={p.flags} /> },
+              {
+                header: "Notes",
+                cell: (p) =>
+                  notes.get(p.poNumber) ? n(notes.get(p.poNumber)!) : "",
+                align: "right",
+              },
+            ]}
+          />
+        </Section>
+      </SelectionProvider>
+    </div>
+  );
+}
+
+export function ShipmentsTab({ l, filters, sel }: { l: LoadedLogistics; filters: ShipmentFilters; sel: SelectionSettings }) {
+  const { scac, late } = filters;
+  const rows = filterShipments(l.shipments, filters, l.warehouses, l.today);
+  const flagCounts = new Map<string, number>();
+  for (const s of l.shipments) for (const code of new Set(s.flags.map((f) => f.code))) flagCounts.set(code, (flagCounts.get(code) ?? 0) + 1);
+  return (
+    <div className="space-y-4">
+      <ShipmentFiltersBar
+        filters={{ ...filters, late: late ? "1" : undefined }}
+        statuses={[...new Set(l.shipments.map((s) => s.status))].sort()}
+        flags={[...flagCounts].map(([code, count]) => ({ code, label: FLAGS[code as FlagCode].label, count })).sort((a, b) => a.label.localeCompare(b.label))}
+        scacs={[...new Set(l.shipments.map((s) => s.scac).filter((x): x is string => Boolean(x)))].sort()}
+        warehouses={l.warehouses}
+        channels={l.channels}
+      />
+      <SelectionProvider
+        kind="shipment"
+        items={rows
+          .slice(0, PAGE)
+          .map((s) => ({
+            id: s.shipmentNumber,
+            line: shipmentLine(s),
+            flagCodes: s.flags.map((f) => f.code),
+            poNumbers: s.ourPos,
+          }))}
+        today={l.today}
+        {...sel}
+      >
+        <Section
+          title={`${n(rows.length)} TMS shipment(s)${scac ? ` · ${scac}` : ""}${late ? " · late or not picked up" : ""}`}
+          description={
+            <>
+              Latest pickup first. Click a SCAC to open the carrier&apos;s
+              tracking page.{" "}
+              {(scac || late) && (
+                <Link
+                  href="/logistics?tab=shipments"
+                  className="text-blue-600 hover:underline"
+                >
+                  Show all
+                </Link>
+              )}
+            </>
+          }
+        >
+          <Table
+            rows={rows.slice(0, PAGE)}
+            empty="No TMS shipments imported yet."
+            cols={[
+              {
+                header: "",
+                cell: (s) => (
+                  <SelectBox
+                    id={s.shipmentNumber}
+                    label={`shipment ${s.shipmentNumber}`}
+                  />
+                ),
+              },
+              {
+                header: "Shipment #",
+                cell: (s) => <ShipmentLink number={s.shipmentNumber} />,
+              },
+              {
+                header: "Status",
+                cell: (s) => (
+                  <>
+                    <TmsStatusBadge status={s.status} />
+                    {s.tmsStatus && <p className="mt-0.5 text-xs text-gray-500">TMS: {s.tmsStatus}</p>}
+                    {s.asn.total > 0 && s.asn.received === s.asn.total ? <AsnBadge /> : s.asn.received > 0 && <p className="mt-0.5 text-xs text-gray-500">ASN {s.asn.received} of {s.asn.total} POs</p>}
+                  </>
+                ),
+              },
+              {
+                header: "SCAC",
+                cell: (s) => (
+                  <ScacLink
+                    scac={s.scac}
+                    was={s.tmsScac}
+                    {...(s.scac
+                      ? scacLink(l, s.scac, {
+                          shipment: s.shipmentNumber,
+                          po: s.ourPos[0],
+                          pro: s.pros[0],
+                          ups: s.ups[0],
+                        })
+                      : {})}
+                  />
+                ),
+              },
+              {
+                header: "Pickup / delivery",
+                cell: (s) => (
+                  <Dates pickup={s.pickupLocal} delivery={s.deliveryLocal} />
+                ),
+              },
+              {
+                header: "Route",
+                cell: (s) => (
+                  <Route
+                    warehouse={[warehouseNames(s.warehouses), channelNames(s.channels)].filter(Boolean).join(" · ") || undefined}
+                    from={[s.originCity, s.originState]
+                      .filter(Boolean)
+                      .join(", ")}
+                    to={[
+                      s.destFacility,
+                      [s.destCity, s.destState].filter(Boolean).join(", "),
+                    ]
+                      .filter(Boolean)
+                      .join(" · ")}
+                  />
+                ),
+              },
+              {
+                header: "Our POs",
+                cell: (s) => (
+                  <span
+                    title={[
+                      s.ourPos.length ? `Ours: ${s.ourPos.join(", ")}` : "",
+                      s.otherPos.length
+                        ? `Other suppliers: ${s.otherPos.join(", ")}`
+                        : "",
+                    ]
+                      .filter(Boolean)
+                      .join("\n")}
+                  >
+                    {s.ourPos.length ? (
+                      <PoLink po={s.ourPos[0]} />
+                    ) : (
+                      <span className="text-gray-400">None</span>
+                    )}
+                    {s.ourPos.length > 1 && (
+                      <span className="block text-xs text-gray-500">
+                        +{s.ourPos.length - 1} more
+                      </span>
+                    )}
+                    {s.otherPos.length > 0 && (
+                      <span className="block text-xs text-gray-400">
+                        +{s.otherPos.length} other supplier
+                        {s.otherPos.length > 1 ? "s'" : "'s"}
+                      </span>
+                    )}
+                  </span>
+                ),
+              },
+              {
+                header: "Cartons",
+                cell: (s) => (s.cartonCount ? n(s.cartonCount) : "—"),
+                align: "right",
+              },
+              {
+                header: "Flags",
+                cell: (s) => <FlagBadges flags={s.flags} max={2} />,
+              },
+            ]}
+          />
+        </Section>
+      </SelectionProvider>
+    </div>
+  );
+}
+
+export function ParcelsTab({
+  l,
+  upsReady,
+  canManage,
+  tz,
+  filters,
+}: {
+  l: LoadedLogistics;
+  upsReady: boolean;
+  canManage: boolean;
+  tz: string;
+  filters: ParcelFilters;
+}) {
+  const all = parcelRows(l, l.today, l.warehouses, l.channels);
+  const rows = filterParcels(all, filters, l.today);
+  const counts = Object.fromEntries(PARCEL_STATES.map((s) => [s.key, all.filter((r) => r.state === s.key).length]));
+  return (
+    <div className="space-y-4">
+      <ParcelFiltersBar filters={filters} warehouses={l.warehouses} channels={l.channels} counts={counts} />
+      <Section
+        title={`${n(rows.length)} UPS parcel(s)${rows.length !== all.length ? ` of ${n(all.length)}` : ""}`}
+        description={
+          upsReady
+            ? "Status from the UPS tracking API. Numbers are rechecked when refreshed, until delivered."
+            : "UPS tracking isn't set up yet (an administrator adds the UPS credentials under Admin › Settings); the numbers link to ups.com."
+        }
+        action={upsReady && canManage ? <UpsRefreshButton /> : undefined}
+      >
+        <Table
+          rows={rows.slice(0, PAGE)}
+          empty={all.length ? "No UPS parcels match." : "No UPS numbers in the WMS data."}
+          cols={[
+            { header: "Tracking #", cell: (r) => <UpsLink number={r.number} /> },
+            {
+              header: "PO",
+              cell: (r) => (
+                <span className="space-x-2">
+                  {r.pos.map((po) => (
+                    <PoLink key={po} po={po} />
+                  ))}
+                </span>
+              ),
+            },
+            {
+              header: "Destination",
+              cell: (r) => (
+                <span className="block min-w-32">
+                  {r.destination}
+                  {r.channels.length > 0 && <span className="block text-xs text-gray-500">{channelNames(r.channels)}</span>}
+                </span>
+              ),
+            },
+            {
+              header: "Shipped (WMS)",
+              cell: (r) => (
+                <>
+                  <span className="whitespace-nowrap">{r.shipped ? formatUtcDateTime(r.shipped) : "—"}</span>
+                  {r.warehouses.length > 0 && <span className="block text-xs text-gray-500">{warehouseNames(r.warehouses)}</span>}
+                </>
+              ),
+            },
+            {
+              header: "UPS status",
+              cell: (r) => {
+                const t = r.tracking;
+                if (!t) return <span className="text-gray-400">Not checked</span>;
+                if (r.state === "error") return <span className="text-amber-700">{t.error}</span>;
+                return (
+                  <span className={r.state === "delivered" ? "text-green-700" : r.state === "exception" ? "text-red-700" : r.state === "late" ? "text-amber-700" : "text-gray-900"}>
+                    {t.status}
+                    {r.state === "late" && <span className="block text-xs">Past expected date</span>}
+                  </span>
+                );
+              },
+            },
+            {
+              header: "Last activity",
+              cell: (r) => (r.tracking?.lastActivity ? `${r.tracking.lastActivity}${r.tracking.lastLocation ? ` · ${r.tracking.lastLocation}` : ""}` : "—"),
+            },
+            {
+              header: "Delivered / expected",
+              cell: (r) => (r.tracking?.deliveredAt ? formatUtcDateTime(r.tracking.deliveredAt) : r.tracking?.expectedAt ? `Expected ${formatUtcDate(r.tracking.expectedAt)}` : "—"),
+            },
+            {
+              header: "Checked",
+              cell: (r) => (r.tracking?.checkedAt ? formatDateTime(r.tracking.checkedAt, tz) : "—"),
+            },
+          ]}
+        />
+      </Section>
+    </div>
+  );
+}
+
+export function ImportHistory({
+  rows,
+  tz,
+}: {
+  rows: {
+    id: string;
+    source: keyof typeof LOGISTICS_KIND_LABELS;
+    fileName: string;
+    rows: number;
+    created: number;
+    updated: number;
+    fetched: boolean;
+    importedAt: Date;
+    importedBy: string | null;
+    skipped: number;
+  }[];
+  tz: string;
+}) {
+  return (
+    <Section title="Import history" description="The latest 50 imports.">
+      <Table
+        rows={rows}
+        empty="Nothing imported yet."
+        cols={[
+          {
+            header: "When",
+            cell: (r) => (
+              <span className="whitespace-nowrap">
+                {formatDateTime(r.importedAt, tz)}
+              </span>
+            ),
+          },
+          {
+            header: "File",
+            cell: (r) => <span className="text-gray-900">{r.fileName}</span>,
+          },
+          { header: "Source", cell: (r) => LOGISTICS_KIND_LABELS[r.source] },
+          { header: "Rows", cell: (r) => n(r.rows), align: "right" },
+          { header: "New", cell: (r) => n(r.created), align: "right" },
+          { header: "Updated", cell: (r) => n(r.updated), align: "right" },
+          {
+            header: "Skipped",
+            cell: (r) =>
+              r.skipped ? (
+                <span className="text-amber-700">{n(r.skipped)}</span>
+              ) : (
+                "—"
+              ),
+            align: "right",
+          },
+          {
+            header: "By",
+            cell: (r) =>
+              r.fetched && !r.importedBy
+                ? "Scheduled pull"
+                : `${r.importedBy ?? "—"}${r.fetched ? " (pulled)" : ""}`,
+          },
+        ]}
+      />
+    </Section>
+  );
+}

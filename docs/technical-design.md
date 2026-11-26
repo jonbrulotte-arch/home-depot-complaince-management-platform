@@ -1,0 +1,643 @@
+# HD Compliance Platform: Technical Design Document
+
+| | |
+|---|---|
+| **System** | HD Compliance Platform, THD compliance management for JS Products (the default name; admins can rename it under Admin › Settings › Custom Branding) |
+| **Organisation** | JS Products (THD P-Vendor 875062) |
+| **Document status** | Current, describes the system as built |
+| **Last updated** | November 2026 |
+| **Related documents** | `README.md` (features and setup), `CLAUDE.md` (conventions for contributors), `docs/design-system.md` (Sympl UI), in-app **Help & Docs** (`/help`, user guide) |
+
+---
+
+## 1. Purpose and scope
+
+### 1.1 Purpose
+
+This document describes how the platform is built: its architecture, data model, main flows, the rules behind the compliance figures, security, deployment and operations. It is written for engineers who maintain or extend the system and for anyone reviewing its design. User-facing instructions are in the in-app Help & Docs; the feature list is in the README.
+
+### 1.2 Problem
+
+Each month JS Products receives compliance results from The Home Depot (THD) through SPM (Supplier Performance Management, supplierhub.homedepot.com): one Excel export per compliance program, one sheet per metric. These were analysed by hand in a 13-sheet workbook: violations reviewed line by line, disputes prepared and tracked, offsets (chargebacks) totalled, a scorecard assembled and circulated. The process was slow, hard to audit, and kept no searchable history of POs.
+
+### 1.3 Goals
+
+- Import SPM exports as they are, tolerating THD's changing column names and quirks, and keep every line, compliant or not, as a searchable PO history.
+- Guide the monthly workflow: import → review every violation → dispute → scorecard → publish.
+- Calculate compliance and offsets the way THD does, before and after disputes, and freeze published results.
+- Share results with people without accounts (public scorecards and dashboard) and collect warehouse feedback.
+- Give finance a way to match THD's chargeback packages to POs.
+- Run on one internal Linux server, with backups and a one-command update.
+
+### 1.4 Non-goals
+
+- Pulling data from SPM automatically. THD offers no API; exports are downloaded by hand.
+- Submitting disputes to SPM. The platform prepares them; people submit them in SPM and record THD's decision.
+- Multi-tenant use. One supplier, one database.
+- Internet exposure. The server is reached on the internal network over plain http (see §9.6).
+
+---
+
+## 2. Context
+
+### 2.1 Domain
+
+| Concept | Meaning |
+|---|---|
+| **Program** | A THD compliance program: US Drop Ship, US RDC, US DFC, US Transportation, Data Quality Compliance (DQC), Invoice Timeliness. |
+| **Metric** | A measure within a program (Fill Rate, On Time, Missing ASN, Late ASN, TMS Utilization, Routing Guide, Parcel PO, …), with a goal and an offset rule. |
+| **Offset** | THD's charge for a violation: a flat amount per violation, or a percentage of the goods' value. |
+| **Fiscal month** | THD's month as `YYYYMM`, month `01` = February (`src/lib/fiscal.ts`). FM 202605 is June 2026. |
+| **Compliance period** | THD reports Fill Rate and On Time two months behind the other metrics, so each report has two periods: `FILL_ON_TIME` and `OTHER` (`DataPeriod`). |
+| **Report period** | The month a report covers. Lines are grouped by the month they were received (default) or by THD fiscal month (`SiteSettings.reportPeriodBasis`). |
+| **Package ID** | THD's reference for a batch of chargebacks, shown on the remittance; entered by hand. |
+
+### 2.2 Users and roles
+
+| Role | Purpose | Permissions |
+|---|---|---|
+| Admin | Everything (always has every permission, including ones added later) | all |
+| Analyst | Runs the monthly workflow | `view.dashboard`, `view.polookup`, `reports.*`, `lines.triage`, `disputes.manage`, `feedback.view`, `feedback.submit`, `summarizer.use`, `issues.view`, `issues.manage`, `packingslips.use` |
+| Viewer | Read-only results | `view.dashboard`, `view.polookup`, `issues.view` |
+| Warehouse | Comments on published violations, logs issues | `feedback.view`, `feedback.submit`, `issues.view`, `issues.manage` |
+| Finance | Read-only lookup and summaries, chargeback packages, issues | `view.polookup`, `feedback.view`, `summarizer.use`, `issues.view` |
+| Director | The Warehouse's access plus the dashboard and scorecards, PO Lookup and Reports & Insights | `view.dashboard`, `view.polookup`, `feedback.view`, `feedback.submit`, `issues.view`, `issues.manage`, `insights.view` |
+| Logistics | The logistics team. Created empty (migration `logistics_role`); admins choose its permissions in Roles & Access | none until assigned |
+
+Admins can create further roles. Permissions are listed in `src/lib/permissions.ts`.
+
+### 2.3 External interfaces
+
+| Interface | Direction | Notes |
+|---|---|---|
+| SPM xlsx exports | In (manual upload) | One file per program; `…_ALL_RESULTS_…`, `…_NON_COMPLIANT_…`, `…_SUM_…`, `US_INVOICE_TIMELINESS_RECORDS_…` |
+| SPM disputes | Out (manual) | The platform produces the comment and document checklist; people submit in SPM |
+| THD remittance | In (manual) | Package IDs typed onto reports; looked up by finance |
+| WMS shipped-lines report | In (upload, or retrieved from the link in Admin › Settings) | Last 60 days of shipped cartons; xlsx, CSV or an HTML table |
+| TMS (Logistics Gateway) exports | In (manual upload) | Shipments and Purchase Orders, CSV |
+| UPS Tracking API | Out (`onlinetools.ups.com`, or `wwwcie.ups.com` in test mode) | OAuth client credentials set in Admin › Settings; tracking for 1Z numbers |
+| Browsers on the internal network | Both | Staff (signed in) and recipients of public links (no sign-in) |
+
+---
+
+## 3. Architecture
+
+### 3.1 Overview
+
+A single Next.js application serves the pages and the JSON/file API, and talks to one PostgreSQL database. There are no other services, queues or caches. Generated files (PDF, Excel) are built per request; uploads (dispute attachments, logo) are stored in the database.
+
+```mermaid
+flowchart LR
+  subgraph Browser
+    U[Staff, signed in]
+    P[Public link viewers]
+  end
+  subgraph Server["Linux server (systemd: thd-compliance, port 8014)"]
+    N["Next.js 16 app<br/>pages (RSC) + route handlers"]
+    S["scripts/ (tsx)<br/>backfill, backup, restore,<br/>historical-reports, deploy.sh"]
+  end
+  DB[(PostgreSQL<br/>thd_compliance)]
+  FS[["BACKUP_DIR<br/>gzipped JSON backups"]]
+  U -->|http| N
+  P -->|"public links /s/token, /d/token"| N
+  N -->|Prisma 7 + pg adapter| DB
+  S --> DB
+  N --> FS
+  S --> FS
+```
+
+### 3.2 Technology stack
+
+| Layer | Choice | Notes |
+|---|---|---|
+| Framework | Next.js 16 (App Router, Turbopack), React 19, TypeScript 5 | Server components for pages; client components only where interactive. Route handlers under `src/app/api`. |
+| Database | PostgreSQL, Prisma 7 with `@prisma/adapter-pg` | Schema in `prisma/schema.prisma`; 22 hand-reviewed migrations. |
+| Auth | NextAuth v5, credentials provider, bcrypt, JWT sessions | §9.1 |
+| UI | Tailwind CSS v4, Radix UI primitives, class-variance-authority, Lucide icons, Geist | "Sympl UI" design system (`docs/design-system.md`). |
+| Validation | zod | Every request body is parsed and trimmed at the route boundary. |
+| Excel | ExcelJS | Parsing uploads (with size, row and column limits) and writing exports. |
+| PDF | pdfkit | Scorecard and Summarizer PDFs, server-side. |
+| Tests | Vitest | Unit tests with real SPM export fixtures. |
+| Scripts | tsx | Command-line tools sharing the app's library code. |
+
+`exceljs`, `pdfkit`, `pg` and Prisma are server-external packages (`next.config.ts`), loaded from `node_modules` at runtime rather than bundled.
+
+### 3.3 Code organisation
+
+```
+src/
+  app/
+    (app)/              signed-in pages, wrapped by AppShell (sidebar)
+      dashboard/ reports/ disputes/ scorecards/ po-lookup/ po/ feedback/ summarizer/ help/ admin/
+    s/[token]/          public scorecard
+    d/[token]/          public dashboard
+    login/
+    api/                route handlers (only HTTP-method exports)
+  components/
+    ui/                 design-system primitives
+    layout/             AppShell, Sidebar, BrandMark
+    scorecard/ dashboard/ shared/
+  lib/                  domain logic (most of it pure and unit-tested)
+    import/             parse → transform → persist, catalog of programs and rules
+prisma/                 schema, migrations, seed
+scripts/                backfill, backup, restore, historical-reports, deploy.sh
+tests/                  Vitest tests and fixtures
+docs/                   design system, this document
+reference/              THD reference PDFs, the historical archive, exports received later
+```
+
+Domain logic lives in `src/lib`, kept free of React so pages, route handlers and scripts share it. Calculation rules that matter for correctness are pure functions in database-free modules (`scorecard-rules.ts`, `summarizer.ts`, `import/transform.ts`, `package-id.ts`, `shipment-ranges.ts`) so they can be unit-tested and used in client components.
+
+---
+
+## 4. Data model
+
+### 4.1 Entities
+
+```mermaid
+erDiagram
+  Program ||--o{ Metric : has
+  Metric ||--o{ MetricRule : "rules by effective month"
+  Metric ||--o{ ColumnAlias : "header mappings"
+  Metric ||--o{ DisputeReasonCode : has
+  CompliancePeriod ||--o{ ComplianceReport : "one month"
+  ComplianceReport ||--o{ ReportProgram : includes
+  ReportProgram ||--o{ ImportBatch : "imports (per DataPeriod)"
+  ImportBatch ||--o{ ComplianceLine : "latest writer"
+  ImportBatch ||--o{ SpmSummaryRow : "THD totals"
+  Metric ||--o{ ComplianceLine : measures
+  PoRecord ||--o{ ComplianceLine : "one use of a PO number"
+  ComplianceLine ||--o| LineReview : decision
+  ComplianceLine ||--o| Dispute : "if disputable"
+  Dispute ||--o{ DisputeEvent : timeline
+  Dispute ||--o{ DisputeAttachment : files
+  ComplianceReport ||--o| Scorecard : "frozen snapshot"
+  ComplianceReport ||--o{ ScorecardFeedback : comments
+  ComplianceLine ||--o{ ScorecardFeedback : about
+  ComplianceReport ||--o{ ShipmentCount : "per program, period, mode"
+  ComplianceReport ||--o{ LineCount : "per program, period"
+  ComplianceReport ||--o{ ChargebackPackage : "per program, period"
+  Role ||--o{ User : has
+  User ||--o{ AuditLog : writes
+  Scorecard ||--o{ ScorecardHit : "views, downloads"
+  User ||--o{ ScorecardHit : "when signed in"
+  Issue ||--o{ IssuePo : "POs, as typed"
+  Issue ||--o{ IssueNote : updates
+  Issue ||--o{ IssueAttachment : files
+  IssuePo }o..o| PoRecord : "matched by number and date"
+```
+
+| Model | Purpose and key fields |
+|---|---|
+| `Program`, `Metric` | Programs (`code` e.g. `US_DS`, `filePrefix`, `vendorNumbers`: THD vendor numbers, POM's Vendor # = SPM's M-Vendor, each on one program, set under Programs & Rules via `PATCH /api/admin/programs/<id>`, audited `program.vendors`; pure helpers in `src/lib/vendor-numbers.ts`, the numbers seen in the data in `vendor-numbers-data.ts`) and their metrics (`code`, `sheetNames`). Seeded from `src/lib/import/catalog.ts`, edited by admins afterwards. |
+| `MetricRule` | Goal and offset per metric with `effectiveFrom` (fiscal month); the rule in force is the latest one on or before the period (`ruleFor`). `offsetType`: `NONE`, `FLAT`, `PCT_VALUE`. |
+| `ColumnAlias` | Export header → canonical field, optionally scoped to a program or metric. How drifting THD headers are mapped. |
+| `DisputeReasonCode` | THD's dispute matrix per metric: when to use, required documents. |
+| `CompliancePeriod` | A fiscal month, with its SPM dispute window. |
+| `ComplianceReport` | One month's report: `status` (`DRAFT` → `IN_REVIEW` → `DISPUTES` → `SCORECARD` → `PUBLISHED`), `historical`, shipment date ranges per period. |
+| `ReportProgram` | A program in a report, with import status. |
+| `ImportBatch` | One imported file: `sha256`, `exportKind`, `period` (`DataPeriod`), counts, warnings. |
+| `SpmSummaryRow` | THD's own Summary sheet totals, for reconciliation. |
+| `ComplianceLine` | One SPM row: `lineKey` (unique), `metricId`, `fiscalMonth`, `receivedMonth`, `isCompliant`, `offsetAmount`, ~40 canonical typed fields (PO, SKU, quantities, dates, shipment references, THD status and decision), and `raw` (every source column). `batchId` is the latest import to write it, `createdBatchId` the one that created it. |
+| `PoRecord` | One use of a PO number, keyed by `instanceKey` (§4.2). |
+| `LineReview` | The decision on a non-compliant line (`Disposition`), team influence, root cause, notes, extra research fields. |
+| `Dispute`, `DisputeEvent`, `DisputeAttachment` | One dispute per disputable line: status, reason code, checklist, amounts, THD decision; its timeline; its files (stored as bytes). |
+| `Scorecard` | `data` (JSON snapshot), version, generated/published by and when, `shareToken`. |
+| `ScorecardFeedback` | A comment on a published violation, keyed by report and line. |
+| `ShipmentCount`, `LineCount`, `ChargebackPackage` | Manual inputs per report, program and compliance period: shipments by mode, line totals (§6.4), the chargeback Package ID (§5.8). |
+| `SiteSettings` | Single row (`id = "site"`): branding and logo, `reportPeriodBasis`, `publicDashboardToken`, the WMS report link (`wmsReportUrl`) and UPS tracking credentials (`upsClientId`, `upsClientSecret`, `upsTestMode`). |
+| `Issue`, `IssuePo`, `IssueNote`, `IssueAttachment`, `IssueShare` | The Issue Log (§5.11): an issue (number shown as ISS-0001, date, status, severity, category, program, team, HD Support tickets (`hdTickets`, a list: an issue can have several, matched exactly in search), what happened, actions, consequences, people, references, resolution, follow-up date), its POs as typed (number, optional create date and optional estimated fine), an estimated maximum fine for the issue (the total of its POs' estimates when any are given, else a typed figure; whole dollars), its timeline of updates and its files (stored as bytes), and its public read-only link when shared. |
+| `DisputeEmail` | Disputes email log: every Send Email attempt from a report's Disputes page, with sender, team, To, Cc, subject, body, requests, the dispute report PDF, the dispute IDs and POs, sent or error. |
+| `Channel` | A sales channel: the WMS `CUST_NUM` `code` (e.g. `THD`, `THD.COM-DFDC`), its `name` and `sortOrder` (Admin › Settings › Channels). |
+| `Warehouse` | A warehouse we ship from: the WMS OrderNumber `prefix` (e.g. `3-`), its `name` and `sortOrder`, and the `shipFromName` and `address` packing slips print (Admin › Settings › Warehouses). |
+| `DestinationAddress` | The packing slip address book: a destination's Store/DC # (`facility`, unique, upper case), its `name` and full `address`, saved when a slip to it is downloaded. |
+| `ResourceLink` | A link (label, http(s) URL) to a document kept elsewhere, such as OneDrive, on a dispute or an issue (one of `disputeId`/`issueId`), added with **+ Link Resource**. |
+| `LogisticsEmail` | Logistics email log (§5.15): every Send Email attempt with sender, team, To, Cc, subject, body, requests, the PDF attached, sent or error, and the POs and shipments it concerns. |
+| `LogisticsImport`, `WmsCarton`, `TmsShipment`, `TmsPurchaseOrder`, `ParcelTracking`, `LogisticsNote`, `CarrierLink` | Logistics (§5.15): each imported file; WMS shipped lines (one per carton label and product, `lineKey`); TMS shipments (status, SCAC, pickup and delivery as instants and as written with their zone, origin, destination, POs) and purchase orders; the latest UPS tracking per 1Z number; notes on a PO or shipment; carriers by SCAC with a tracking link template. |
+| `SopDocument` | An SOP as a PDF (§5.14): title, file name, size, the bytes, the roles it is for (`roleIds`), order, who uploaded it and when. |
+| `PasswordReset` | A "forgot password" link (§9.1): user, sha256 of the token, expiry (1 hour), used time, requesting IP address. |
+| `UserInvite` | An invitation (§9.1): email, optional name, role, sha256 of the link token, who sent it, when, whether Graph accepted the email, expiry, accepted / revoked times. |
+| `Team` | A team responsible (Admin › Teams): fixed `key` (what `LineReview.teamInfluence` and `Issue.team` store, with a foreign key), editable `name` and description, `active`, `sortOrder`, and optional email addresses `emailTo` / `emailCc` (Logistics › Send Email). Inactive teams stay on existing records but aren't offered. |
+| `User`, `Role`, `AuditLog` | Accounts (bcrypt hash, active flag, optional `timeZone`), roles with permission lists, and the App Log: every event in the platform (§9.5). |
+| `ScorecardHit` | One view or download of a published scorecard (§5.10): channel (`APP` or `PUBLIC` link), kind (`VIEW`, `PDF`, `EXCEL`), version, browser session, user when signed in, IP and user agent. |
+
+### 4.2 Identity rules
+
+- **Line identity (`ComplianceLine.lineKey`).** A hash of the metric, fiscal month and the line's shipment identifiers (PO, SKU, vendor SKU, ASN doc trace ID, TMS ID, PRO, OMS ID, customer order, tracking #, shipment #, BOL #, reason), plus an occurrence number for true duplicates (`transform.ts`). Re-importing the same or a newer export updates lines in place instead of duplicating them.
+- **PO identity (`PoRecord.instanceKey`).** THD reuses PO numbers, so a record is one use of a number: `poNumber|YYYY-MM-DD` (PO create date). Lines without a create date join the nearest use by ship or check-in date (`pickPoInstance` in `src/lib/po.ts`). A PO record is never looked up by number alone.
+- **Received month.** Each line keeps the month it was first imported into (or its archive folder); it is never earlier than its fiscal month, and a later export never moves it.
+
+### 4.3 Snapshots
+
+`Scorecard.data` is a JSON snapshot (`ScorecardData` in `src/lib/scorecard.ts`) of everything the scorecard shows: per-program and per-metric results, totals, violations, shipments, team influence and the 12-month trend. Pages and downloads render the snapshot, never live data, so a published scorecard cannot shift when lines, reviews or rules change. Two things are deliberately read live on top of it:
+
+- **Feedback** (`withFeedback`): attached to the snapshot's violations by `lineId` each time it is shown or downloaded.
+- **Awaiting THD decision** in the Summarizer: current dispute status by `lineId`.
+
+Fields added to the snapshot over time are optional, so older snapshots keep rendering (for example `lineId`, `rootCause`, per-period shipment counts).
+
+---
+
+## 5. Main flows
+
+### 5.1 Report lifecycle
+
+```mermaid
+stateDiagram-v2
+  [*] --> DRAFT: New compliance report
+  DRAFT --> IN_REVIEW: Start review
+  IN_REVIEW --> DRAFT: Back to import
+  IN_REVIEW --> DISPUTES: Ready for disputes (every line decided)
+  DISPUTES --> IN_REVIEW: Reopen review
+  DISPUTES --> SCORECARD: Generate scorecard
+  SCORECARD --> DISPUTES: Back to disputes
+  SCORECARD --> PUBLISHED: Publish scorecard
+  PUBLISHED --> SCORECARD: Unpublish
+```
+
+Moves are validated on the server by `PATCH /api/reports/[id]` (`reports.advance`), which refuses `DISPUTES` while any non-compliant line is undecided or needs research. `SCORECARD` is allowed with disputes still preparing or ready: each such violation in the snapshot carries `disputeNote` (`pendingDisputeNote` in `scorecard-rules.ts`: "Dispute pending documentation from our teams to complete.", the checklist items still open and the dispute's three latest notes), `totals.preparingDisputes` counts them, and `pendingDisputesText` words the banner on the page and PDF; the Excel and PDF carry the note in Root cause / Notes. Disputes stay editable, and **Regenerate** (in `SCORECARD`) rebuilds the snapshot once they are submitted or decided. Entering `DISPUTES` creates disputes from Disputable reviews (`dispute-sync.ts`); entering `SCORECARD` generates the snapshot. Imports and purges are allowed in `DRAFT` and `IN_REVIEW`; line counts until published; Package IDs at any stage.
+
+### 5.2 Import pipeline
+
+```mermaid
+sequenceDiagram
+  participant B as Browser
+  participant R as POST/PUT .../programs/[programId]/import
+  participant P as parse.ts
+  participant T as transform.ts
+  participant S as persist.ts
+  participant DB as PostgreSQL
+  B->>R: xlsx + period (preview)
+  R->>P: workbook → sheets → header row → rows (limits)
+  P-->>R: rows per sheet
+  R->>T: aliases + catalog → canonical fields, classification, line keys
+  T-->>R: mapped lines, warnings, summary rows
+  R-->>B: preview (per sheet: lines, violations, offsets, warnings)
+  B->>R: confirm
+  R->>S: same mapping
+  S->>DB: one transaction: batch, PO records, upsert lines by lineKey, summary rows
+  S-->>B: created / updated counts
+```
+
+- **Parse** (`parse.ts`): ExcelJS, at most 25 MB per file, 200 columns and 100,000 rows per sheet. Finds the header row, skips `RESULT DATA EMPTY` sheets, de-duplicates repeated headers.
+- **Transform** (`transform.ts`, pure): maps headers to canonical fields through `ColumnAlias` (never by column position), coerces dates and numbers (`values.ts`), classifies each line (`classifyLine`), builds line keys, and handles known export quirks (the US Transportation offset shifted under "Department #", typed notes and subtotal rows, Fill Rate as a percent or a fraction). Unknown columns are kept in `raw` and reported.
+- **Classification.** A line is non-compliant when the export is `NON_COMPLIANT`, the metric is a violation list (Invoice Timeliness), it carries an offset, THD's status says so, or the metric's own test fails (Fill Rate short-shipped or cancelled, On Time late, legacy ASN after check-in). Full-population sheets (Fill Rate, On Time) otherwise count as compliant; other sheets count as compliant only when they show a $0 offset.
+- **Compliance periods.** Each report program has one import per `DataPeriod`. Sheets belonging to the other period are **update-only**: they refresh existing lines (so THD's later decisions arrive) but never create lines, so a violation cannot count in two reports.
+- **Summary-only exports** (`…_SUM_…`): each metric with offsets becomes one PO-less line (`sourceSheet = SUMMARY_SHEET`); detail lines for the same metric and month replace it.
+- **Idempotence.** Files are fingerprinted (SHA-256), and lines are upserted by `lineKey`, so re-importing is safe.
+- **Purge** (`purge.ts`): deletes one period's imports for a program and only the lines those imports created (`createdBatchId`), with their reviews and disputes; lines that existed before are kept and pointed back at the import that created them.
+
+### 5.3 Review and disputes
+
+Every non-compliant line gets a `LineReview`: decision, team influence, root cause, notes and research fields (`PUT /api/lines/[id]/review`, `lines.triage`). `Cancelled / Resolved` marks a line that is not a real violation (§6.1).
+
+The review page puts the research on each line's PO beside it, in a **Research** card with tabs (`research-panel.tsx`): Logistics (status, origin and destination, WMS shipped dates, cartons, TMS IDs on the cartons, PROs, all flags, UPS tracking, up to 40 WMS shipped lines and the Logistics notes on the PO and its shipments), Shipments (each TMS shipment with carrier link, pickup and delivery, route, the POs on it and its flags), Issues (status, category, severity, team, estimated fine, HD Support tickets, description and resolution) and Other violations. The page builds it on the server once (`src/lib/review-context.ts`: `reviewLogistics` from `loadLogistics`, keyed by PO record, and `reviewIssues` from `issuesForPoRecords`, so reused PO numbers match as elsewhere) and only for the permissions the viewer has (`logistics.view`, `issues.view`; the PO record link needs `view.polookup`, Log an issue `issues.manage`). Logistics holds the latest use of a PO number, so when the line's PO record was created before the Logistics PO's create date, the panel says the data is for a later use instead of showing it.
+
+Disputes follow a fixed state machine (`canTransition`):
+
+```mermaid
+stateDiagram-v2
+  PREPARING --> READY
+  PREPARING --> SUBMITTED
+  PREPARING --> WITHDRAWN
+  READY --> PREPARING
+  READY --> SUBMITTED
+  READY --> WITHDRAWN
+  SUBMITTED --> APPROVED
+  SUBMITTED --> PARTIAL
+  SUBMITTED --> DENIED
+  SUBMITTED --> READY
+  APPROVED --> SUBMITTED: reopen
+  PARTIAL --> SUBMITTED: reopen
+  DENIED --> SUBMITTED: reopen
+  WITHDRAWN --> PREPARING
+```
+
+A dispute carries its reason code, a document checklist from the dispute matrix, attachments (10 MB each, allow-listed extensions), the SPM comment, the dispute window deadline, amounts disputed and recovered, and THD's decision code. Outcomes are recorded by people; an Approve/Deny value found in a later export only flags the dispute (`spmDecisionSeen`). **Sync from review** reconciles disputes with changed reviews. Beside attachments, **+ Link Resource** adds a `ResourceLink` (Link Text and URL, opening in a new tab) for documents kept in OneDrive or SharePoint; `cleanResourceUrl` adds `https://` when it's left out and refuses anything but http(s), so a link can't run script. Links are noted on the dispute's timeline, listed in the dispute report PDF, and added or removed through `POST`/`DELETE /api/disputes/[id]/links` (`disputes.manage`); issues have the same (`/api/issues/[id]/links`, `issues.manage`), left off the public issue page like its files.
+
+**Dispute report and Send Email.** The Disputes page lists disputes with a checkbox each (up to `MAX_DISPUTE_SELECTION` = 200). **PDF** (`GET /api/reports/[id]/disputes/report?ids=…`, `reports.view`, audited `disputes.report`) is the dispute report (`dispute-report-pdf.ts`, landscape): a summary table, then each dispute's line (item via `lineItem`, dates), reason code with required documents and what they must show, checklist, due date, SPM comment, the review's team, root cause and notes, and THD's decision. **Send Email** (`disputes.manage`) uses the window Logistics uses (`EmailComposer`, `src/components/email/email-composer.tsx`: team picker over the Admin › Teams addresses, Also to / Also cc, editable draft, remembered team per place) with the dispute requests (`DISPUTE_REQUESTS` in `dispute-email.ts`, pure: documents, proof of delivery, bill of lading, what shipped, what happened, THD's decision, other; `suggestedDisputeRequests` ticks documents for disputes being prepared with open checklist items and the decision for decided ones) and draft (`disputeDraft`: the team's greeting, the report, a line per dispute, the dispute window's close). `POST /api/reports/[id]/disputes/email` checks the disputes belong to the report (`loadDisputesForEmail`), reads the team's addresses on the server, rebuilds the PDF and sends it through `sendMail` (reply-to the sender, Sent Items), records every attempt as a `DisputeEmail` (sender, team, To, Cc, subject, body, requests, the PDF, dispute IDs and PO numbers, sent or error), adds a NOTE event to each dispute's timeline and audits `disputes.email`. Each dispute lists its emails; `/reports/[id]/disputes/email/<id>` shows one in full (`reports.view`), with its PDF at `GET /api/reports/[id]/disputes/email/[emailId]/attachment` (audited `disputes.emailAttachment`).
+
+### 5.4 Scorecards and sharing
+
+`buildScorecard` (`scorecard.ts`) gathers the metric statistics (§6), violations with their reviews and disputes, shipment counts and ranges, team influence and a 12-month trend, and `scorecard-store.ts` saves it as a new snapshot version. It can be regenerated only in `SCORECARD`. **Refresh scorecards** (`scorecard-refresh.ts`; `POST /api/reports/scorecards/refresh`, `reports.advance`; `npm run refresh-scorecards` for cron) brings published scorecards up to date in place: each is rebuilt, compared with the stored snapshot ignoring `generatedAt` and key order (`comparable`), and replaced only when it differs. The report stays `PUBLISHED`, `publishedAt` and `shareToken` are kept, `version` goes up, and the App Log records each one (`scorecard.refresh`, with before and after totals) and the run (`scorecard.refreshAll`). The snapshot principle holds: a published scorecard changes only when someone refreshes it, never on its own. Downloads are generated per request: PDF (`scorecard-pdf.ts`) and Excel (`scorecard-export.ts`).
+
+Published scorecards get an unguessable `shareToken` (24 random bytes, base64url) on first view. `/s/<token>` and `/api/s/<token>/{pdf,export}` need no sign-in and check that the report is still published; unpublishing takes the page down and republishing brings the same link back.
+
+### 5.5 Scorecard Feedback
+
+`ScorecardFeedback` rows attach to a published report and a violation's line. The feedback module lists published scorecards and their violations; feedback is merged into scorecard pages, PDF and Excel at render time (`withFeedback`), so new comments appear without regenerating. Authors delete their own; user admins can delete any.
+
+### 5.6 Dashboards
+
+`src/lib/dashboard.ts` provides the 12-month offsets by program, the rolling 12-month total over all history (with month-over-month change) and the recent published reports; `dashboard-sections.tsx` renders them for both the internal dashboard and the public one. The public dashboard (`/d/<token>`) is off unless `SiteSettings.publicDashboardToken` is set; admins turn it on, issue a new token, or turn it off. It omits work in progress, though its offset totals use all imported lines.
+
+### 5.7 Summarizer
+
+`/summarizer?r=<ids>` rolls selected published scorecards into one summary (`buildSummary`, pure): totals, per-report figures with links to public scorecards, violations grouped by program and metric with PO, offset and team, totals by team, and the amount awaiting THD's decision (disputes currently `SUBMITTED`, read live by line). `/api/summarizer/pdf` renders it with its own PDF layout helpers (`summary-pdf-layout.ts`), independent of the scorecard PDF.
+
+**Issues report.** `/summarizer?from=YYYY-MM-DD&to=YYYY-MM-DD` (needs `issues.view` as well; at most three years) summarizes the Issue Log for a date range. `loadIssueReport` (`issue-report-data.ts`) reads the issues dated in the range, and those logged, updated or resolved in it, ties their POs to compliance data as the Issue Log does (`matchIssuePos`) and loads the violations on those PO records (Cancelled / Resolved left out). `buildIssueReport` (`issue-report.ts`, pure) gives the totals (issues, open, resolved in the range, POs found, violations, offsets, recovered, expected vs. assessed over the issues with an estimate), counts by category, team, severity and status, each issue with its updates made in the range, and the earlier issues with activity in it. Dates are UTC days, like issue dates. `/api/summarizer/issues-pdf` writes it with `issueReportPdf` (logged as `summary.issuesExport`).
+
+### 5.8 PO Lookup, PO records and chargeback packages
+
+PO Lookup searches lines by PO prefix and exact shipment identifiers, grouped by PO record; each PO record page (`po-record.ts`) assembles everything known about one use of a PO. Chargeback packages are `ChargebackPackage` rows (report × program × period → Package ID, validated by `normalizePackageId`). A package covers that slot's lines with an offset; `/po-lookup/package/<id>` lists them with decision, dispute, recovered and net amounts, and `/api/po-lookup/package/<id>/export` writes the same as xlsx (`package-export.ts`). Matching is case-insensitive; the same ID on several slots is shown as one package.
+
+### 5.9 Historical reports
+
+`historical.ts` (also `npm run historical-reports` and the **Historical reports** dialog) creates a published, auto-reviewed report for each archived month without one, leaving the current and previous month to the normal workflow. Violations are accepted as THD reported them; per-line Approve/Deny values become decided disputes; THD's Summary post-dispute totals are used where they reconcile, marked "per THD". `--rebuild` regenerates them after a rule or setting change.
+
+### 5.10 View Analytics and App Log
+
+**View Analytics** (`/admin/analytics`, permission `admin.analytics`) counts hits on published scorecards, per scorecard. A page view is reported by a small client beacon (`ScorecardHitBeacon` → `POST /api/scorecard-hits`) on the in-app scorecard pages and the public `/s/<token>` page, so link previews and prefetches that never run the page are not counted; downloads are recorded by the PDF and Excel routes. `recordScorecardHit` (`src/lib/scorecard-hits.ts`) skips automated user agents, ignores a repeat view of the same scorecard in the same session within 10 seconds, and keeps the browser session in an `httpOnly` cookie (`cm_vs`) that expires after 30 minutes without a hit, so a **unique session** is one visit. Signed-in users are recorded by id, including when they open the public link. `src/lib/view-analytics.ts` aggregates per scorecard (hits, views, downloads, distinct sessions and users, public-link hits), per day, and per signed-in user, for a chosen window.
+
+The **App Log** (`/admin/app-log`, permission `admin.audit`) lists `AuditLog` newest first, with search, user, category and date filters, 50 per page, and a CSV export of the filtered entries (`src/lib/app-log.ts` holds the labels, categories, filters and links). A test fails if code logs an action that has no label.
+
+---
+
+### 5.11 Issue Log
+
+`/issues` (permission `issues.view`; logging and editing need `issues.manage`) records problems with POs when they happen, before THD's data about them exists. An issue lists its POs as typed (`IssuePo`), not as foreign keys, so it can be logged first and tied to the compliance data later. The tie is computed when an issue or a PO record is shown (`src/lib/issues-data.ts`):
+
+- PO numbers are matched with and without leading zeros (`poNumberVariants`).
+- THD reuses PO numbers, so an issue PO means one use of the number (`resolveIssuePo`): the use with the PO create date given on the issue, or else the use created on or before the issue date (`pickPoInstance`, §4.2).
+
+The issue page shows each PO's compliance lines (month, program · metric, item, result, offset, decision, team, dispute; THD lists a line per SKU or order line, so the item, from `lineItem` in `issues.ts`, tells a PO's lines apart: vendor SKU, THD SKU, description and quantities, else the OMS ID, customer order or doc trace ID; the PDF shows the SKU and quantities); the PO record page lists its issues with a **Log an issue for this PO** button; the violation review shows them in its Research card (Issues tab). The list filters by search (PO, ticket, issue number, words), status, category and date, and exports to Excel (`issue-export.ts`): an Issues sheet and an Issue POs sheet with the lines, violations and offsets the compliance data holds for each PO. Updates (`IssueNote`) and files (`IssueAttachment`, the dispute attachment types and 10 MB limit) form the issue's history. Only the person who logged an issue, or a user admin, can delete it. Validation and the list filter are pure (`src/lib/issues.ts`) and unit-tested.
+
+**PDF and public sharing.** **PDF** on an issue downloads `issuePdf` (`src/lib/issue-pdf.ts`): the issue, a details box, the free-text fields, its POs with their compliance lines, the updates and the file list (names only), with times in the viewer's zone. It reuses the Summarizer PDF's layout helpers (`summary-pdf-layout.ts`); typed text passes through `pdfText`, which replaces characters the standard PDF fonts can't draw. **Share** (`issues.manage`) turns on a public read-only link `/i/<token>` (`IssueShare`: one row per shared issue, a 192-bit random token; kept apart from `Issue` so sharing doesn't change the issue's updated time). **New link** replaces the token, so the old link stops working; **Turn off** deletes the row. The public page renders the same `IssueBody` component as the signed-in page (`src/components/issues/issue-view.tsx`) without edit controls, PO-record links or file downloads, and offers the PDF (`/api/i/[token]/pdf`). Turning links on, replacing and turning them off and every PDF download (with `publicLink` and the IP address for public ones) are in the App Log.
+
+### 5.13 Teams responsible
+
+The team a violation or an issue is put on was a fixed list (a database enum). Admin › Teams (`/admin/teams`, `admin.teams`) now manages it as the `Team` table, created by migration `teams` with the previous ten values (the retired "Warehouse (site not set)" inactive). Reviews and issues store the team's `key`, which is made from its first name and never changes, with a foreign key to `Team.key`; names, descriptions, order and the active flag are editable. Every page and export reads names through `teamNames()` (`src/lib/teams.ts`), so a rename shows at once in the violation review, issues and their PDF and Excel export, PO records, chargeback packages, disputes and Reports & Insights. Published scorecards are snapshots and keep the name the team had when generated. Pickers offer active teams plus a record's current team (`pickerTeams`); the review and issue routes refuse other keys (`isAssignableTeam`). A team in use can be turned off but not deleted. Changes are logged as `team.create`, `team.update`, `team.delete` and `team.reorder`.
+
+### 5.14 SOP documents
+
+The SOPs (standard operating procedures) are written outside the platform and exported as PDF. Admin › Settings › SOP documents (`admin.settings`) uploads each one (`SopDocument`, stored as bytes like other uploads, at most 25 MB, checked by its `%PDF-` header rather than its name) with a title and the roles it is for; **Replace PDF** swaps in a new export and keeps the title and roles. Help & Docs lists, at the bottom of its contents, the SOPs whose `roleIds` include the user's role (admins see all, with their roles). The download route checks the same rule and answers 404 to anyone else, so a link passed to another role doesn't work. Uploads, changes, deletions and downloads are logged as `sop.upload`, `sop.update`, `sop.delete` and `sop.download`. SOP documents are included in backups.
+
+### 5.15 Logistics
+
+`/logistics` (`logistics.view`; imports, WMS pulls, a full UPS refresh and carrier links need `logistics.manage`) ties the warehouse's and THD's logistics records together for analysis. **Sources.** The WMS shipped-lines report (one row per carton label and product; `TrackingNumber`/`secondtrack` hold the TMS shipment ID, a UPS 1Z number, a PRO, or the WMS's own SHP number), and the TMS (Logistics Gateway) Shipments and Purchase Orders exports. A file is recognised by its headers (`detectKind`), read as xlsx, CSV or an HTML table (`read.ts`), and upserted by its key (carton line, shipment number, PO number) in `import.ts`, so files overlap and can be imported again; rows missing from a later file are kept. TMS times are stored as the instant (from the zone abbreviation written beside them) and as written; WMS times are UTC-labelled wall clock like other imported times. **Sync WMS lines** (at the top of Logistics, `logistics.manage`) retrieves the WMS report from the link set under Admin › Settings (`SiteSettings.wmsReportUrl`; the migration sets it to the WMS's ShippedLast60 report) and imports it. **Scheduled sync.** The same card's **Sync schedule** (`SiteSettings.wmsSyncMinutes`, choices in `WMS_SYNC_OPTIONS`, `src/lib/logistics/sync-schedule.ts`, pure; 0 = off) makes the server sync on its own: `src/instrumentation.ts` starts `startWmsScheduler` (`wms-sync.ts`) when a Node.js server starts, which checks once a minute. A due run is claimed with one conditional `UPDATE` that moves `wmsSyncNextAt` on by the interval, so only one process runs it however many are up (set `WMS_SCHEDULER=off` to keep a process out). Saving the settings sets the first run (`firstSyncAt`: now, or one interval after the last scheduled run). Each run records `wmsSyncLastAt`, `wmsSyncLastOk` and `wmsSyncLastMessage` (shown on the card; Logistics shows the frequency under **Sync WMS lines**) and is a WMS import like a manual sync; a failure waits for the next interval and is audited as `logistics.fetchWmsScheduledFailed`. `npm run logistics-refresh` syncs the WMS report from cron only while no schedule is set, and refreshes UPS tracking either way.
+
+**Views and flags.** `buildLogistics` (`views.ts`, pure) lists the supplier's POs. THD books shipments that pick up from several suppliers, so a PO on a TMS shipment counts as ours only when the rest of the data has it: the TMS purchase orders, the WMS, THD's compliance data (PO records) or the Issue Log (`knownPos`, loaded for the shipment POs not otherwise known, matched with or without leading zeros); the rest are other suppliers' (`otherPos`), shown on the shipment apart from ours and left out of the PO list, flags and links, each with its cartons, shipments, UPS parcels, a status (Open, Scheduled, Shipped, In transit, Delivered, Canceled) and flags, high, medium or info: invalid TMS ID (not nine digits), TMS ID mismatch (the cartons' ID isn't the shipment TMS has the PO on; TMS ID problems are flagged the same on shipments to a THD crossdock, an IFC whose Dest. Facility starts with `XD`; crossdock shipments get the informational `CROSSDOCK` note and `CHECK_PLANEX`, a warning (high until delivered, then info) that the ship-to received over EDI may not be accurate and the destination should be checked in Vendor PlanEx; a flag's priority can differ per case, and the overview counts and filters by flag and priority), no TMS shipment, canceled PO shipped, wrong destination (another state or city; a near spelling is a misspelled ship-to city, edit distance ≤ 2), pickup date passed or delivery overdue (by the TMS status and the viewer's today), shipped after the pickup date, no carrier, UPS exception or past its expected date, TMS ID not in the TMS file (only for cartons shipped within the file's dates), and informational several shipments, ship-from differences, PO not in the TMS file, delivery before pickup and TMS errors. POs are listed newest first by PO number (THD numbers POs in creation order; `byPoNumberDesc`), with the create date from THD's compliance data (`PoRecord.poCreateDate`, `poCreated`) where it has the PO: the WMS and TMS files carry none. **Warehouses.** The WMS OrderNumber (`WmsCarton.orderNumber`, e.g. `3-S-ORD1005437`) starts with the warehouse's prefix; `Warehouse` rows (Admin › Settings › Warehouses, `admin.settings`, `POST /api/admin/warehouses`, `PATCH`/`DELETE /api/admin/warehouses/[id]`, audited `settings.warehouse*`; migration `warehouses` adds 3- Ohio Warehouse (Site 3) and 0- LV Warehouse (Site 0)) map prefixes to names, read at view time so a change applies at once. `warehouseOf` takes the longest matching prefix, ignoring case; a PO's warehouses are its cartons' (`PoView.warehouses`), a shipment's its cartons', else its POs'. The POs tab filters by warehouse (`wh`: a prefix, or `none` for POs with no WMS cartons yet) and sorts by `sortPos` (newest PO, warehouse then newest PO, or latest WMS ship date); the Shipments tab filters and sorts with `filterShipments`; the Overview's By warehouse counts POs, high flags, shipped-not-delivered POs and TMS shipments per warehouse (`logisticsOverview(views, warehouses)`); PO and shipment pages, the Excel export (Warehouse columns), the report PDF and the Send Email lines name the warehouse. **Channels.** The WMS CUST_NUM (`WmsCarton.customer`) names the channel; `Channel` rows (Admin › Settings › Channels, `POST /api/admin/channels`, `PATCH`/`DELETE /api/admin/channels/[id]`, audited `settings.channel*`; migration `channels` adds `THD` Rapid Distribution Center (RDC) and `THD.COM-DFDC` Direct Fulfillment Center (DFC)) match it exactly, ignoring case (`channelOf`). POs (`PoView.channels`), shipments (their cartons', else their POs') and UPS parcels (their cartons') carry their channels; the POs, Shipments and UPS parcels tabs filter by `ch` (a code, or `none`), and the Excel export has Channel columns. **Ship-to.** Newer WMS reports carry the ship-to: `ship_to` (THD's Store/DC number), `ship_name`, `ship_add1`–`3`, `ship_city`, `ship_prov` and `ship_zip`, stored on `WmsCarton` (`shipTo`, `shipName`, `shipAddress1`–`3`; migration `wms_ship_to`; a file without those columns leaves the stored ship-to alone). `src/lib/logistics/ship-to.ts` (pure) gives each PO its ship-to (`poShipTo`: the address most of its lines have; the Store/DC number from `ship_to`, else the number in the name such as "The Home Depot-5023" or "DFC - DALLAS DFC #5823", else from another line at the same street address, `facilityIndex`) as `PoView.shipTo`. It fills the destination when TMS has none, is searched, shown on the PO page (Ship-to (WMS)), in the Excel export and on the review's Research card, and fills the packing slip's Ship To. `SHIP_TO_MISMATCH` (high) flags a PO whose WMS Store/DC differs from TMS's destination facility (compared without leading zeros; not for crossdocks). **POM purchase orders.** THD's POM (Supplier Hub › Purchase Order Management) PO search export, a row per PO and SKU, is imported as-is through the Logistics import: `detectKind` knows it by PurchaseOrder #, PO Status and SKU Order Qty (kind `POM`), `pomRows` reads every column (`pomDate`, `pomNumber`), and `import.ts` replaces each PO's `PomPurchaseOrder` (header: status, dept, create date, type, buyer, reason code, SOQ, vendor, totals, ESD (stored but never used: POM's ESD runs a day off the real date), DC due date, destination DC, crossdock RDC/IFC, final receiving location and the rest; the first row in `raw`) and its `PomPoLine` rows (THD SKU, description, our SKU = SKU Part #, status, order, adjusted, shipped and received quantities, unit cost; migration `pom_purchase_orders`, `LogisticsSource` POM). `loadLogistics` passes them (`toPomPo`) to `buildLogistics` as `LogisticsData.pom`, matched by PO number without leading zeros: `PoView.pom`; POM-only POs are listed when POM has them Open or Shipped; Closed POs (`pomClosed`: closed by THD and already cleaned up) are neutral in Logistics (no ASN received, no POM flags, not in `esdState`, which takes Open POs only) but count for cancellations, evidence and the compliance fill; the create date falls back to POM's; POM status Shipped makes `PoView.asn` received (`source` POM) and the PO Shipped when nothing else shows it; Cancelled makes it Canceled (`CANCELED_IN_POM`, and `CANCELED_SHIPPED` when the WMS shipped it). POM's ESD is left out of `PomPo` so nothing uses it; the ESD is the TMS pickup date (`poEsd`: the earliest local pickup date of the PO's shipments that aren't canceled), already checked by `PICKUP_PASSED` and `SHIPPED_AFTER_PICKUP`. A shipment the WMS has shipped (`shippedOn`: its cartons' earliest ship date, by TMS ID, else by a PO on just that live shipment) that TMS still shows not moving past its pickup or delivery date gets `TMS_STATUS_LAG` instead of `PICKUP_PASSED`/`DELIVERY_OVERDUE` (info; medium once the delivery date has passed): THD is slow to move shipments to In Transit. It isn't a late flag for the Overview's overdue count or the late filter, and falls under the Send Email status request. Flags: `SKU_CANCELLED` (a cancelled SKU line; medium, Fill Rate risk), `CANCELED_SKU_SHIPPED` (high), `QTY_MISMATCH` (WMS units per product against POM's shipped quantity on Shipped lines, more than ordered, or a product not on the PO; medium) and `POM_DEST_MISMATCH` (WMS ship-to against POM's final receiving location, else destination DC; or TMS's non-crossdock destination against either; high); shipments carry their POs' destination and cancelled-SKU flags. The PO page shows a POM section with the lines beside the WMS units; the Excel and ASN exports add POM status and the ESD (TMS pickup, `poEsd`); packing slips take THD SKUs and descriptions from the PO's POM lines and, before the WMS ships, its open lines and destination. The Overview's **Due to ship this week** and **Past ESD** tiles count `esdState` (not shipped by the WMS, not canceled, open in POM when POM has it, `poEsd` within the next 6 days or before today) and link to the POs tab's `esd` filter. **POM on the compliance side** (`src/lib/pom.ts`, pure; `src/lib/pom-data.ts`): `pomEvidence` finds a compliance line's POM SKU line (by THD's SKU, else our SKU, ignoring leading zeros) and words it (cancelled, shipped complete, short, adjusted) with a Fill Rate hint; the violation review and each dispute show it (`PomEvidenceCard`), the dispute's **Order Shipped Complete** checklist shows POM's shipped-complete evidence (read live, not stored), **Add POM quantities to the supplier comment** appends `pomCommentText`, and the dispute report PDF lists it. `fillComplianceFromPom` fills compliance lines' missing THD SKU, our SKU and description from POM's lines for the same PO (never `raw`), after a POM import (its POs) and an SPM import (the file's POs). **ASN/Shipped Confirmation.** `GET /api/logistics/asn-export` (`logistics.view`, the POs tab's filters and sort; **ASN confirmation export**) writes `asnConfirmationWorkbook` (`asn-export.ts`): **PO Number** (text), **ASN/Ship Status** (list validation Unshipped/Shipped; the stored status, else Unshipped) and reference columns (WMS ship date, TMS shipments, carrier, ship-to, warehouse, status), audited `logistics.asnExport`. After the analyst checks each PO in POM (Supplier Hub), the file comes back through the Logistics import (`logistics.manage`): `detectKind` knows it by its PO Number and ASN/Ship Status headers (two columns are enough), `asnRows`/`parseAsnStatus` read it (blank = Unshipped; other values are skipped rows), and `import.ts` keeps one `AsnConfirmation` per PO number (`status` SHIPPED/UNSHIPPED, `confirmedAt` set when first marked Shipped; Unshipped clears a PO marked before and adds nothing otherwise; `LogisticsSource` ASN in the import history; migration `asn_confirmations`). `buildLogistics` takes them (`LogisticsData.asn`, matched without leading zeros) as `PoView.asn` with the info flag `ASN_RECEIVED`; a PO the WMS shipped (cartons) without it, and not canceled (TMS or the Issue Log), gets the medium flag `ASN_MISSING` (validate in POM, then import), and a shipment gets it for any of our POs that have it; a shipment carries `asn: {received, total}` over our POs and the flag when all are confirmed. `filterPos`/`filterShipments` take `asn` (`received`/`pending`); the logistics card on issue pages and PO records (`PoLogistics.asn`, `asnState`) has an ASN (POM) column: received with its date, missing, or blank before the WMS ships; PO and shipment pages and lists show an ASN received badge; the Logistics Excel export has an ASN/Ship Status column. **Shipments tab filters.** `filterShipments` also searches (`q`: shipment, POs, SCAC, PRO, UPS, origin and destination, carton labels) and filters by status, flag and priority, ASN and a pickup-date range (`shipmentDate`: pickup, else delivery; `PO_RANGES`/`rangeBounds`). **Destination sorts.** `PoView.dest` keeps the destination's Store/DC number, city and state (TMS PO, else its shipment, else the WMS ship-to); `destCompare` sorts by Store/DC # (numbers in numeric order), city or state, each then by the others, blanks last, on all three tabs. **UPS parcels.** `parcelRows` makes a row per UPS number on the POs' cartons (POs, first WMS ship date, tracking, destination, warehouses, channels), `parcelState` puts it in a group (delivered, tracking error, UPS exception, past expected date, label created, in transit, not checked yet), and `filterParcels` searches (tracking, PO, destination), filters by group, channel, warehouse and WMS ship date range, and sorts by ship date, expected delivery, group or destination. Date ranges (`PO_RANGES`: 7 days, 2 weeks, 30 and 90 days, 12 months, all time, custom from/to) filter POs by `poDate` (the WMS's first ship date, else the earliest TMS pickup, else the create date; POs with none only in All time): `rangeBounds` turns a preset into a start date (no end, so POs scheduled ahead count) and a custom range into inclusive bounds; `filterPos` takes them with today, and the Overview's What's flagged recounts the flags over the POs in range and warehouse (`wh`), carrying `range`/`from`/`to` to the POs tab and its Excel export. Shipments carry their own flags and their POs'. A shipment's cartons are those carrying its TMS ID, plus its POs' cartons whose WMS TMS ID is missing, malformed or a shipment that doesn't list the PO (a mismatch), matched by PO and shown with the WMS's ID highlighted.
+
+**Tracking.** A shipment TMS books with RG (routing guide) whose POs the WMS shipped with UPS numbers is UPS: it is shown as UPSN (TMS's RG kept in `tmsScac`: in the SCAC's tooltip, the shipment page's Carrier box and the Excel export), carries those UPS cartons, and its link opens UPS tracking for the number. SCACs link to the carrier's tracking page from `CarrierLink` (templates fill `{pro}`, `{shipment}`, `{po}`; a missing value drops the query; a SCAC with no page set isn't a link, and a shipment page offers to add one). UPS numbers are tracked with the UPS Track API (`ups.ts`: OAuth client credentials from Admin › Settings, `SiteSettings.upsClientId`/`upsClientSecret`, with a test-environment switch and **Test connection**; the secret is write-only, never returned to the browser or written to the App Log, though it is in backups like the rest of the settings; token cached per credentials; numbers not delivered and not checked for an hour, at most 150 a run), and link to ups.com.
+
+**Links.** PO pages list the Issue Log issues for the PO (`issuesForPoNumbers`, number with or without leading zeros) with **Log an issue**, and THD's compliance data (PO records and violations, `complianceForPos`). Issue pages and PO records (from PO Lookup, for `logistics.view`) show their POs' logistics (`PoLogisticsCard`), and in-app scorecards attach each violation's PO logistics and issues at view time (`withPoContext`), like Scorecard Feedback: never stored, so published snapshots don't change, and not on public pages or in the PDF and Excel downloads. Notes, imports, pulls, UPS refreshes, carrier edits and exports are in the App Log (`logistics.*`).
+
+**Orders canceled in the Issue Log.** TMS doesn't always remove a canceled PO from the Purchase Orders data, which leaves its shipment open. A PO listed on an Issue Log issue whose category is `Order cancellation` (`ORDER_CANCELLATION`) and status `RESOLVED` is shown `Canceled` on the POs tab, its page and the PO record's Logistics card, whatever its TMS status (`canceledByIssue` in `LogisticsData`, loaded by `loadLogistics`; matched by number with or without leading zeros). For a reused PO number, `cancellationApplies` takes the issue's PO create date when given (it must equal the PO's create date from THD's compliance data), else requires the issue date on or after the PO's creation; with no known create date the issue applies. The PO gets the informational `CANCELED_BY_ISSUE` flag naming the issue and the TMS status and shipments it overrides, and loses the timing flags of its open shipments (pickup passed, delivery overdue, no carrier); the shipment shows the same note for that PO. When every one of our POs on a shipment is canceled this way, the shipment is `Canceled` too (on the Shipments tab, its page and the POs' shipment lists), with TMS's own status kept in `ShipmentView.tmsStatus` and shown beside it, and loses the same timing flags, so it drops out of the open shipment and carrier overdue counts. Nothing is stored: reopening the issue or changing its category restores the TMS-based status on the next page load. The `Line cancellation` category (some lines of a PO canceled) leaves the PO's status alone, since the rest of the PO still ships.
+
+**Selection, reports and email.** The POs and Shipments tabs have a checkbox per row (up to `MAX_SELECTION` = 200). The selection exports a report (`GET /api/logistics/report?kind=po|shipment&ids=…&format=pdf|xlsx`, `logistics.view`): the PDF (`report-pdf.ts`, landscape, built with the Summarizer PDF's layout helpers) has a summary table then each item with its shipments, references and flags explained; the Excel is `logisticsWorkbook` for the POs (a shipment's own POs). **Send Email** (`logistics.manage`) offers the active teams that have addresses (`Team.emailTo` / `Team.emailCc`, set under Admin › Teams, validated by `parseTeamAddresses`; `emailTeams()`; the browser remembers the last team picked), extra To and Cc fields for other or one-off recipients, the issue types (`EDI_ISSUE_TYPES` in `edi.ts`, pure: TMS ID, ASN, ship-to, PlanEx, cancel, TMS status, other) pre-ticked from the selection's flags (`suggestedTypes`), and a draft subject and body (`ediDraft`, greeting the team by name) listing every item and PO number, which the user edits; the draft follows the ticked types and team until edited by hand. `POST /api/logistics/email` reads the team's addresses on the server by key, adds the typed ones (`parseAddresses`, `mergeAddresses` in `src/lib/email-address.ts`; an address in To is dropped from Cc), needs at least one To, rebuilds the PDF and sends it through `sendMail` (Microsoft Graph `sendMail` with Cc, reply-to the sender, file attachments and Sent Items). The plain-text message becomes HTML with `textToHtml`: paragraphs at blank lines, `<br>` within them and bulleted lists for lines starting "- ", with inline styles, because Outlook ignores `white-space: pre-wrap`. It records the attempt as a `LogisticsEmail`, then adds a `LogisticsNote` to each PO or shipment and audits `logistics.email` (a failed send is recorded and audited with `sent: false`, adds no notes and shows Graph's error).
+
+**Email log.** Every Send Email attempt is a `LogisticsEmail` row: the sender (name and address as they were), the selection (`kind`, `selected`), every PO and shipment it concerns (`poNumbers`, `shipmentNumbers`: the selection plus the selected POs' shipments or the selected shipments' POs, `emailSubjects`; GIN-indexed), the team's name, To, Cc, subject, the message as written, the request labels, the PDF as attached (`attachment`, bytes), and whether it was sent, with the error if not. Everyone with `logistics.view` reads all of it, whoever sent it: the **Emails** tab lists the latest 200 (search by PO with or without leading zeros, shipment, subject, recipient, team, sender or message text; filter sent or not sent; `emailLog` in `emails.ts`), `/logistics/email/<id>` shows one in full with links to its POs and shipments, and `GET /api/logistics/email/<id>/attachment` returns the PDF (audited `logistics.emailAttachment`). PO and shipment pages list theirs in an **Emails** card (`emailsFor`), and the violation review's Research card lists the PO's in its Logistics tab. Emails sent before the log existed are only in their notes and the App Log. Migration `team_email` moved the address formerly set under Admin › Settings (`SiteSettings.ediTeamEmail`, removed) to the EDI team.
+
+### 5.16 Packing Slip Generator
+
+`/packing-slips` (`packingslips.use`, given to Analyst by migration `packing_slips`; also linked from a Logistics PO page as `/packing-slips?po=…`, and from a report's Disputes page as **Create Packslip**, opened in a new tab, on each dispute with a PO whose reason code's required documents or details name a packing list or slip (`needsPackingSlip`)) makes a packing slip for a PO. `lookupSlip` (`src/lib/packing-slip-data.ts`, behind `GET /api/packing-slips/lookup?po=`) matches the number with or without leading zeros and fills the slip from what the platform has: from Logistics (`loadLogistics`), the first WMS ship date, the carton count, the items (`itemsFromCartons`: one per WMS product, units added up), the PO's live TMS shipment (else the WMS's TMS ID) and its carrier name and SCAC (UPSN for UPS parcels), and the warehouse that shipped it with its ship-from name and address (`Warehouse.shipFromName`/`address`, Admin › Settings; migration `packing_slips` sets them for 3- and 0-); from THD's compliance data, the PO create date of the latest use of the number (`PoRecord`), THD's SKU and newest description for each of our SKUs (`ComplianceLine.vendorSku` → `sku`/`skuDescription`), and, when nothing has shipped, the PO's lines with ordered quantities. The destination is the WMS ship-to (`PoView.shipTo`: Store/DC #, name unless it is only the brand, and the full street address); without one, the Store/DC # (`PoView.dest.facility`, else `PoRecord.dcNumber`) with its saved address (`DestinationAddress`), else the address the WMS last shipped to for that Store/DC on any PO, else the city; the name, when the WMS gives only the brand, comes from the channel (`destinationName`: DFC, RDC, crossdock). The editor (`slip-editor.tsx`) shows which sources were used and lets the user change every field, the warehouse and the items. `POST /api/packing-slips/download` validates the slip (`slipSchema`, pure in `src/lib/packing-slip.ts`: trimmed, dates checked, blank item rows dropped, at most `MAX_SLIP_ITEMS`), saves the destination address for the Store/DC # (`rememberDestination`), audits `packingslip.download` and returns the PDF (`packingSlipPdf`, Letter portrait, built with the Summarizer PDF's layout helpers, typed text through `pdfText`) or the Excel sheet (`packingSlipXlsx`). Nothing else about the slip is stored.
+
+### 5.12 Reports & Insights
+
+**Cancellations** (`?tab=cancellations`; `src/lib/cancellations.ts`, pure; loading in `cancellations-data.ts`, charts in `cancellation-charts.tsx` (SVG, one measure per chart); `GET /api/insights/cancellations` writes the styled workbook (`cancellations-export.ts`: Dashboard sheet, all rows, a sheet per breakdown, ExcelJS data bars) or, with `?format=pdf`, the PDF report (`cancellations-pdf.ts`: KPIs, monthly column charts, top-SKU bars, breakdown tables with totals, the 300 largest rows), audited `insights.cancellationsExport` with the format; PO numbers link to `/logistics/po/<po>` under `logistics.view`, and that page falls back to POM's record (`PomOnlyPo`) for a PO only POM has: one row per cancelled PO and SKU, merged by PO number (without leading zeros) and SKU from POM's cancelled lines (units = adjusted order − shipped, value = units × unit cost; `wholePo` when the PO is Cancelled), THD's Fill Rate violations (not Cancelled / Resolved: offset, dispute, recovered when won, team, root cause, program) and Issue Log issues in the Order and Line cancellation categories (attached to every row of their POs, else a PO-level row; the PO's estimate, else the issue's shared across its POs, once per PO). A row's month is the PO's create month from POM (so the tab reconciles to POM for any time frame), else THD's charge's report month, else the issue's. A row's program is THD's charge's (`programFrom` `thd`), else the program of its POM vendor # (`vendorPrograms`, `vendor`), else the cancellation issue's (`issue`); `programLabel` groups the rest as No program. `filterCancellations` takes the page's time frame (`cancelFrame`: a recent frame also takes months after THD's latest data) and program, and the tab's source, team, destination, SKU, scope, dispute, POM vendor number and PO reason code, and search (rows carry POM's `vendorNumber` and `reasonCode`, broken down as order streams); a notice compares the filtered totals with every cancellation recorded (and the export's Summary adds those totals), so filters never quietly understate the impact; `cancelTotals` and `groupCancellations` give the tiles and the breakdowns by month, program, team, SKU, destination, root cause, and source and scope.
+
+`/insights` (permission `insights.view`; the Director role, Admin, and any role given it) looks across all the compliance data for a time frame (last 3, 6 or 12 months, fiscal year to date, previous fiscal year, all time, or custom months; ending at the latest month with compliance data or a logged issue, since issues usually run ahead of THD's data) and optionally one program. Months follow the report period setting. Seven tabs share the filters, which live in the address: **Overview** (headline figures with the change from the previous period of the same length, generated highlights, month by month, top compliance types and teams), **Programs** (by program and by compliance type with change, and performance against goal), **Time** (against the previous period and the same months last year, month by month, fiscal quarters), **Teams** (by team responsible with feedback coverage, team × month and team × program grids, root causes), **Issues** (the Issue Log by category, team, severity, status and month, open issues by age, days to resolve, the costliest issues and overdue follow-ups), **Disputes** (dispute rate, win rate, recovered, awaiting THD, days to decision, Disputable violations never disputed, the pipeline, win rate by compliance type and by reason code) and **Locations & carriers** (THD location, carrier, SKU, repeat POs). **Export to Excel** (`/api/insights/export`, `insights-export.ts`) writes every view to one workbook. Month and quarter lists are newest first. Comparisons (`comparisonWindows`) cover only the frame's months up to the last month with compliance data for the program(s) shown, against the same months of the previous period (the same number of months just before the frame) and of the year before, so months THD hasn't reported yet don't read as a fall; a comparison window that starts before the first month of data is left out. Those months are marked "No THD data yet". Custom months are kept within the months there is data for.
+
+The Issues tab also compares **expected fines** (the issues' estimated maximum fines, totalled only over issues that have one) with **assessed fines** (THD's offsets on those issues' POs so far), issue by issue with how many POs THD's data covers yet (`expectedVsAssessed`). The counting is pure and unit-tested (`src/lib/insights.ts`); `insights-data.ts` loads the lines of the time frame and of the frames it is compared with in one query, the published scorecards and the Issue Log. A violation is counted as on scorecards (non-compliant, not Cancelled / Resolved); offsets are pre-dispute; recovered is the amount of approved or partly approved disputes; net is offsets less recovered (like the chargeback package's net, not the scorecard's post-dispute rules). Performance against goal comes from the published snapshots (post-dispute % and whether the goal was met), so it matches what was reported. Issue figures tie each issue's POs to compliance data with `matchIssuePos` (§5.11) and place issues in months by their issue date.
+
+## 6. Calculation rules
+
+All per-metric figures come from `getMetricStats(programIds, month, lineCounts)` in `src/lib/reports.ts`, using pure helpers in `src/lib/scorecard-rules.ts`. Lines are selected with `linesInPeriod(await getPeriodField(), month)` so the report period setting is respected everywhere.
+
+### 6.1 Compliance percentage
+
+Pre-dispute counts Cancelled / Resolved lines as compliant; post-dispute also counts approved disputes ("cleared" lines).
+
+| Metric kind | Denominator | Formula |
+|---|---|---|
+| Fill Rate with quantities (RDC, DFC) | units ordered | (units received + shortfall of cleared lines) ÷ units ordered |
+| **US Drop Ship Fill Rate** | lines closed = shipped (On Time lines) + cancelled (Fill Rate lines) | (shipped + cleared) ÷ closed (`dropShipFillRatePct`), THD's definition; its Fill Rate sheet lists only cancellations |
+| Other metrics with compliant lines in the export | lines in the export | (compliant + cleared) ÷ all lines |
+| Export lists only violations, line count entered | `LineCount` for the program and period | (lines − violations + cleared) ÷ lines (`enteredLinesPct`), marked `linesSource: "ENTERED"` |
+| DQC, Invoice Timeliness (`PASS_FAIL_PROGRAMS`) | none | 100% when no violation stands, otherwise no percentage (`passFailPct`) |
+| Anything else without a denominator | none | no percentage |
+
+The export's own population always takes precedence over an entered line count.
+
+Whether a line is compliant comes from THD's export (classified in `transform.ts`); the platform does not re-judge timing. For reference when reviewing and in Help (Questions and troubleshooting): THD's On Time rules only count late shipments. RDC/DFC collect shipments are on time when RTS is marked in TMS by 11 AM local time, 2 business days before the ship-by date (ESD), with a pickup request date on or before the ESD; SYNC orders when shipped on or before the ESD; prepaid shipments when the trailer checks in by the expected delivery date; US Drop Ship lines when ship-confirmed on or before the expected ship date. A pickup ahead of the ESD is therefore not an On Time violation, though it can lead to ASN timeliness, TMS Shipment ID, Fill Rate or Routing Guide violations.
+
+### 6.2 Result against goal
+
+`meetsGoal` compares the post-dispute percentage with the rule's goal. Without a percentage it falls back to: a percentage-of-value metric is **Below goal** while a post-dispute offset remains (THD only charges it below goal); any other metric is **Below goal** while an uncleared violation remains; otherwise no result.
+
+### 6.3 Offsets
+
+- Pre-dispute offset = THD's offsets on the period's lines.
+- Post-dispute offset = pre-dispute − recovered (approved and partially approved disputes) − offsets on Cancelled / Resolved lines.
+- A **percentage-of-value** offset falls away entirely after disputes only when THD's own rate was below the goal and the post-dispute rate reaches it (`pctOffsetFallsAway`). If THD charged it while its own rate already met the goal, it stays owed until disputed, rather than silently becoming $0.
+- Pending, denied and disputed amounts come from the disputes' statuses and amounts.
+
+### 6.4 Periods and lags
+
+Fill Rate and On Time data is two fiscal months behind (`FILL_ON_TIME_LAG_MONTHS = 2`). When grouping by month received, a report's On-Time & Fill Rate import expects THD's data from two months earlier, and Drop Ship lines (which carry no fiscal month) take that month.
+
+---
+
+## 7. API surface
+
+All route handlers check the session and then a permission (`requireApiPermission`), parse bodies with zod (`parseJson`), and write an `AuditLog` entry for changes. Pages use `requirePagePermission`, which redirects to the sign-in page or to the user's first permitted page (`homePath`).
+
+| Area | Routes | Permission |
+|---|---|---|
+| Reports | `POST /api/reports` (`reports.create`); `PATCH /api/reports/[id]` (stage moves `reports.advance`, other edits `reports.create`); `GET`/`POST /api/reports/historical` (`reports.advance`) | as shown |
+| Imports | `POST`/`PUT /api/reports/[id]/programs/[programId]/import` (preview, confirm), `…/purge` | `reports.import` |
+| Report inputs | `PUT /api/reports/[id]/shipments`, `/line-counts`, `/package-ids` | `reports.import` |
+| Review | `PUT /api/lines/[id]/review` | `lines.triage` |
+| Disputes | `/api/disputes/[id]` (status, fields), `/events`, `/attachments`, `/attachments/[attachmentId]`; `POST /api/reports/[id]/disputes/sync`, `POST /api/reports/[id]/disputes/email`; `PATCH /api/periods/[id]` (dispute window); `GET /api/reports/[id]/disputes/report`, `GET /api/reports/[id]/disputes/email/[emailId]/attachment` | `disputes.manage` (downloads `reports.view`) |
+| Scorecards | `/api/reports/[id]/scorecard` (regenerate), `/pdf`, `/export` | `reports.advance`; downloads `reports.view` or `view.dashboard` once published |
+| Public | `/api/s/[token]/pdf`, `/export`, `/api/i/[token]/pdf`; pages `/s/[token]`, `/d/[token]`, `/i/[token]` | token only |
+| Feedback | `POST /api/feedback`, `DELETE /api/feedback/[id]` | `feedback.submit` |
+| Summarizer | `GET /api/summarizer/pdf?r=…`; `GET /api/summarizer/issues-pdf?from=…&to=…` (also `issues.view`) | `summarizer.use` |
+| Reports & Insights | `GET /api/insights/export?range=&from=&to=&program=` | `insights.view` |
+| PO Lookup | `GET /api/po-lookup/package/[packageId]/export` | `view.polookup` |
+| Admin | `/api/admin/users`, `/roles`, `/aliases`, `/metrics/[id]` (+ `/rules`, `/reason-codes`), `/rules/[id]`, `/reason-codes/[id]`, `/settings/{branding,report-periods,public-dashboard}`, `/backups` (+ `/[name]`, `/restore`), `GET /app-log/export`, `POST /settings/email-test`, `POST /invites`, `POST /invites/[id]/resend`, `DELETE /invites/[id]`, `POST /users/[id]/password-reset`, `POST /teams`, `PATCH`/`DELETE /teams/[id]`, `POST /teams/reorder` (`admin.teams`), `POST /sops`, `PATCH`/`DELETE /sops/[id]` (multipart PDF upload, `admin.settings`) | the matching `admin.*` permission (invites `admin.users`) |
+| Accounts | `PATCH /api/account`, `POST /api/account/password` (signed in); `POST /api/invite/[token]`, `POST /api/password-reset/[token]` (the link is the credential); `POST /api/password-reset` (no sign-in; same answer for every email) | as shown |
+| Issue Log | `POST /api/issues`, `PATCH`/`DELETE /api/issues/[id]`, `POST /api/issues/[id]/notes`, `POST /api/issues/[id]/attachments`, `DELETE …/attachments/[attachmentId]` (`issues.manage`; delete also needs to be the issue's author or have `admin.users`); `POST`/`DELETE /api/issues/[id]/share` (`issues.manage`); `GET …/attachments/[attachmentId]`, `GET /api/issues/[id]/pdf`, `GET /api/issues/export` (`issues.view`) | as shown |
+| Logistics | `POST /api/logistics/import` (multipart files), `POST /api/logistics/fetch-wms`, `PUT /api/logistics/carriers`, `DELETE /api/logistics/carriers/[id]` (`logistics.manage`); `POST /api/logistics/ups-refresh` (given numbers: `logistics.view`; all due: `logistics.manage`), `POST /api/logistics/notes`, `DELETE /api/logistics/notes/[id]` (author or `logistics.manage`), `GET /api/logistics/export`, `GET /api/logistics/report`, `GET /api/logistics/email/[id]/attachment` (`logistics.view`); `POST /api/logistics/email` (`logistics.manage`) | as shown |
+| Packing slips | `GET /api/packing-slips/lookup?po=`, `POST /api/packing-slips/download` (`{slip, format}`, PDF or xlsx) | `packingslips.use` |
+| SOPs | `GET /api/sops/[id]` (the PDF; signed in with a role it is for, or `admin.settings`; 404 otherwise) | as shown |
+| Analytics | `POST /api/scorecard-hits` (a view: `reportId` when signed in, or a public `token`) | signed in, or token only |
+| Other | `/api/auth/[...nextauth]`, `GET /api/branding/logo` | — |
+
+---
+
+## 8. Front end
+
+- **Rendering.** Pages are React server components that query through `src/lib` directly; client components handle forms, dialogs, the review workspace, charts and copy buttons, calling the API with `apiFetch`.
+- **Design system.** Sympl UI (`docs/design-system.md`): gray-900 sidebar with blue-600 active item, gray-50 content, white cards with gray-200 borders, shared primitives in `src/components/ui`. Forms use the Input, Select and Textarea components; dialogs use `DialogContent`; badges use semantic variants.
+- **Navigation.** The sidebar shows only what the role allows; Help & Docs is open to everyone.
+- **Charts.** The rolling-offsets chart is hand-written SVG with hover, keyboard navigation and a table view; no chart library.
+- **Plain-http clipboard.** The Clipboard API exists only on secure origins, so `copyText` (`src/lib/clipboard.ts`) falls back to a selection copy.
+- **Branding.** Never hard-coded: `getBranding()` and `BrandMark`; pages shown before sign-in call `connection()` to render per request.
+- **Help content** is data (`src/lib/help-content.ts`), filtered by role and searchable; it must be updated when screens or rules change.
+- **Time zones.** App timestamps (created, updated, imported, decided, signed in) are shown in the viewer's zone, so one event reads the same local time to each person: `formatDate`/`formatDateTime(date, tz)`, with `tz` from `getTimeZone()` (`src/lib/time-zone-server.ts`, per request) on the server and `useTimeZone()` (`src/components/time-zone.tsx`) in client components, which get the server's value through `TimeZoneProvider` so server and browser render the same text. The zone is the user's choice (`User.timeZone`, set in Account settings or when accepting an invitation), else the browser's own zone, which `TimeZoneProvider` (in the app shell, the sign-in page and the public pages) stores in the `tz` cookie, reloading once if the page was rendered in another zone; before that, `DEFAULT_TIME_ZONE`. THD's own timestamps are UTC wall-clock values and keep `formatUtcDate`/`formatUtcDateTime`; exports are unchanged.
+
+---
+
+## 9. Security
+
+### 9.1 Authentication
+
+NextAuth v5 credentials provider: email and password checked against a bcrypt hash; inactive users cannot sign in; `lastLoginAt` is recorded. Sessions are signed JWTs (`AUTH_SECRET`) carrying the user id and role name.
+
+- **Account settings** (`/account`, every signed-in user): change one's own name and time zone (`PATCH /api/account`) and password (`POST /api/account/password`, which requires the current password; a wrong one is logged). Passwords are at least `PASSWORD_MIN` (8) characters, bcrypt cost 12.
+- **Invitations** (`src/lib/invites.ts`): Admin › Users › Invite user creates a `UserInvite` with a 256-bit random token; only its sha256 is stored, so a database copy or backup can't accept an invitation. The link `/invite/<token>` (no sign-in, `noindex`) works once and for `INVITE_DAYS` (7) days; accepting claims the invitation and creates the user in one transaction (a link can't create two accounts) and signs them in. A new invitation for the same address, a resend (which issues a new token) or a revoke stops the old link. If someone with the address already has an account, the invitation is refused.
+- **Email** (`src/lib/mail.ts`): Microsoft Graph `sendMail` from the `MS_GRAPH_SENDER` mailbox, with an app-only token from the client-credentials flow (cached until shortly before expiry). The tenant, client id, client secret and sender come from `.env` and are never stored in the database or shown in the app; Admin › Settings shows whether they are set and the sender, and sends a test. Every email ends with the same notice (`MAILBOX_NOTICE`, added by `withMailboxNotice` inside `sendMail`, in the card of a branded email): the mailbox is unmonitored, so recipients should use Reply All. Invitation links use `APP_URL`, else the address the admin used. When email isn't configured or Graph refuses it, the invitation is still created and the admin is shown the link once to send another way.
+- **Forgot password** (`src/lib/password-reset.ts`): the sign-in page links to `/forgot-password`, which asks for an email and always answers the same way, so it can't reveal which emails have accounts. For an active account it creates a `PasswordReset` (256-bit token, sha256 stored, valid `RESET_MINUTES` = 60), voids earlier unused links and emails `/reset-password/<token>`. Requests are limited to one email per user every 2 minutes and 10 requests per IP address per 15 minutes; every request, sent or not and why, is in the App Log. Setting the new password claims the link in the same transaction (one use), voids the user's other links and signs them in. Changing a password in Account settings or by an admin also voids open links. Without email configured, the page tells the user to ask an administrator.
+- **Admin reset:** the key icon in Admin › Users sends the user the same reset email (`POST /api/admin/users/[id]/password-reset`, `admin.users`; not limited, no IP recorded, logged as `user.passwordResetSend`); the current password keeps working until the link is used. If the email can't be sent the admin is shown the link once. Admins can still set a temporary password instead, and add a user with one.
+- **Sign-out** calls `signOut({ redirect: false })` and navigates to `/login` itself: Auth.js would redirect to an absolute URL built from the server's own address (`http://localhost:8014`) rather than the one in the browser.
+
+### 9.2 Authorisation
+
+Permissions are re-read from the database on every request (`getCurrentUser`, cached per request), so a role change applies immediately rather than at the next sign-in. Every page and route handler checks a specific permission. Links to pages a role can't open are hidden in the UI, but the server check is what enforces access.
+
+### 9.3 Public links
+
+Public scorecards and the public dashboard are reachable by anyone who has the link. Tokens are 24 random bytes (base64url), validated by pattern before any database lookup; pages are marked `noindex`. Scorecard links stop working when the report is unpublished; the dashboard link can be replaced or turned off. Public scorecards include root causes, notes and warehouse feedback, which is a deliberate trade-off to keep in mind before sharing outside the company.
+
+### 9.4 Input handling
+
+- Request bodies: zod schemas with trimming, length and range limits.
+- Uploads: SPM files 25 MB, 200 columns and 100,000 rows per sheet; dispute and issue attachments 10 MB with an extension allow-list, always served as downloads; backups up to 500 MB, restored only at the same schema migration and only after typing RESTORE.
+- Identifiers from URLs (tokens, report ids, Package IDs) are pattern-checked before use.
+- Spreadsheet cell values are stored as data and never evaluated; generated Excel files contain values, not formulas from input.
+
+### 9.5 Audit
+
+Every event writes an `AuditLog` row (user, action, entity, id, details), shown in Admin › App Log: sign-ins, failed sign-ins (with the email typed, the reason and the IP address) and sign-outs (NextAuth `authorize` and `events.signOut`); reviews, disputes and their notes and files, issues and their updates, files and exports, report moves, imports and purges; scorecard generation and every scorecard, package, Summarizer and App Log download, including anonymous public-link downloads; settings, users and roles, line counts, Package IDs and backups. Scorecard page views are recorded separately as `ScorecardHit` rows (§5.10). The CSV export prefixes cells that start with `=`, `+`, `-` or `@` so spreadsheet programs don't run typed text as formulas. Both tables are kept indefinitely and are included in backups.
+
+### 9.6 Deployment boundary
+
+The server is reached over plain http on the internal network, not exposed to the internet. Credentials and session cookies therefore travel unencrypted on that network. Putting a TLS-terminating reverse proxy in front (and setting the auth URL accordingly) is the recommended next step if the network is not trusted or access widens.
+
+### 9.7 Secrets
+
+`DATABASE_URL`, `AUTH_SECRET` and the seed admin credentials live in `.env` on the server, which is not in git. The application uses its own database user and database, separate from other applications on the server.
+
+---
+
+## 10. Deployment and operations
+
+### 10.1 Runtime
+
+| Item | Value |
+|---|---|
+| Host | One internal Linux server, app folder `~/jsproducts/thd-compliance`, run as the `jsadmin` user |
+| Process | `next start` under the systemd service `thd-compliance`, port 8014 |
+| Database | PostgreSQL database `thd_compliance`, user `thdcompliance` |
+| Logs | systemd journal (`journalctl -u thd-compliance`) |
+
+### 10.2 Updating
+
+`./scripts/deploy.sh` (from the app folder):
+
+1. Takes a lock (`.deploy.lock` with the deploy's process ID; a lock left by a killed deploy is cleared on the next run).
+2. Refuses to continue if tracked files were edited on the server or the branch diverged.
+3. Takes a pre-deploy backup (newest 10 kept).
+4. Fast-forward pulls the branch, runs `npm ci`, `prisma migrate deploy`, `next build`.
+5. Restarts the service and waits for the site to answer on the port.
+6. On a failed build, restart or health check, puts the previous commit back, rebuilds and restarts it. Migrations are not reversed; the pre-deploy backup covers that.
+
+Options: `--branch`, `--force`, `--skip-backup`, `--no-restart`; `SERVICE_NAME`, `PORT`, `BACKUP_KEEP`.
+
+### 10.3 Database migrations
+
+Migrations are generated with `prisma migrate diff` and reviewed by hand; data changes (for example splitting PO records by create date, adding roles or permissions to existing databases, rescaling Fill Rate fractions) are written into the same migration. PostgreSQL does not apply a Prisma migration in one transaction, so a failed migration is left partly applied and needs `prisma migrate resolve`; migrations are ordered so that failure points are safe (for example dropping a unique index before inserting rows that would violate it), and the larger ones were tested against a copy of the real data.
+
+### 10.4 Backups and recovery
+
+`src/lib/backup.ts` writes logical backups: every model in `TABLE_ORDER`, attachments included, as gzipped JSON, with the schema migration they were taken at. A test enforces that every model is in `TABLE_ORDER`. Files are named `hd-compliance-backup-<date>-<time>[-label].json.gz`; ones named `sympl-cm-backup-…` (from before the platform was renamed) are still listed, restored and pruned, and the format id inside the files is unchanged.
+
+- Manual: **Back up now** in Admin › Backup & Restore.
+- Scheduled: `npm run backup -- --keep 30` from cron; `--label` keeps a separate set.
+- Optional: `npm run refresh-scorecards` from cron after the backup, to keep published scorecards current with dispute decisions.
+- The WMS report syncs on the schedule set under Admin › Settings while the server runs. Optional: `npm run logistics-refresh` hourly from cron, to refresh UPS tracking (and sync the WMS report when no schedule is set).
+- Before each deploy: automatic.
+- Restore: from the admin page or `npm run restore -- <file> --yes`; one transaction, after a safety backup, refused if the schema migration differs.
+
+### 10.5 Data loading
+
+- `npm run backfill -- <dir>` imports a folder of historical SPM exports (oldest first, skipping files already imported and non-SPM files; folder names supply the month for Drop Ship).
+- `npm run historical-reports` creates historical reports (§5.9).
+- `npm run db:seed` creates roles, the first admin, programs, metrics, rules, column mappings and fiscal periods.
+
+---
+
+## 11. Testing and quality
+
+| Check | How |
+|---|---|
+| Lint | `npm run lint` (ESLint with Next.js rules, including `react-hooks/set-state-in-effect`) |
+| Types | `npm run typecheck` (strict TypeScript) |
+| Unit tests | `npm test` (Vitest, 200 tests): import transform against real SPM fixtures (DS, RDC, DFC, US Transportation quirks, summary-only, Fill Rate fractions, Invoice Timeliness), value parsing, catalog, scorecard rules (goals, Drop Ship Fill Rate, entered lines, pass/fail, offsets), shipment ranges, disputes, PO instance keys, permissions and landing pages, backups' table coverage, branding, Summarizer, Package IDs, help topics, App Log labels and filters, View Analytics, Issue Log (PO lists, validation, reused-PO matching, filters), Microsoft Graph email (token and send calls, errors, escaping), invitation tokens and states, time zones (validation, choice order, offsets, formatting), password reset links (expiry, one use, request limits), issue PDF text, Reports & Insights (time frames, figures, grouping, goal performance, issue insights), the Director role, team keys and pickers, estimated fines (whole dollars, per-PO totals, expected vs. assessed), scorecard refresh comparison, SOP files (PDF check, download names), the Summarizer's Issues report (date ranges, quick ranges, totals and breakdowns, earlier issues with activity), Logistics (CSV and HTML parsing, file recognition, TMS time zones, tracking references, carrier links, the flags on the sample WMS and TMS files, UPS answers, the Send Email draft, its HTML and team addresses, the report PDF, POs canceled through the Issue Log, what an email in the log concerns, and the dispute email requests and draft), packing slips (items from WMS lines, destination names, validation, file names) the WMS sync schedule (frequencies, first and following runs) the WMS ship-to (Store/DC numbers from ship_to, names and addresses, the parsed columns, the Store/DC check), the ASN/Shipped Confirmation file (status values, recognition, export round trip, PO and shipment marking and filters) and the Shipments tab filters, and the POM export (recognition and parsing of the sample file, ASN received and cancellation, POM-only POs, no ESD flags from POM, SKU, quantity and destination checks), POM evidence for violations and disputes, ESD states and the Cancellations analysis (merging, filters, totals, breakdowns) |
+| Build | `npm run build` |
+| End to end | Playwright scripts run against a local build during development (imports, review, disputes, scorecards, sharing, feedback, roles, Summarizer, packages, help, analytics, App Log, Issue Log, invitations, time zones, password reset, sign-out, Reports & Insights) |
+| Data checks | Backfill reconciled against the workbook's YTD Offset Report (73 of 85 month cells by month received); migrations tested on copies of the archive database |
+
+---
+
+## 12. Configuration
+
+| Setting | Where | Purpose |
+|---|---|---|
+| `DATABASE_URL` | `.env` | PostgreSQL connection |
+| `AUTH_SECRET` | `.env` | Signs session JWTs |
+| `AUTH_TRUST_HOST` | `.env` | Required when self-hosted |
+| `SEED_ADMIN_*` | `.env` | First admin, created by the seed |
+| `BACKUP_DIR` | `.env` | Backup folder (default `./backups`) |
+| `MS_GRAPH_TENANT_ID`, `MS_GRAPH_CLIENT_ID`, `MS_GRAPH_CLIENT_SECRET`, `MS_GRAPH_SENDER` | `.env` | Email through Microsoft Graph (Azure AD app registration with Mail.Send application permission) |
+| `APP_URL` | `.env` | Address used in invitation links (default: the address the admin used) |
+| `DEFAULT_TIME_ZONE` | `.env` | Zone for showing times before a browser has reported its own (default `America/Los_Angeles`) |
+| Time zone | Account settings (`User.timeZone`) | Per user; null follows the browser |
+| `SERVICE_NAME`, `PORT`, `BACKUP_KEEP` | environment for `deploy.sh` | Deploy settings |
+| Branding, report period basis, public dashboard | Admin › Settings (`SiteSettings`) | Runtime settings |
+| Programs, metrics, rules, reason codes, column mappings | Admin › Programs & Rules | Domain configuration, seeded from `catalog.ts` |
+
+---
+
+## 13. Design decisions
+
+| Decision | Reason | Consequence |
+|---|---|---|
+| One Next.js app, no separate API service | One small team, one server, no external clients | Simple deploys; domain logic shared through `src/lib` |
+| Map export columns by header name through admin-editable aliases | THD's headers drift between months (30+ layouts in the archive) | New headers need no code change; every source column is still kept in `raw` |
+| Keep every line, compliant or not | PO history and correct percentages need the full population | Larger tables (≈9,300 lines from the archive); search stays fast with indexes |
+| Line identity by content hash, upsert on import | Re-imports and newer exports must not duplicate | Exports can be imported in any order and more than once |
+| PO record = number + create date | THD reuses PO numbers | Lookups by number alone are forbidden in code |
+| Two compliance periods per report, other period update-only | Fill Rate and On Time lag two months | A violation can't be counted twice; THD decisions still flow in |
+| Frozen JSON scorecard snapshots | Published results must not move | Regeneration is explicit; live overlays only for feedback and dispute status |
+| Group by month received by default | Matches the monthly workbooks and how data arrives | Configurable; historical reports can be rebuilt |
+| Manual inputs (shipments, line counts, Package IDs) per report, program and period | The data isn't in the SPM exports | Same shape everywhere; a better source can replace them later |
+| Logical JSON backups instead of `pg_dump` | No database tooling needed on the server; restorable from the UI | Restore requires the same schema migration |
+| Server-side PDF and Excel | Consistent files, no browser printing | pdfkit's standard fonts limit the characters used in PDFs |
+| Plain http on the internal network | Existing server and network | See §9.6 |
+
+---
+
+## 14. Risks, limitations and future work
+
+| Item | Notes |
+|---|---|
+| THD changes an export's layout | Mitigated by header aliases and import warnings; a structural change (new sheet, new metric) needs a catalog or code update. |
+| Manual inputs can be forgotten | Line counts, shipment counts and Package IDs are typed in; the report page shows what each is used for. A future import of these from TMS/WMS or THD's remittance would remove the step. |
+| Percentages from entered line counts | One count per program and period serves every metric in that period; THD may count differently per metric. |
+| Single server, single database | No high availability; recovery is from backups. Off-server copies of `BACKUP_DIR` are recommended. |
+| Plain http | See §9.6. |
+| Password reset by email | Anyone who can read a user's mailbox can reset their password; JWT sessions already signed in elsewhere are not ended by a reset (they expire normally). |
+| Public links | Anyone with a link can view; there is no expiry other than unpublishing, replacing the dashboard link, or replacing or turning off an issue's link. A shared issue shows its people, POs and offsets to anyone holding the link. |
+| Snapshot schema evolution | New snapshot fields must stay optional so older scorecards render. |
+| Log growth | `AuditLog` and `ScorecardHit` grow without a retention limit; at this platform's volume that is small, but a purge of entries older than a set age may be wanted later. |
+| Help content drift | Help is data in the repo and must be updated with UI or rule changes (noted in `CLAUDE.md`). |
+
+Possible next steps: TLS in front of the app; scheduled off-server backups; importing line and shipment counts from TMS/WMS; reading Package IDs from THD's remittance file; e-mail notifications for dispute deadlines.
+
+---
+
+## 15. Glossary
+
+See the Glossary topic in **Help & Docs** (`/help#glossary`) and §2.1.

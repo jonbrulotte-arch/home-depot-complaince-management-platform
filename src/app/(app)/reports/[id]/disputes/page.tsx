@@ -1,0 +1,128 @@
+import Link from "next/link";
+import { notFound } from "next/navigation";
+import { ChevronLeft } from "lucide-react";
+import { prisma } from "@/lib/prisma";
+import { requirePagePermission } from "@/lib/auth-guard";
+import { LINE_FIELD_LABELS } from "@/lib/line-fields";
+import { emailTeams, teamNames } from "@/lib/teams";
+import { lineItem } from "@/lib/issues";
+import { getPeriodField, linesInPeriod } from "@/lib/periods";
+import type { ChecklistItem } from "@/lib/disputes";
+import { pomEvidenceFor } from "@/lib/pom-data";
+import { DisputeWorkspace, type DisputeView } from "./dispute-workspace";
+
+export default async function ReportDisputesPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ d?: string }> }) {
+  const user = await requirePagePermission("reports.view");
+  const { id } = await params;
+  const { d } = await searchParams;
+  const report = await prisma.complianceReport.findUnique({ where: { id }, include: { period: true, programs: true } });
+  if (!report) notFound();
+
+  const disputes = await prisma.dispute.findMany({
+    where: { line: { ...linesInPeriod(await getPeriodField(), report.period.fiscalMonth), metric: { programId: { in: report.programs.map((p) => p.programId) } } } },
+    include: {
+      line: { include: { metric: { include: { program: true } }, review: true } },
+      reasonCode: true,
+      events: { orderBy: { at: "desc" }, include: { user: { select: { name: true } } } },
+      attachments: { orderBy: { uploadedAt: "asc" }, select: { id: true, fileName: true, size: true, uploadedAt: true, uploadedBy: { select: { name: true } } } },
+      links: { orderBy: { createdAt: "asc" }, select: { id: true, label: true, url: true, createdAt: true, createdBy: { select: { name: true } } } },
+    },
+    orderBy: [{ line: { metric: { program: { sortOrder: "asc" } } } }, { line: { metric: { sortOrder: "asc" } } }, { line: { poNumber: "asc" } }],
+  });
+  const reasonCodes = await prisma.disputeReasonCode.findMany({
+    where: { metricId: { in: [...new Set(disputes.map((x) => x.line.metricId))] }, active: true },
+    orderBy: { code: "asc" },
+  });
+
+  const canEdit = user.permissions.has("disputes.manage");
+  const [teams, mailTeams, emails, pom] = await Promise.all([
+    teamNames(),
+    canEdit ? emailTeams() : Promise.resolve([]),
+    // The report's email log (Send Email), newest first
+    prisma.disputeEmail.findMany({
+      where: { reportId: id },
+      orderBy: { createdAt: "desc" },
+      select: { id: true, createdAt: true, senderName: true, teamName: true, to: true, cc: true, subject: true, requests: true, sent: true, disputeIds: true },
+    }),
+    // THD's POM: the PO's SKU line, as evidence (shipped quantities, cancellations)
+    pomEvidenceFor(disputes.map((x) => ({ key: x.id, poNumber: x.line.poNumber, sku: x.line.sku, vendorSku: x.line.vendorSku }))),
+  ]);
+  const view: DisputeView[] = disputes.map((x) => {
+    const line = x.line as unknown as Record<string, unknown>;
+    return {
+      id: x.id,
+      pom: pom[x.id] ?? null,
+      status: x.status,
+      programName: x.line.metric.program.name,
+      metricId: x.line.metricId,
+      metricName: x.line.metric.name,
+      poNumber: x.line.poNumber,
+      item: lineItem(x.line).primary === "—" ? null : lineItem(x.line).primary,
+      lineOffset: Number(x.line.offsetAmount),
+      review: x.line.review
+        ? {
+            disposition: x.line.review.disposition,
+            teamInfluence: x.line.review.teamInfluence ? (teams[x.line.review.teamInfluence] ?? x.line.review.teamInfluence) : null,
+            rootCause: x.line.review.rootCause,
+            notes: x.line.review.notes,
+            extraFields: Object.entries((x.line.review.extraFields ?? {}) as Record<string, string>),
+          }
+        : null,
+      keyFields: LINE_FIELD_LABELS.flatMap(([key, label, kind]) => {
+        const v = line[key];
+        if (v === null || v === undefined || key.startsWith("spm")) return [];
+        return [{ key, label, kind, value: v instanceof Date ? v.toISOString() : typeof v === "object" ? Number(v) : (v as string | number | boolean) }];
+      }),
+      reasonCodeId: x.reasonCodeId,
+      amountDisputed: Number(x.amountDisputed),
+      amountRecovered: x.amountRecovered == null ? null : Number(x.amountRecovered),
+      dueDate: x.dueDate?.toISOString() ?? null,
+      checklist: x.checklist as unknown as ChecklistItem[],
+      supplierComment: x.supplierComment,
+      submittedAt: x.submittedAt?.toISOString() ?? null,
+      spmReference: x.spmReference,
+      decidedAt: x.decidedAt?.toISOString() ?? null,
+      decisionCode: x.decisionCode,
+      decisionNotes: x.decisionNotes,
+      spmDecisionSeen: x.spmDecisionSeen,
+      events: x.events.map((e) => ({ id: e.id, type: e.type, body: e.body, fromStatus: e.fromStatus, toStatus: e.toStatus, user: e.user?.name ?? null, at: e.at.toISOString() })),
+      attachments: x.attachments.map((a) => ({ id: a.id, fileName: a.fileName, size: a.size, uploadedAt: a.uploadedAt.toISOString(), uploadedBy: a.uploadedBy?.name ?? null })),
+      links: x.links.map((l) => ({ id: l.id, label: l.label, url: l.url, createdAt: l.createdAt.toISOString(), createdBy: l.createdBy?.name ?? null })),
+    };
+  });
+
+  return (
+    <div className="flex h-full flex-col">
+      <div className="border-b border-gray-200 bg-white px-6 py-4">
+        <Link href={`/reports/${id}`} className="inline-flex items-center text-xs text-gray-500 hover:text-gray-700">
+          <ChevronLeft className="h-4 w-4" /> {report.title}
+        </Link>
+        <h1 className="text-2xl font-bold text-gray-900">Disputes</h1>
+        <p className="text-sm text-gray-500 mt-1">
+          Prepare documents, submit each dispute in the Supplier Performance Management tool, then record THD&apos;s decision.
+        </p>
+      </div>
+      <DisputeWorkspace
+        reportId={id}
+        reportStatus={report.status}
+        period={{
+          id: report.period.id,
+          fiscalMonth: report.period.fiscalMonth,
+          disputeOpen: report.period.disputeOpen?.toISOString() ?? null,
+          disputeClose: report.period.disputeClose?.toISOString() ?? null,
+        }}
+        disputes={view}
+        reasonCodes={reasonCodes.map((r) => ({ id: r.id, metricId: r.metricId, code: r.code, whenToUse: r.whenToUse, requiredDocs: r.requiredDocs, docDetails: r.docDetails }))}
+        initialId={d ?? null}
+        canEdit={canEdit}
+        canPackingSlip={user.permissions.has("packingslips.use")}
+        email={{
+          teams: mailTeams,
+          sender: user.name,
+          reportTitle: report.title,
+          log: emails.map((e) => ({ ...e, createdAt: e.createdAt.toISOString() })),
+        }}
+      />
+    </div>
+  );
+}

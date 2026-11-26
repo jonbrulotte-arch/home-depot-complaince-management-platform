@@ -1,0 +1,279 @@
+import Link from "next/link";
+import { requirePagePermission } from "@/lib/auth-guard";
+import { prisma } from "@/lib/prisma";
+import { loadLogistics } from "@/lib/logistics/data";
+import { wmsReportUrl } from "@/lib/logistics/import";
+import { syncFrequencyLabel } from "@/lib/logistics/sync-schedule";
+import { LOGISTICS_KIND_LABELS } from "@/lib/logistics/parse";
+import { upsConfigured } from "@/lib/logistics/ups";
+import { getTimeZone } from "@/lib/time-zone-server";
+import { emailTeams } from "@/lib/teams";
+import { formatDateTime } from "@/lib/utils";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import {
+  LOGISTICS_TABS,
+  LogisticsTabs,
+  type LogisticsTab,
+} from "@/components/logistics/parts";
+import { CarrierEditor } from "./carrier-editor";
+import { EmailFilters } from "./email-filters";
+import { Section } from "@/app/(app)/insights/ui";
+import { EmailTable } from "@/components/logistics/emails";
+import { emailLog } from "@/lib/logistics/emails";
+import { ImportPanel } from "./import-panel";
+import { WmsSyncButton } from "./wms-sync-button";
+import {
+  ImportHistory,
+  OverviewTab,
+  ParcelsTab,
+  PosTab,
+  ShipmentsTab,
+} from "./sections";
+
+type Search = {
+  add?: string;
+  esd?: string;
+  asn?: string;
+  ch?: string;
+  state?: string;
+  wh?: string;
+  sort?: string;
+  range?: string;
+  from?: string;
+  to?: string;
+  tab?: string;
+  q?: string;
+  status?: string;
+  flag?: string;
+  severity?: string;
+  scac?: string;
+  late?: string;
+};
+
+export default async function LogisticsPage({
+  searchParams,
+}: {
+  searchParams: Promise<Search>;
+}) {
+  const user = await requirePagePermission("logistics.view");
+  const sp = await searchParams;
+  const canManage = user.permissions.has("logistics.manage");
+  const tab: LogisticsTab = LOGISTICS_TABS.some((t) => t.key === sp.tab)
+    ? (sp.tab as LogisticsTab)
+    : "overview";
+  const [l, tz, lastSync, wmsUrl, schedule] = await Promise.all([
+    loadLogistics(),
+    getTimeZone(),
+    prisma.logisticsImport.findFirst({
+      where: { source: "WMS", fetched: true },
+      orderBy: { importedAt: "desc" },
+      select: { importedAt: true },
+    }),
+    wmsReportUrl(),
+    prisma.siteSettings.findUnique({ where: { id: "site" }, select: { wmsSyncMinutes: true } }),
+  ]);
+  // The selection toolbar: export for everyone here; Send Email (to the teams with addresses) needs logistics.manage
+  const sel = { canEmail: canManage, teams: canManage ? await emailTeams() : [], sender: user.name };
+
+  return (
+    <div className="p-6 max-w-7xl mx-auto space-y-6">
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div className="min-w-0 flex-1">
+          <h1 className="text-2xl font-bold text-gray-900">Logistics</h1>
+          <p className="text-sm text-gray-500 mt-1">
+            Every PO and shipment from the WMS and TMS (Logistics Gateway), tied
+            together, with delivery problems flagged.{" "}
+            {l.latestImports.length ? (
+              <>
+                Data as of{" "}
+                {l.latestImports.map((i, k) => (
+                  <span key={i.source}>
+                    {k > 0 && " · "}
+                    {LOGISTICS_KIND_LABELS[i.source]}{" "}
+                    {formatDateTime(i.importedAt, tz)}
+                  </span>
+                ))}
+                .
+              </>
+            ) : null}
+          </p>
+        </div>
+        {canManage &&
+          (wmsUrl ? (
+            <WmsSyncButton
+              lastSync={lastSync ? formatDateTime(lastSync.importedAt, tz) : null}
+              schedule={schedule?.wmsSyncMinutes ? syncFrequencyLabel(schedule.wmsSyncMinutes).toLowerCase() : null}
+            />
+          ) : (
+            <p className="max-w-xs text-right text-xs text-gray-500">
+              Set the WMS report link{" "}
+              {user.permissions.has("admin.settings") ? (
+                <Link href="/admin/settings#wms-report" className="text-blue-600 hover:underline">
+                  in Admin › Settings
+                </Link>
+              ) : (
+                "in Admin › Settings (an administrator)"
+              )}{" "}
+              to sync the WMS lines from it.
+            </p>
+          ))}
+      </div>
+      <LogisticsTabs tab={tab} />
+
+      {tab === "emails" ? (
+        <EmailsTab q={sp.q} status={sp.status} tz={tz} />
+      ) : l.empty && tab !== "imports" && tab !== "carriers" ? (
+        <Card>
+          <CardContent className="py-10 text-center text-sm text-gray-500">
+            No logistics data yet.{" "}
+            {canManage
+              ? "Press Sync WMS lines, and import the two TMS exports under Imports."
+              : "Ask someone who manages logistics to sync the WMS lines and import the TMS files."}
+          </CardContent>
+        </Card>
+      ) : tab === "overview" ? (
+        <OverviewTab l={l} range={{ range: sp.range, from: sp.from, to: sp.to, wh: sp.wh }} />
+      ) : tab === "pos" ? (
+        <PosTab
+          l={l}
+          filters={{
+            q: sp.q,
+            status: sp.status,
+            flag: sp.flag,
+            severity: sp.severity,
+            scac: sp.scac,
+            wh: sp.wh,
+            ch: sp.ch,
+            asn: sp.asn,
+            esd: sp.esd,
+            sort: sp.sort,
+            range: sp.range,
+            from: sp.from,
+            to: sp.to,
+          }}
+          notes={l.notes.po}
+          sel={sel}
+        />
+      ) : tab === "shipments" ? (
+        <ShipmentsTab l={l} filters={{ q: sp.q, status: sp.status, flag: sp.flag, severity: sp.severity, asn: sp.asn, range: sp.range, from: sp.from, to: sp.to, scac: sp.scac, late: sp.late === "1", wh: sp.wh, ch: sp.ch, sort: sp.sort }} sel={sel} />
+      ) : tab === "parcels" ? (
+        <ParcelsTab
+          l={l}
+          upsReady={await upsConfigured()}
+          canManage={canManage}
+          tz={tz}
+          filters={{ q: sp.q, state: sp.state, ch: sp.ch, wh: sp.wh, range: sp.range, from: sp.from, to: sp.to, sort: sp.sort }}
+        />
+      ) : tab === "imports" ? (
+        <ImportsTab canManage={canManage} tz={tz} />
+      ) : (
+        <CarriersTab l={l} canManage={canManage} add={sp.add?.toUpperCase()} />
+      )}
+    </div>
+  );
+}
+
+async function EmailsTab({ q, status, tz }: { q?: string; status?: string; tz: string }) {
+  const { emails, total } = await emailLog({ q, status });
+  return (
+    <div className="space-y-4">
+      <EmailFilters q={q} status={status} />
+      <Section
+        title="Email log"
+        description={`Every email sent with Send Email on the POs and Shipments tabs, whoever sent it, newest first${total > emails.length ? ` (the latest ${emails.length} of ${total})` : ""}. Open one to read it in full and download the report that was attached. Emails that couldn't be sent are listed too.`}
+      >
+        <EmailTable emails={emails} tz={tz} empty={q || status ? "No emails match." : "No emails sent from Logistics yet."} />
+      </Section>
+    </div>
+  );
+}
+
+async function ImportsTab({
+  canManage,
+  tz,
+}: {
+  canManage: boolean;
+  tz: string;
+}) {
+  const history = await prisma.logisticsImport.findMany({
+    orderBy: { importedAt: "desc" },
+    take: 50,
+    include: { importedBy: { select: { name: true } } },
+  });
+  return (
+    <div className="space-y-6">
+      {canManage && (
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle>Import</CardTitle>
+            <CardDescription>
+              The WMS report covers the last 60 days; the TMS files are exported
+              from Logistics Gateway (Shipments and Purchase Orders, CSV).
+              {(await wmsReportUrl())
+                ? " Sync WMS lines (top right) retrieves the WMS report straight from its link (Admin › Settings)."
+                : " Set the WMS report link under Admin › Settings to sync it with one button."}
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <ImportPanel wmsLink={false} />
+          </CardContent>
+        </Card>
+      )}
+      <ImportHistory
+        tz={tz}
+        rows={history.map((h) => ({
+          id: h.id,
+          source: h.source,
+          fileName: h.fileName,
+          rows: h.rows,
+          created: h.created,
+          updated: h.updated,
+          fetched: h.fetched,
+          importedAt: h.importedAt,
+          importedBy: h.importedBy?.name ?? null,
+          skipped: Array.isArray(h.warnings) ? h.warnings.length : 0,
+        }))}
+      />
+    </div>
+  );
+}
+
+function CarriersTab({
+  l,
+  canManage,
+  add,
+}: {
+  l: Awaited<ReturnType<typeof loadLogistics>>;
+  canManage: boolean;
+  add?: string;
+}) {
+  const counts = new Map<string, number>();
+  for (const s of l.shipments)
+    if (s.scac) counts.set(s.scac, (counts.get(s.scac) ?? 0) + 1);
+  const known = new Set(l.carriers.map((c) => c.scac));
+  return (
+    <CarrierEditor
+      canManage={canManage}
+      add={add}
+      carriers={l.carriers.map((c) => ({
+        id: c.id,
+        scac: c.scac,
+        name: c.name,
+        mode: c.mode,
+        trackingUrl: c.trackingUrl,
+        notes: c.notes,
+        shipments: counts.get(c.scac) ?? 0,
+      }))}
+      unknown={[...counts.entries()]
+        .filter(([s]) => !known.has(s))
+        .map(([scac, shipments]) => ({ scac, shipments }))
+        .sort((a, b) => b.shipments - a.shipments)}
+    />
+  );
+}
