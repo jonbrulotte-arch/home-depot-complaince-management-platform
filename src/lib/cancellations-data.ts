@@ -1,3 +1,4 @@
+import { vendorProgramMap } from "@/lib/vendor-numbers";
 import { prisma } from "@/lib/prisma";
 import { calendarToFiscal } from "@/lib/fiscal";
 import { getPeriodField } from "@/lib/periods";
@@ -14,7 +15,7 @@ const fiscalOf = (d: Date) => calendarToFiscal(d.getUTCFullYear(), d.getUTCMonth
 
 export async function loadCancellations(): Promise<CancelRow[]> {
   const field = await getPeriodField();
-  const [pomLines, chargeRows, issues, names] = await Promise.all([
+  const [pomLines, chargeRows, issues, names, programs] = await Promise.all([
     // POM SKU lines cancelled, or on a cancelled PO
     prisma.pomPoLine.findMany({
       where: { OR: [{ status: { startsWith: "cancel", mode: "insensitive" } }, { po: { status: { startsWith: "cancel", mode: "insensitive" } } }] },
@@ -40,9 +41,10 @@ export async function loadCancellations(): Promise<CancelRow[]> {
     }),
     prisma.issue.findMany({
       where: { category: { in: CANCELLATION_CATEGORIES } },
-      select: { id: true, number: true, title: true, category: true, status: true, team: true, issueDate: true, estimatedFine: true, pos: { select: { poNumber: true, estimatedFine: true } } },
+      select: { id: true, number: true, title: true, category: true, status: true, team: true, issueDate: true, estimatedFine: true, program: { select: { code: true, name: true } }, pos: { select: { poNumber: true, estimatedFine: true } } },
     }),
     teamNames(),
+    prisma.program.findMany({ select: { code: true, name: true, vendorNumbers: true }, orderBy: { sortOrder: "asc" } }),
   ]);
   const pom: CancelPomLine[] = pomLines.map((l) => {
     const wholePo = /^cancel/i.test(l.po.status);
@@ -81,6 +83,7 @@ export async function loadCancellations(): Promise<CancelRow[]> {
   return buildCancellations({
     pom,
     charges,
+    vendorPrograms: vendorProgramMap(programs),
     issues: issues.map((i) => ({
       id: i.id,
       number: i.number,
@@ -90,6 +93,8 @@ export async function loadCancellations(): Promise<CancelRow[]> {
       team: i.team ? (names[i.team] ?? i.team) : null,
       month: fiscalOf(i.issueDate),
       estimatedFine: i.estimatedFine,
+      programCode: i.program?.code ?? null,
+      programName: i.program?.name ?? null,
       pos: i.pos.map((p) => ({ poNumber: p.poNumber, estimatedFine: p.estimatedFine })),
     })),
   });

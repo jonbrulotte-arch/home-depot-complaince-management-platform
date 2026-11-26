@@ -63,6 +63,7 @@ export const ACTION_LABELS: Record<string, string> = {
   "role.update": "Changed a role",
   "role.delete": "Deleted a role",
   "metric.update": "Changed a metric",
+  "program.vendors": "Changed a program's vendor numbers",
   "rule.create": "Added a threshold/offset rule",
   "rule.delete": "Deleted a threshold/offset rule",
   "alias.create": "Added a column mapping",
@@ -126,7 +127,7 @@ export const LOG_CATEGORIES = [
   { key: "issues", label: "Issue Log", prefixes: ["issue"] },
   { key: "exports", label: "Lookups & exports", prefixes: ["package", "summary", "appLog", "insights"] },
   { key: "access", label: "Users & roles", prefixes: ["user", "role", "account"] },
-  { key: "config", label: "Configuration & settings", prefixes: ["metric", "rule", "alias", "reasonCode", "settings", "email", "team", "sop"] },
+  { key: "config", label: "Configuration & settings", prefixes: ["metric", "program", "rule", "alias", "reasonCode", "settings", "email", "team", "sop"] },
   { key: "logistics", label: "Logistics", prefixes: ["logistics", "packingslip"] },
   { key: "backups", label: "Backups", prefixes: ["backup"] },
 ] as const;

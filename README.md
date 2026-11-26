@@ -55,7 +55,7 @@ Monthly compliance analysis for our Home Depot programs. Import the raw SPM expo
 - **Admin**:
   - Users (invite, add, roles, passwords, deactivate)
   - Roles & Access (role × permission matrix; built-in Admin, Analyst, Viewer, Warehouse, Director, Finance and Logistics roles; Logistics starts with no permissions until an admin ticks them)
-  - Programs & Rules: metrics, threshold/offset rules by effective fiscal month, dispute reason codes, and SPM column mappings
+  - Programs & Rules: metrics, threshold/offset rules by effective fiscal month, dispute reason codes, each program's THD vendor numbers (POM Vendor # / SPM M-Vendor, used to put POM cancellations under a program), and SPM column mappings
 
 
 

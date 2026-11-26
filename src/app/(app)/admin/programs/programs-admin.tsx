@@ -10,6 +10,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { apiFetch } from "@/lib/client-api";
 import { fiscalLabel } from "@/lib/fiscal";
 import { cn, formatCurrency } from "@/lib/utils";
+import { parseVendorNumbers } from "@/lib/vendor-numbers";
+import type { VendorSeen } from "@/lib/vendor-numbers-data";
 
 interface Rule {
   id: string;
@@ -33,6 +35,7 @@ interface ProgramRow {
   code: string;
   name: string;
   filePrefix: string | null;
+  vendorNumbers: string[];
   metrics: MetricRow[];
 }
 interface Alias {
@@ -51,7 +54,7 @@ function describeOffset(r: Pick<Rule, "offsetType" | "offsetAmount">) {
   return "No offset";
 }
 
-export function ProgramsAdmin({ programs, aliases, canonicalFields }: { programs: ProgramRow[]; aliases: Alias[]; canonicalFields: string[] }) {
+export function ProgramsAdmin({ programs, aliases, canonicalFields, vendorsSeen }: { programs: ProgramRow[]; aliases: Alias[]; canonicalFields: string[]; vendorsSeen: VendorSeen[] }) {
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
   const [open, setOpen] = useState<string | null>(programs[0]?.id ?? null);
@@ -78,10 +81,12 @@ export function ProgramsAdmin({ programs, aliases, canonicalFields }: { programs
             <span className="text-sm font-semibold text-gray-900">{p.name}</span>
             <Badge variant="outline">{p.code}</Badge>
             {p.filePrefix && <span className="text-xs text-gray-400">files starting {p.filePrefix}_…</span>}
+            {p.vendorNumbers.length > 0 && <span className="text-xs text-gray-500">Vendor {p.vendorNumbers.join(", ")}</span>}
             <span className="ml-auto"><Badge variant="secondary">{p.metrics.length} metrics</Badge></span>
           </button>
           {open === p.id && (
             <div className="border-t border-gray-200 divide-y divide-gray-200">
+              <VendorEditor program={p} programs={programs} seen={vendorsSeen} run={run} />
               {p.metrics.map((m) => (
                 <MetricEditor key={m.id} metric={m} run={run} />
               ))}
@@ -90,6 +95,52 @@ export function ProgramsAdmin({ programs, aliases, canonicalFields }: { programs
         </div>
       ))}
       <AliasEditor programs={programs} aliases={aliases} canonicalFields={canonicalFields} run={run} />
+    </div>
+  );
+}
+
+/** The THD vendor numbers (POM's Vendor #, SPM's M-Vendor) that supply a program */
+function VendorEditor({ program, programs, seen, run }: { program: ProgramRow; programs: ProgramRow[]; seen: VendorSeen[]; run: (a: () => Promise<unknown>) => Promise<boolean> }) {
+  const [text, setText] = useState(program.vendorNumbers.join(", "));
+  const parsed = parseVendorNumbers(text);
+  const changed = parsed.numbers.join(",") !== program.vendorNumbers.join(",");
+  const owner = (v: string) => programs.find((p) => p.vendorNumbers.includes(v));
+  // Numbers in the data that aren't on any program yet, the ones THD reports under this program first
+  const unassigned = seen.filter((s) => !owner(s.vendor)).sort((a, b) => (b.spmPrograms[program.code] ?? 0) - (a.spmPrograms[program.code] ?? 0));
+  const describe = (s: VendorSeen) =>
+    [s.name, s.pomPos ? `${s.pomPos} POM PO${s.pomPos === 1 ? "" : "s"}` : null, ...Object.entries(s.spmPrograms).map(([code, n]) => `${n} SPM PO${n === 1 ? "" : "s"} on ${code}`)].filter(Boolean).join(" · ");
+  return (
+    <div className="space-y-2 bg-gray-50/60 p-4">
+      <div className="flex items-end gap-2">
+        <div className="flex-1">
+          <label className="mb-1 block text-xs font-medium text-gray-500">Vendor #s (comma separated)</label>
+          <Input value={text} onChange={(e) => setText(e.target.value)} placeholder="e.g. 20632, 28773" />
+        </div>
+        <Button variant="outline" size="sm" disabled={!changed || parsed.invalid.length > 0} onClick={() => run(() => apiFetch(`/api/admin/programs/${program.id}`, { method: "PATCH", body: { vendorNumbers: parsed.numbers } }))}>
+          Save
+        </Button>
+      </div>
+      <p className="text-xs text-gray-500">
+        THD&apos;s vendor numbers for this program (POM&apos;s Vendor #, SPM&apos;s M-Vendor). A number belongs to one program. Reports &amp; Insights › Cancellations puts POM&apos;s cancellations under the program of their PO&apos;s vendor # when THD hasn&apos;t charged them under one.
+      </p>
+      {parsed.invalid.length > 0 && <p className="text-xs text-red-600">Not a vendor number: {parsed.invalid.join(", ")}</p>}
+      {unassigned.length > 0 && (
+        <div className="flex flex-wrap items-center gap-1.5 text-xs">
+          <span className="text-gray-500">In the data, not on a program:</span>
+          {unassigned.map((s) => (
+            <button
+              key={s.vendor}
+              type="button"
+              title={describe(s)}
+              onClick={() => setText(parseVendorNumbers(`${text},${s.vendor}`).numbers.join(", "))}
+              className={cn("rounded-md border px-2 py-0.5 hover:border-blue-600 hover:text-blue-700", s.spmPrograms[program.code] ? "border-blue-200 bg-blue-50 text-blue-800" : "border-gray-200 bg-white text-gray-700")}
+            >
+              + {s.vendor}
+              <span className="ml-1 text-gray-400">{describe(s)}</span>
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

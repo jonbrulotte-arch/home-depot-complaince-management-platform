@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { fiscalLabel } from "@/lib/fiscal";
-import { CANCEL_SOURCE_LABELS, cancelFilterOptions, cancelTotals, groupCancellations, type CancelGroup, type CancelRow } from "@/lib/cancellations";
+import { CANCEL_SOURCE_LABELS, programLabel, cancelFilterOptions, cancelTotals, groupCancellations, type CancelGroup, type CancelRow } from "@/lib/cancellations";
 import { DISPUTE_STATUS_LABELS } from "@/lib/disputes";
 import { StatTiles } from "@/components/analytics/stat-tiles";
 import { Section, Table, money, n, type Col } from "./ui";
@@ -70,6 +70,9 @@ export function CancellationsTab({ rows, all, filters, poLookup, logistics, issu
       <div className="grid gap-6">
         <Section title="By month">
           <Table rows={groupCancellations(rows, (r) => (r.month ? String(r.month) : null), (k) => (k === "—" ? "No date" : fiscalLabel(Number(k))), "key").reverse()} cols={groupCols("Month")} />
+        </Section>
+        <Section title="By program" description="THD's program for the charge, else the program the PO's POM vendor # is on (Admin › Programs & Rules), else the issue's. Choose a program above to filter by it.">
+          <Table rows={groupCancellations(rows, programLabel)} cols={groupCols("Program")} />
         </Section>
         <Section title="By team responsible">
           <Table rows={groupCancellations(rows, (r) => r.team ?? "Not assigned")} cols={groupCols("Team")} />

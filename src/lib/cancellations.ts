@@ -1,4 +1,5 @@
 import type { DisputeStatus } from "@prisma/client";
+import { programOfVendor, type VendorProgram } from "@/lib/vendor-numbers";
 
 // Reports & Insights › Cancellations: the financial impact of cancelled orders, one row per cancelled
 // PO and SKU, from three sources tied together by PO number (without leading zeros) and SKU:
@@ -57,6 +58,9 @@ export interface CancelIssue {
   team: string | null;
   month: number;
   estimatedFine: number | null;
+  /** The program the issue was logged under */
+  programCode?: string | null;
+  programName?: string | null;
   /** The issue's POs (as typed) and each PO's own estimate */
   pos: { poNumber: string; estimatedFine: number | null }[];
 }
@@ -68,6 +72,8 @@ export interface CancelRow {
   month: number | null;
   programCode: string | null;
   programName: string | null;
+  /** Where the program came from: THD's charge, POM's vendor # (Programs & Rules) or the issue's program */
+  programFrom: "thd" | "vendor" | "issue" | null;
   destination: string | null;
   thdSku: string | null;
   ourSku: string | null;
@@ -102,7 +108,13 @@ const round = (n: number) => Math.round(n * 100) / 100;
 const WON: DisputeStatus[] = ["APPROVED", "PARTIAL"];
 
 /** One row per cancelled PO and SKU, merged from POM, THD's Fill Rate charges and the Issue Log */
-export function buildCancellations(input: { pom: CancelPomLine[]; charges: CancelChargeLine[]; issues: CancelIssue[] }): CancelRow[] {
+export function buildCancellations(input: {
+  pom: CancelPomLine[];
+  charges: CancelChargeLine[];
+  issues: CancelIssue[];
+  /** Vendor number → program (Programs & Rules), for rows THD hasn't charged under a program */
+  vendorPrograms?: Map<string, VendorProgram>;
+}): CancelRow[] {
   const rows = new Map<string, CancelRow>();
   const blank = (po: string): CancelRow => ({
     key: "",
@@ -110,6 +122,7 @@ export function buildCancellations(input: { pom: CancelPomLine[]; charges: Cance
     month: null,
     programCode: null,
     programName: null,
+    programFrom: null,
     destination: null,
     thdSku: null,
     ourSku: null,
@@ -167,6 +180,7 @@ export function buildCancellations(input: { pom: CancelPomLine[]; charges: Cance
       month: r.month ?? c.month,
       programCode: c.programCode,
       programName: c.programName,
+      programFrom: "thd",
       destination: r.destination ?? c.dcNumber,
       thdSku: r.thdSku ?? c.sku,
       ourSku: r.ourSku ?? c.vendorSku,
@@ -197,13 +211,25 @@ export function buildCancellations(input: { pom: CancelPomLine[]; charges: Cance
         if (!r.issues.some((x) => x.id === i.id)) r.issues.push({ id: i.id, number: i.number, title: i.title, category: i.category, status: i.status });
         if (!r.sources.includes("issue")) r.sources.push("issue");
         r.team = r.team ?? i.team;
+        if (!r.programCode && i.programCode) Object.assign(r, { programCode: i.programCode, programName: i.programName ?? i.programCode, programFrom: "issue" });
         if (n === 0) r.estimatedFine = round(r.estimatedFine + fine);
       });
     }
   }
-  for (const r of rows.values()) r.net = round(r.offsets - r.recovered);
+  for (const r of rows.values()) {
+    r.net = round(r.offsets - r.recovered);
+    // THD's charge says the program; else the PO's vendor number does (it outranks the issue's, which people pick)
+    if (r.programFrom !== "thd" && input.vendorPrograms) {
+      const v = programOfVendor(input.vendorPrograms, r.vendorNumber);
+      if (v) Object.assign(r, { programCode: v.code, programName: v.name, programFrom: "vendor" });
+    }
+  }
   return [...rows.values()].sort((a, b) => (b.month ?? 0) - (a.month ?? 0) || b.offsets + b.value - (a.offsets + a.value) || a.poNumber.localeCompare(b.poNumber));
 }
+
+/** The program a row counts under, for the breakdowns */
+export const NO_PROGRAM = "No program (vendor # not on a program)";
+export const programLabel = (r: Pick<CancelRow, "programName">) => r.programName ?? NO_PROGRAM;
 
 export interface CancelFilters {
   /** Fiscal months in the time frame; rows without a month only show with no time frame limit */

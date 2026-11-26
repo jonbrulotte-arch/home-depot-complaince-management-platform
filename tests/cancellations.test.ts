@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { buildCancellations, cancelFrame, cancelTotals, filterCancellations, groupCancellations, type CancelChargeLine, type CancelPomLine } from "@/lib/cancellations";
+import { vendorProgramMap } from "@/lib/vendor-numbers";
+import { buildCancellations, NO_PROGRAM, programLabel, cancelFrame, cancelTotals, filterCancellations, groupCancellations, type CancelChargeLine, type CancelPomLine } from "@/lib/cancellations";
 
 const pom = (o: Partial<CancelPomLine>): CancelPomLine => ({ poNumber: "1197910528", poStatus: "Shipped", poCreateDate: "2026-11-17", month: 202610, destination: "6707", thdSku: "1002977047", partNumber: "41562", description: "DEWALT ADJ STOOL", units: 144, unitCost: 83.48, wholePo: false, ...o });
 const charge = (o: Partial<CancelChargeLine>): CancelChargeLine => ({ id: "c1", month: 202611, poNumber: "001197910528", programCode: "US_DFC", programName: "US Direct Fulfillment Center", dcNumber: "6707", sku: "1002977047", vendorSku: null, description: null, offset: 1202.11, team: "Warehouse (Site 3)", rootCause: "Out of stock", dispute: null, ...o });
@@ -40,6 +41,31 @@ describe("cancellations", () => {
 
     const byTeam = groupCancellations(rows, (r) => r.team ?? "Not assigned");
     expect(byTeam[0]).toMatchObject({ label: "Warehouse (Site 3)", offsets: 1202.11 });
+  });
+
+  it("takes a row's program from THD's charge, else its POM vendor number's program, else the issue's", () => {
+    const vendorPrograms = vendorProgramMap([
+      { code: "US_RDC", name: "US Rapid Deployment Center", vendorNumbers: ["20632"] },
+      { code: "US_DFC", name: "US Direct Fulfillment Center", vendorNumbers: ["28773"] },
+    ]);
+    const rows = buildCancellations({
+      pom: [
+        pom({ vendorNumber: "28773" }),
+        pom({ poNumber: "1200109179", vendorNumber: "020632", thdSku: "1", partNumber: "A" }),
+        pom({ poNumber: "1200109180", vendorNumber: "99999", thdSku: "2", partNumber: "B" }),
+      ],
+      // THD charged the first under US_DS, which wins over its vendor's US_DFC
+      charges: [charge({ programCode: "US_DS", programName: "US Drop Ship" })],
+      issues: [{ id: "i1", number: 1, title: "x", category: "Order cancellation", status: "OPEN", team: null, month: 202610, estimatedFine: null, programCode: "US_TRANS", programName: "US Transportation", pos: [{ poNumber: "1200109180", estimatedFine: null }, { poNumber: "1200109179", estimatedFine: null }] }],
+      vendorPrograms,
+    });
+    const by = (po: string) => rows.find((r) => r.poNumber === po)!;
+    expect(by("1197910528")).toMatchObject({ programCode: "US_DS", programFrom: "thd" });
+    expect(by("1200109179")).toMatchObject({ programCode: "US_RDC", programName: "US Rapid Deployment Center", programFrom: "vendor" });
+    expect(by("1200109180")).toMatchObject({ programCode: "US_TRANS", programFrom: "issue" });
+    expect(filterCancellations(rows, { program: "US_RDC" }).map((r) => r.poNumber)).toEqual(["1200109179"]);
+    const none = buildCancellations({ pom: [pom({ vendorNumber: "99999" })], charges: [], issues: [], vendorPrograms });
+    expect(programLabel(none[0])).toBe(NO_PROGRAM);
   });
 
   it("gives an issue with no other data a PO-level row, sharing the issue's estimate across its POs", () => {

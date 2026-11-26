@@ -88,6 +88,8 @@ model Program {
   filePrefix     String?
   sortOrder      Int                 @default(0)
   active         Boolean             @default(true)
+  /// THD vendor numbers (POM's Vendor #, SPM's M-Vendor) that supply this program, set under Programs & Rules; each belongs to one program
+  vendorNumbers  String[]            @default([])
   metrics        Metric[]
   aliases        ColumnAlias[]
   reportPrograms ReportProgram[]

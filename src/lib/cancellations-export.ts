@@ -1,7 +1,7 @@
 import ExcelJS from "exceljs";
 import { fiscalLabel } from "@/lib/fiscal";
 import { DISPUTE_STATUS_LABELS } from "@/lib/disputes";
-import { CANCEL_SOURCE_LABELS, cancelTotals, groupCancellations, type CancelGroup, type CancelRow } from "@/lib/cancellations";
+import { CANCEL_SOURCE_LABELS, cancelTotals, groupCancellations, type CancelGroup, type CancelRow, programLabel } from "@/lib/cancellations";
 
 // Reports & Insights › Cancellations as a workbook: a Dashboard (headline figures, and the impact by
 // month and SKU with in-cell data bars), every cancellation, and the breakdowns. Styled like the
@@ -206,6 +206,7 @@ export async function cancellationsWorkbook(rows: CancelRow[], context: { timeFr
 
   groupSheet(wb, "By month", "Month", months, t);
   groupSheet(wb, "By SKU", "SKU", skus, t);
+  groupSheet(wb, "By program", "Program", groupCancellations(rows, programLabel), t);
   groupSheet(wb, "By team", "Team responsible", groupCancellations(rows, (r) => r.team ?? "Not assigned"), t);
   groupSheet(wb, "By destination", "Store/DC", groupCancellations(rows, (r) => r.destination), t);
   groupSheet(wb, "By vendor and reason", "Vendor # · PO reason code", groupCancellations(rows, (r) => (r.vendorNumber || r.reasonCode ? `Vendor ${r.vendorNumber ?? "?"} · reason ${r.reasonCode ?? "?"}` : "Not in POM")), t);

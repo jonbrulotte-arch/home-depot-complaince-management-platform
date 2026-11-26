@@ -2,7 +2,7 @@ import { fiscalLabel } from "@/lib/fiscal";
 import { DISPUTE_STATUS_LABELS } from "@/lib/disputes";
 import { pdfText } from "@/lib/issue-pdf";
 import { C, MARGIN, createPdf, money } from "@/lib/summary-pdf-layout";
-import { CANCEL_SOURCE_LABELS, cancelTotals, groupCancellations, type CancelGroup, type CancelRow } from "@/lib/cancellations";
+import { CANCEL_SOURCE_LABELS, cancelTotals, groupCancellations, type CancelGroup, type CancelRow, programLabel } from "@/lib/cancellations";
 
 // Reports & Insights › Cancellations as a PDF report: the filters, headline figures, charts by month
 // and SKU, the breakdowns and the cancellations themselves. Charts are single-series bars in the
@@ -117,6 +117,7 @@ export async function cancellationsPdf(
     );
   };
   groupTable("By vendor # and PO reason code (POM)", "Vendor # · reason code", groupCancellations(rows, (r) => (r.vendorNumber || r.reasonCode ? `Vendor ${r.vendorNumber ?? "?"} · reason ${r.reasonCode ?? "?"}` : "Not in POM")));
+  groupTable("By program", "Program", groupCancellations(rows, programLabel));
   groupTable("By team responsible", "Team", groupCancellations(rows, (r) => r.team ?? "Not assigned"));
   groupTable("By destination (top 15)", "Store/DC", groupCancellations(rows, (r) => r.destination).slice(0, 15), false);
   groupTable("By root cause (top 15)", "Root cause", groupCancellations(rows, (r) => r.rootCause ?? "Not recorded").slice(0, 15), false);

@@ -1,11 +1,12 @@
 import { prisma } from "@/lib/prisma";
 import { requirePagePermission } from "@/lib/auth-guard";
 import { CANONICAL_FIELDS } from "@/lib/import/transform";
+import { vendorNumbersSeen } from "@/lib/vendor-numbers-data";
 import { ProgramsAdmin } from "./programs-admin";
 
 export default async function ProgramsPage() {
   await requirePagePermission("admin.programs");
-  const [programs, aliases] = await Promise.all([
+  const [programs, aliases, vendorsSeen] = await Promise.all([
     prisma.program.findMany({
       orderBy: { sortOrder: "asc" },
       include: {
@@ -16,6 +17,7 @@ export default async function ProgramsPage() {
       },
     }),
     prisma.columnAlias.findMany({ orderBy: [{ canonicalField: "asc" }, { sourceHeader: "asc" }] }),
+    vendorNumbersSeen(),
   ]);
 
   return (
@@ -28,11 +30,13 @@ export default async function ProgramsPage() {
       </div>
       <ProgramsAdmin
         canonicalFields={[...CANONICAL_FIELDS].sort()}
+        vendorsSeen={vendorsSeen}
         programs={programs.map((p) => ({
           id: p.id,
           code: p.code,
           name: p.name,
           filePrefix: p.filePrefix,
+          vendorNumbers: p.vendorNumbers,
           metrics: p.metrics.map((m) => ({
             id: m.id,
             code: m.code,
