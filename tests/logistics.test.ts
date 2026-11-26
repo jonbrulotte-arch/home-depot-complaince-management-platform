@@ -86,8 +86,14 @@ describe("logistics views of the sample files", () => {
     expect(po("1191515251").flags.filter((f) => f.code === "CROSSDOCK")).toHaveLength(1);
     expect(po("1191515251").flags.find((f) => f.code === "CROSSDOCK")!.severity).toBe("info");
     expect(codes("1191515132")).toContain("MULTIPLE_SHIPMENTS");
-    expect(codes("1191515057")).toContain("PICKUP_PASSED");
-    expect(codes("1193766084")).toContain("DELIVERY_OVERDUE");
+    // Shipped in the WMS, but TMS still shows the shipment Accepted past its pickup: THD hasn't updated TMS
+    expect(codes("1191515057")).not.toContain("PICKUP_PASSED");
+    const lag = po("1191515057").flags.find((f) => f.code === "TMS_STATUS_LAG")!;
+    expect(lag.severity).toBe("info");
+    expect(lag.message).toContain("TMS still shows Accepted, past its pickup date (2026-11-12)");
+    // Shipped in the WMS, still Accepted in TMS past its delivery date: TMS lags, at medium
+    expect(po("1193766084").flags.find((f) => f.code === "TMS_STATUS_LAG")?.severity).toBe("medium");
+    expect(codes("1193766084")).not.toContain("DELIVERY_OVERDUE");
     expect(codes("1193307282")).toContain("CITY_SPELLING");
     expect(codes("1193307282")).not.toContain("WRONG_DESTINATION");
     expect(codes("1178880969")).toContain("ORIGIN_MISMATCH");
@@ -279,10 +285,26 @@ describe("UPS tracking answers", () => {
   });
 });
 
+describe("Pickup date passed vs TMS status not updated", () => {
+  it("flags a passed pickup only when the WMS hasn't shipped the shipment", async () => {
+    const { w, s, p } = await sample();
+    const shipments = s.parsed.rows.map((r) => ({ ...r, pickupAt: r.pickup?.at ?? null, pickupLocal: r.pickup?.local ?? null, deliveryAt: r.delivery?.at ?? null, deliveryLocal: r.delivery?.local ?? null }));
+    const codesOf = (cartons: typeof w.parsed.rows, today: string) => buildLogistics({ cartons, shipments, pos: p.parsed.rows, parcels: [] }, today).shipments.find((x) => x.shipmentNumber === "233565684")!.flags;
+    // With its cartons: TMS lags (info); past the delivery date too, medium
+    expect(codesOf(w.parsed.rows, "2026-11-14").find((f) => f.code === "TMS_STATUS_LAG")?.severity).toBe("info");
+    expect(codesOf(w.parsed.rows, "2026-11-20").find((f) => f.code === "TMS_STATUS_LAG")?.severity).toBe("medium");
+    expect(codesOf(w.parsed.rows, "2026-11-20").some((f) => f.code === "DELIVERY_OVERDUE")).toBe(false);
+    // Without them: the pickup really passed
+    const none = codesOf(w.parsed.rows.filter((c) => c.poNumber !== "1191515057"), "2026-11-14");
+    expect(none.map((f) => f.code)).toContain("PICKUP_PASSED");
+    expect(none.map((f) => f.code)).not.toContain("TMS_STATUS_LAG");
+  });
+});
+
 describe("POs canceled through the Issue Log", () => {
   it("marks a PO canceled when a resolved Order cancellation issue has it, and drops its open-shipment timing flags", async () => {
     const { w, s, p, views } = await sample();
-    const late = views.pos.find((x) => x.status !== "Canceled" && x.flags.some((f) => ["PICKUP_PASSED", "DELIVERY_OVERDUE"].includes(f.code)))!;
+    const late = views.pos.find((x) => x.status !== "Canceled" && x.flags.some((f) => ["PICKUP_PASSED", "DELIVERY_OVERDUE", "TMS_STATUS_LAG"].includes(f.code)))!;
     expect(late).toBeTruthy();
     const shipments = s.parsed.rows.map((r) => ({ ...r, pickupAt: r.pickup?.at ?? null, pickupLocal: r.pickup?.local ?? null, deliveryAt: r.delivery?.at ?? null, deliveryLocal: r.delivery?.local ?? null }));
     const build = (canceledByIssue: IssueCancellation[], poCreated?: Record<string, string>) =>
@@ -290,7 +312,7 @@ describe("POs canceled through the Issue Log", () => {
     const cancel = { poNumber: `00${late.poNumber}`, issueNumber: 12, issueDate: "2026-11-10", poCreateDate: null };
     const po = build([cancel]).pos.find((x) => x.poNumber === late.poNumber)!;
     expect(po.status).toBe("Canceled");
-    expect(po.flags.some((f) => ["PICKUP_PASSED", "DELIVERY_OVERDUE", "NO_CARRIER"].includes(f.code))).toBe(false);
+    expect(po.flags.some((f) => ["PICKUP_PASSED", "DELIVERY_OVERDUE", "NO_CARRIER", "TMS_STATUS_LAG"].includes(f.code))).toBe(false);
     const note = po.flags.find((f) => f.code === "CANCELED_BY_ISSUE")!;
     expect(note.severity).toBe("info");
     expect(note.message).toContain("Issue Log #12 (Order cancellation) is resolved");

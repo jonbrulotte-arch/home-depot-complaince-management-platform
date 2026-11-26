@@ -92,6 +92,8 @@ export const FLAGS = {
   SHIP_TO_MISMATCH: { severity: "high", label: "Ship-to Store/DC differs" },
   DELIVERY_OVERDUE: { severity: "high", label: "Delivery overdue" },
   PICKUP_PASSED: { severity: "high", label: "Pickup date passed" },
+  /** Shipped in the WMS, but TMS hasn't moved the shipment past Accepted: THD is slow to update it */
+  TMS_STATUS_LAG: { severity: "info", label: "TMS status not updated" },
   UPS_EXCEPTION: { severity: "high", label: "UPS exception" },
   TMS_ID_NOT_FOUND: { severity: "medium", label: "TMS ID not in TMS file" },
   MULTIPLE_SHIPMENTS: { severity: "info", label: "On several shipments" },
@@ -162,14 +164,28 @@ export function editDistance(a: string, b: string): number {
 }
 const place = (facility: string | null, city: string | null, state: string | null) => [facility, [city, state].filter(Boolean).join(", ")].filter(Boolean).join(" · ") || "—";
 
-/** Flags of a shipment by itself */
-function shipmentFlags(s: Shipment, today: string): Flag[] {
+/**
+ * Flags of a shipment by itself. `shippedOn` is when the WMS first shipped cartons on it: a shipment the
+ * WMS has shipped that TMS still shows Accepted (or another not-yet-moving status) past its pickup date
+ * isn't late, THD just hasn't updated TMS yet (TMS_STATUS_LAG, info; medium once its delivery date has
+ * passed too) rather than PICKUP_PASSED or DELIVERY_OVERDUE.
+ */
+function shipmentFlags(s: Shipment, today: string, shippedOn: string | null = null): Flag[] {
   const out: Flag[] = [];
   const pickup = localDateOf(s.pickupLocal);
   const delivery = localDateOf(s.deliveryLocal);
   if (isCanceled(s.status)) return out;
   if (!s.scac) out.push(flag("NO_CARRIER", `TMS shipment ${s.shipmentNumber} has no carrier assigned (${s.status}).`));
-  if (!isDelivered(s.status) && delivery && delivery < today) out.push(flag("DELIVERY_OVERDUE", `Shipment ${s.shipmentNumber} was due for delivery on ${delivery}; TMS still shows ${s.status}.`));
+  if (shippedOn && notYetMoving(s.status) && ((pickup && pickup < today) || (delivery && delivery < today))) {
+    const overdue = Boolean(delivery && delivery < today);
+    out.push(
+      flag(
+        "TMS_STATUS_LAG",
+        `The WMS shipped shipment ${s.shipmentNumber} on ${shippedOn}, but TMS still shows ${s.status}${overdue ? `, past its delivery date (${delivery})` : pickup ? `, past its pickup date (${pickup})` : ""}. THD hasn't updated TMS yet${overdue ? "; ask THD or the carrier to update it" : ""}.`,
+        overdue ? "medium" : "info",
+      ),
+    );
+  } else if (!isDelivered(s.status) && delivery && delivery < today) out.push(flag("DELIVERY_OVERDUE", `Shipment ${s.shipmentNumber} was due for delivery on ${delivery}; TMS still shows ${s.status}.`));
   else if (notYetMoving(s.status) && pickup && pickup < today) out.push(flag("PICKUP_PASSED", `Pickup for shipment ${s.shipmentNumber} was ${pickup}; TMS still shows ${s.status}.`));
   if (pickup && delivery && delivery < pickup) out.push(flag("DATES_REVERSED", `Shipment ${s.shipmentNumber} shows delivery (${delivery}) before pickup (${pickup}).`));
   if (isCrossdock(s.destFacility)) {
@@ -373,7 +389,7 @@ export function cancellationApplies(c: IssueCancellation, poCreated: string | nu
 }
 
 /** Shipment flags that only say an open shipment is late; meaningless for a PO canceled through the Issue Log */
-const TIMING_FLAGS: FlagCode[] = ["PICKUP_PASSED", "DELIVERY_OVERDUE", "NO_CARRIER"];
+const TIMING_FLAGS: FlagCode[] = ["PICKUP_PASSED", "DELIVERY_OVERDUE", "NO_CARRIER", "TMS_STATUS_LAG"];
 
 export interface LogisticsData {
   cartons: Carton[];
@@ -415,9 +431,20 @@ export function buildLogistics(input: LogisticsData, today: string) {
   for (const s of data.shipments) for (const po of s.poNumbers) shipmentsByPo.set(po, [...(shipmentsByPo.get(po) ?? []), s]);
   // The TMS shipments file covers pickups from this date on; older cartons may simply predate it
   const tmsFrom = data.shipments.map((s) => localDateOf(s.pickupLocal)).filter((d): d is string => Boolean(d)).sort()[0] ?? null;
+  // When the WMS first shipped cartons on each shipment: by the carton's TMS ID, else by its PO when
+  // the PO is on just one live shipment
+  const shippedOn = new Map<string, string>();
+  for (const c of data.cartons) {
+    const tmsId = cartonRefs(c.trackingNumber, c.secondTrack).tms;
+    const live = (shipmentsByPo.get(c.poNumber) ?? []).filter((s) => !isCanceled(s.status));
+    const target = tmsId && shipmentsByNumber.has(tmsId) ? tmsId : live.length === 1 ? live[0].shipmentNumber : null;
+    if (!target) continue;
+    const d = isoDate(c.shippedAt);
+    if (!shippedOn.has(target) || d < shippedOn.get(target)!) shippedOn.set(target, d);
+  }
   const shipmentFlagCache = new Map<string, Flag[]>();
   const flagsOf = (s: Shipment) => {
-    if (!shipmentFlagCache.has(s.shipmentNumber)) shipmentFlagCache.set(s.shipmentNumber, shipmentFlags(s, today));
+    if (!shipmentFlagCache.has(s.shipmentNumber)) shipmentFlagCache.set(s.shipmentNumber, shipmentFlags(s, today, shippedOn.get(s.shipmentNumber) ?? null));
     return shipmentFlagCache.get(s.shipmentNumber)!;
   };
 

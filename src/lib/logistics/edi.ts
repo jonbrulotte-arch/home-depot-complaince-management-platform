@@ -23,7 +23,7 @@ export const EDI_ISSUE_TYPES: EdiIssueType[] = [
   { key: "ship-to", label: "Correct the ship-to address", request: "Correct the ship-to address for these POs.", flags: ["WRONG_DESTINATION", "SHIP_TO_MISMATCH", "CITY_SPELLING"] },
   { key: "planex", label: "Confirm the destination in Vendor PlanEx", request: "These go to a THD crossdock: confirm the destination in Vendor PlanEx and that the ASN matches it.", flags: ["CHECK_PLANEX"] },
   { key: "cancel", label: "Cancel or close the PO", request: "Cancel or close these POs: THD shows them canceled.", flags: ["CANCELED_SHIPPED"] },
-  { key: "status", label: "Check the shipment status in TMS", request: "Check and update the shipment status in TMS (pickup or delivery dates have passed).", flags: ["PICKUP_PASSED", "DELIVERY_OVERDUE", "NO_CARRIER"] },
+  { key: "status", label: "Check the shipment status in TMS", request: "Check and update the shipment status in TMS (pickup or delivery dates have passed).", flags: ["PICKUP_PASSED", "DELIVERY_OVERDUE", "NO_CARRIER", "TMS_STATUS_LAG"] },
   { key: "other", label: "Other (described below)", request: "See the note below.", flags: [] },
 ];
 
